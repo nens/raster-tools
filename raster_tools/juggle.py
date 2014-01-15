@@ -12,13 +12,16 @@ import argparse
 import itertools
 import logging
 import multiprocessing
+import Queue
 import shlex
 import signal
 import subprocess
 import sys
 
 REPORT = 'executions: {}, processed: {}, existed: {}.'
+
 logger = logging.getLogger(__name__)
+queue = Queue.Queue(maxsize=1)
 
 
 def get_parser():
@@ -35,32 +38,41 @@ def pre():
 
 
 def execute(command):
-    """ Execute the requested command. """
-    return subprocess.Popen(shlex.split(command), preexec_fn=pre).wait()
+    """
+    Execute the requested command.
+    """
+    queue.put(subprocess.Popen(shlex.split(command), preexec_fn=pre).wait())
+
+
+def callback(result):
+    """
+    Put None on the queue, to signal the end of the juggling.
+    """
+    queue.put(None)
 
 
 def command(script, target):
-    """ Main command. """
-    command = '{} {{}} {}'.format(' '.join(script), target)
-    # Going to supply it in batches to the thread pool.
+    """
+    Parallel processing of a list of sources.
+    """
     processes = multiprocessing.cpu_count()
-    pool = ThreadPool(processes=processes)
+    template = '{} {{}} {}'.format(' '.join(script), target)
 
-    executions, existed, processed = 0, 0, 0
-    sources = list(itertools.islice(sys.stdin, 0, processes))
-    while sources:
-        # generate and execute
-        commands = (command.format(source) for source in sources)
-        codes = pool.map(execute, commands)
-        logger.debug('batch done')
+    # execute all using a pool
+    commands = (template.format(source) for source in sys.stdin)
+    pool = ThreadPool(processes=processes)
+    pool.map_async(execute, commands, callback=callback)
+
+    outcome = {0: 0, 1: 0}
+    for executions in itertools.count(1):
+        # take from queue until None comes out
+        q = queue.get()
+        if q is None:
+            break
 
         # log report for batch
-        executions += len(codes)
-        existed += codes.count(1)
-        processed += codes.count(0)
-        logger.debug(REPORT.format(executions, processed, existed))
-
-        sources = list(itertools.islice(sys.stdin, 0, processes))
+        outcome[q] += 1
+        logger.debug(REPORT.format(executions, outcome[0], outcome[1]))
 
 
 def main():

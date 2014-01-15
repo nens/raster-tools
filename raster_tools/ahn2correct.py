@@ -26,8 +26,7 @@ def get_parser():
 
 def command(source_path, target_path, index_path):
     """ Do something spectacular. """
-    print(index_path, source_path, target_path)
-    return 1
+    return 0
 
 
 def main():
