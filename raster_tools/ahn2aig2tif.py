@@ -8,6 +8,7 @@ from __future__ import division
 
 import argparse
 import logging
+import multiprocessing
 import os
 import sys
 
@@ -19,6 +20,18 @@ GDAL_GTIFF_DRIVER = gdal.GetDriverByName(b'gtiff')
 GDAL_MEM_DRIVER = gdal.GetDriverByName(b'mem')
 
 logger = logging.getLogger(__name__)
+geo_transforms = None
+
+
+def initializer(*initargs):
+    """ For multiprocessing. """
+    global geo_transforms
+    geo_transforms = initargs[0]
+
+
+def func(kwargs):
+    """ For multiprocessing. """
+    return convert(**kwargs)
 
 
 def get_parser():
@@ -39,7 +52,7 @@ def get_parser():
     return parser
 
 
-def get_geotransforms(index_path):
+def get_geo_transforms(index_path):
     """
     Return dictionary mapping leaf number to geotransform.
     """
@@ -56,14 +69,14 @@ def get_geotransforms(index_path):
             for ogr_index_feature in ogr_index_layer}
 
 
-def convert(index_path, source_path, target_dir):
+def convert(source_path, target_dir):
     """
     Read, correct, convert and write.
     """
     target_path = os.path.join(target_dir, source_path) + '.tif'
     if os.path.exists(target_path):
         logger.info('{} exists.'.format(os.path.basename(source_path)))
-        return
+        return 1
 
     logger.debug('Read.')
     gdal_source_dataset = gdal.Open(source_path)
@@ -91,29 +104,32 @@ def convert(index_path, source_path, target_dir):
         target_path, gdal_mem_dataset, 1, ['COMPRESS=DEFLATE', 'TILED=YES'],
     )
     logger.info('{} converted.'.format(os.path.basename(source_path)))
+    return 0
 
 
 def command(index_path, target_dir, source_paths):
     """ Do something spectacular. """
     logger.debug('Prepare index.')
-    global geo_transforms
-    geo_transforms = get_geotransforms(index_path)
+    initializer(get_geo_transforms(index_path))
 
     # single process conversion for sources from arguments
     for source_path in source_paths:
-        convert(index_path=index_path,
-                source_path=source_path,
-                target_dir=target_dir)
+        convert(source_path=source_path, target_dir=target_dir)
 
     # if there are sources from arguments, ignore stdin
     if source_paths:
         return
 
     # parallel conversion for sources from stdin
-    map(convert, (s.strip() for s in sys.stdin))  # TODO:
+    pool = multiprocessing.Pool(initializer=initializer,
+                                initargs=[geo_transforms])
+    iterable = (dict(source_path=s.strip(),
+                     target_dir=target_dir) for s in sys.stdin)
+    pool.map(func, iterable)
+    pool.close()
 
 
 def main():
     """ Call command with args from parser. """
-    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO)
     return command(**vars(get_parser().parse_args()))
