@@ -19,6 +19,7 @@ from osgeo import osr
 GDAL_GTIFF_DRIVER = gdal.GetDriverByName(b'gtiff')
 GDAL_MEM_DRIVER = gdal.GetDriverByName(b'mem')
 
+gdal.UseExceptions()
 logger = logging.getLogger(__name__)
 geo_transforms = None
 
@@ -79,8 +80,12 @@ def convert(source_path, target_dir):
         return 1
 
     logger.debug('Read.')
-    gdal_source_dataset = gdal.Open(source_path)
-    gdal_mem_dataset = GDAL_MEM_DRIVER.CreateCopy('', gdal_source_dataset)
+    try:
+        gdal_source_dataset = gdal.Open(source_path)
+        gdal_mem_dataset = GDAL_MEM_DRIVER.CreateCopy('', gdal_source_dataset)
+    except RuntimeError:
+        logger.warn('{} is broken.'.format(os.path.basename(source_path)))
+        return 2
 
     logger.debug('Set geo transform and projection.')
     gdal_mem_dataset.SetGeoTransform(
