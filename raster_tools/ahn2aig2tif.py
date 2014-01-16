@@ -13,8 +13,9 @@ import os
 import sys
 
 from osgeo import gdal
-from osgeo import ogr
 from osgeo import osr
+
+from raster_tools import utils
 
 GDAL_GTIFF_DRIVER = gdal.GetDriverByName(b'gtiff')
 GDAL_MEM_DRIVER = gdal.GetDriverByName(b'mem')
@@ -51,23 +52,6 @@ def get_parser():
                         nargs='*',
                         help='Source raster files')
     return parser
-
-
-def get_geo_transforms(index_path):
-    """
-    Return dictionary mapping leaf number to geotransform.
-    """
-    def get_geo_transform(feature):
-        """ Return a feature's geo_transform. """
-        x1, x2, y1, y2 = feature.geometry().GetEnvelope()
-        return x1, 0.5, 0.0, y2, 0.0, -0.5
-
-    ogr_index_datasource = ogr.Open(index_path)
-    ogr_index_layer = ogr_index_datasource[0]
-
-    return {ogr_index_feature[b'BLADNR'][1:]:
-            get_geo_transform(ogr_index_feature)
-            for ogr_index_feature in ogr_index_layer}
 
 
 def convert(source_path, target_dir):
@@ -115,7 +99,7 @@ def convert(source_path, target_dir):
 def command(index_path, target_dir, source_paths):
     """ Do something spectacular. """
     logger.debug('Prepare index.')
-    initializer(get_geo_transforms(index_path))
+    initializer(utils.get_geo_transforms(index_path))
 
     # single process conversion for sources from arguments
     for source_path in source_paths:
