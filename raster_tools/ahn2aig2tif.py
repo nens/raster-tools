@@ -93,7 +93,7 @@ def convert(source_path, target_dir):
     logger.debug('Check size')
     width, height = gdal_mem_dataset.RasterXSize, gdal_mem_dataset.RasterYSize
     if (width, height) != (2000, 2500):
-        logger.info('{}x{}:{}'.format(width, height, source_path))
+        logger.warn('{}x{}:{}'.format(width, height, source_path))
 
     logger.debug('Write')
     try:
