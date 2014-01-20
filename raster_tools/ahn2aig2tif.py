@@ -73,7 +73,7 @@ def convert(source_path, target_dir):
 
     logger.debug('Set geo transform and projection.')
     gdal_mem_dataset.SetGeoTransform(
-        geo_transforms[os.path.basename(source_path)[1:]],
+        geo_transforms[os.path.basename(source_path)[1:9]],
     )
     gdal_mem_dataset.SetProjection(
         osr.GetUserInputAsWKT(b'epsg:28992'),
@@ -98,7 +98,7 @@ def convert(source_path, target_dir):
 
 def command(index_path, target_dir, source_paths):
     """ Do something spectacular. """
-    logger.debug('Prepare index.')
+    logger.info('Prepare index.')
     initializer(utils.get_geo_transforms(index_path))
 
     # single process conversion for sources from arguments
