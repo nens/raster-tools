@@ -41,6 +41,10 @@ def get_parser():
     parser = argparse.ArgumentParser(
         description="Convert aig to tif. Sources may come from stdin, too."
     )
+    parser.add_argument('-p', '--processes',
+                        default=multiprocessing.cpu_count(),
+                        type=int,
+                        help='Processes for parallel mode.')
     parser.add_argument('index_path',
                         metavar='INDEX',
                         help='OGR Ahn2 index')
@@ -58,8 +62,10 @@ def convert(source_path, target_dir):
     """
     Read, correct, convert and write.
     """
-    target_path = os.path.join(target_dir,
-                               os.path.splitext(source_path)[0]) + '.tif'
+    target_path = os.path.join(
+        target_dir,
+        os.path.splitext(source_path)[0].lstrip(os.path.sep)
+    ) + '.tif'
     if os.path.exists(target_path):
         logger.info('{} exists.'.format(os.path.basename(source_path)))
         return 1
@@ -97,7 +103,7 @@ def convert(source_path, target_dir):
     return 0
 
 
-def command(index_path, target_dir, source_paths):
+def command(index_path, target_dir, source_paths, processes):
     """ Do something spectacular. """
     logger.info('Prepare index.')
     initializer(utils.get_geo_transforms(index_path))
@@ -111,7 +117,8 @@ def command(index_path, target_dir, source_paths):
         return
 
     # parallel conversion for sources from stdin
-    pool = multiprocessing.Pool(initializer=initializer,
+    pool = multiprocessing.Pool(processes=processes,
+                                initializer=initializer,
                                 initargs=[geo_transforms])
     iterable = (dict(source_path=s.strip(),
                      target_dir=target_dir) for s in sys.stdin)
