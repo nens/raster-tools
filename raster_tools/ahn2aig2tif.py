@@ -59,7 +59,7 @@ def convert(source_path, target_dir):
     Read, correct, convert and write.
     """
     target_path = os.path.join(target_dir,
-                               os.path.splitext(source_path)[1]) + '.tif'
+                               os.path.splitext(source_path)[0]) + '.tif'
     if os.path.exists(target_path):
         logger.info('{} exists.'.format(os.path.basename(source_path)))
         return 1
