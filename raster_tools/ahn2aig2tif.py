@@ -108,20 +108,12 @@ def command(index_path, target_dir, source_paths, processes):
     logger.info('Prepare index.')
     initializer(utils.get_geo_transforms(index_path))
 
-    # single process conversion for sources from arguments
-    for source_path in source_paths:
-        convert(source_path=source_path, target_dir=target_dir)
-
-    # if there are sources from arguments, ignore stdin
-    if source_paths:
-        return
-
     # parallel conversion for sources from stdin
     pool = multiprocessing.Pool(processes=processes,
                                 initializer=initializer,
                                 initargs=[geo_transforms])
-    iterable = (dict(source_path=s.strip(),
-                     target_dir=target_dir) for s in sys.stdin)
+    iterable = (dict(source_path=source_path,
+                     target_dir=target_dir) for source_path in source_paths)
     pool.map(func, iterable)
     pool.close()
 
