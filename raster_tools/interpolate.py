@@ -7,9 +7,12 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
+import collections
 import itertools
 import logging
+import multiprocessing
 import os
+import re
 import sys
 
 from osgeo import gdal
@@ -17,14 +20,39 @@ from osgeo import gdal_array
 from osgeo import ogr
 import numpy as np
 
+from raster_tools import utils
+
 logger = logging.getLogger(__name__)
 
-# index
-groups = {}
+GDAL_DRIVER_GTIFF = gdal.GetDriverByName(b'gtiff')
+GDAL_DRIVER_MEM = gdal.GetDriverByName(b'mem')
+RE_PATTERN_NAME = re.compile(r'i[0-9][0-9][a-z][nz][12]_[0-9][0-9]')
+
+gdal.UseExceptions()
+
+# silence pyflakes
+groups = None
 slices = None
 shape = None
 dtype = None
-fillvalue = np.finfo(dtype).max
+fillvalue = None
+
+cache = collections.OrderedDict()
+
+
+def initializer(*initargs):
+    """ For multiprocessing. """
+    global groups, slices, shape, dtype, fillvalue
+    groups = initargs[0]['groups']
+    slices = initargs[0]['slices']
+    shape = initargs[0]['shape']
+    dtype = initargs[0]['dtype']
+    fillvalue = initargs[0]['fillvalue']
+
+
+def func(kwargs):
+    """ For multiprocessing. """
+    return interpolate(**kwargs)
 
 
 def get_parser():
@@ -32,6 +60,10 @@ def get_parser():
     parser = argparse.ArgumentParser(
         description="Note that other paths in source location may be read."
     )
+    parser.add_argument('-p', '--processes',
+                        default=multiprocessing.cpu_count(),
+                        type=int,
+                        help='Amount of parallel processes.')
     parser.add_argument('index_path',
                         metavar='INDEX',
                         help='OGR Ahn2 index')
@@ -45,7 +77,7 @@ def get_parser():
     return parser
 
 
-def init_neighbours(index_path):
+def get_groups(index_path):
     """
     Return a dictionary with neighbours by leaf number.
 
@@ -56,7 +88,7 @@ def init_neighbours(index_path):
     From these dicts, construct neighbournames by name. Skip if name
     not in name dict, None if neighbour not in name dict.
     """
-    global groups
+    groups = {}
 
     offset = np.zeros((3, 3, 2))
     offset[..., 0] = [[-1,  0,  1],
@@ -82,8 +114,8 @@ def init_neighbours(index_path):
         name = ogr_index_feature[b'BLADNR']
         ogr_index_geometry = ogr_index_feature.geometry()
         coords = get_coords(geometry=ogr_index_geometry)
-        names[tuple(coords[0][0])] = name
-        thing[tuple(coords[0][0])] = coords
+        names[tuple(coords[1][1])] = name
+        thing[tuple(coords[1][1])] = coords
 
     # construct result
     for k, v in thing.iteritems():
@@ -92,50 +124,132 @@ def init_neighbours(index_path):
             return
         groups[name] = [map(lambda c: names.get(tuple(c)), w) for w in v]
 
+    return groups
 
-def init_geometry(source_paths):
-    """ Set global values from first dataset. """
-    global slices, shape, dtype, fillvalue
+
+def get_properties(source_paths):
+    """ Return work array properties based on first source path. """
+    # read
     dataset = gdal.Open(source_paths[0])
     width = dataset.RasterXSize
     height = dataset.RasterYSize
+    data_type = dataset.GetRasterBand(1).DataType
+
+    # prepare
     slices = [[(slice(j * height, (j + 1) * height),
                 slice(i * width, (i + 1) * width))
                for i in range(3)] for j in range(3)]
     shape = 3 * height, 3 * width
-    dtype = gdal_array.flip_code(dataset.GetRasterBand(1).DataType)
+    dtype = gdal_array.flip_code(data_type)
     fillvalue = np.finfo(dtype).max
+
+    return dict(slices=slices, shape=shape, dtype=dtype, fillvalue=fillvalue)
+
+
+def fill(array, path):
+    """ Return from cache or file. """
+    print(len(cache))
+    if path in cache:
+        array[:] = cache[path]
+        return 'from cache'
+
+    try:
+        dataset = gdal.Open(path)
+    except RuntimeError:
+        return 'not exist'
+
+    dataset.ReadAsArray(buf_obj=array)
+    mask = np.equal(array, dataset.GetRasterBand(1).GetNoDataValue())
+    array[mask] = fillvalue
+    cache[path] = array.copy()
+    if len(cache) > 10:
+        print('pop!')
+        cache.popitem(last=False)
+    return 'from file'
 
 
 def interpolate(source_path, target_dir):
     """
-    TODO
-    - open datasets, or skip if None
-    - read into view (fillvalue!)
-    - fillnodata
-    - write targetpath
     """
-    name = os.path.splitext(os.path.basename(source_path))[0]
-    group = groups[name]
+    target_path = os.path.join(
+        target_dir,
+        os.path.splitext(source_path)[0].lstrip(os.path.sep)
+    ) + '.tif'
+    if os.path.exists(target_path):
+        logger.info('{} exists.'.format(os.path.basename(source_path)))
+        return 1
 
-    # work array
-    array = np.array(shape, dtype)
-    array.fill(fillvalue)
+    source_name = os.path.splitext(os.path.basename(source_path))[0]
+    group = groups[source_name]
 
-    from pprint import pprint
-    pprint(zip(
-        itertools.chain(*slices),
-        itertools.chain(*group),
-    ))
+    logger.debug('Load.')
+    data = np.empty(shape, dtype)
+    data.fill(fillvalue)
+    for s, n in zip(itertools.chain(*slices), itertools.chain(*group)):
+        view = data[s]
+        path = RE_PATTERN_NAME.sub(n, source_path)
+        print(fill(array=view, path=path))
+
+    logger.debug('Fill.')
+    select = slices[1][1]
+    dataset = utils.array2dataset(np.expand_dims(data[select], 0))
+    band = dataset.GetRasterBand(1)
+    band.SetNoDataValue(float(fillvalue))
+    gdal.FillNodata(
+        band,
+        None,
+        100,  # search distance
+        0,    # smoothing iterations
+        callback=gdal.TermProgress,
+    )
+    dataset.FlushCache()
+
+    logger.debug('Save.')
+    try:
+        os.makedirs(os.path.dirname(target_path))
+    except OSError:
+        pass  # it existed
+    source = gdal.Open(source_path)
+    source_band = source.GetRasterBand(1)
+    target = GDAL_DRIVER_GTIFF.Create(
+        target_path,
+        source.RasterXSize,
+        source.RasterYSize,
+        source.RasterCount,
+        source_band.DataType,
+        ['COMPRESS=DEFLATE', 'TILED=YES'],
+    )
+    target.SetGeoTransform(source.GetGeoTransform())
+    target.SetProjection(source.GetProjection())
+    target_band = target.GetRasterBand(1)
+    target_band.WriteArray(data[slices[1][1]])
+    target_band.SetNoDataValue(float(fillvalue))
+    logger.info('{} interpolated.'.format(os.path.basename(source_path)))
+    return 0
 
 
-def command(index_path, target_dir, source_paths):
+def command(index_path, target_dir, source_paths, processes):
     """ Do something spectacular. """
-    init_geometry(source_paths)
-    logger.info('Preparing index')
-    init_neighbours(index_path)
-    for source_path in source_paths:
-        interpolate(source_path, target_dir)
+    logger.info('Prepare index.')
+    initkwargs = {'groups': get_groups(index_path)}
+    initkwargs.update(get_properties(source_paths))
+    initargs = [initkwargs]
+    iterable = (dict(source_path=source_path,
+                     target_dir=target_dir) for source_path in source_paths)
+
+    if processes > 1:
+        # multiprocessing
+        pool = multiprocessing.Pool(
+            processes=processes,
+            initializer=initializer,
+            initargs=initargs,
+        )
+        pool.map(func, iterable)
+        pool.close()
+    else:
+        # singleprocessing
+        initializer(*initargs)
+        map(func, iterable)
 
 
 def main():

@@ -28,7 +28,7 @@ geo_transforms = None
 def initializer(*initargs):
     """ For multiprocessing. """
     global geo_transforms
-    geo_transforms = initargs[0]
+    geo_transforms = initargs[0]['geo_transforms']
 
 
 def func(kwargs):
@@ -44,7 +44,7 @@ def get_parser():
     parser.add_argument('-p', '--processes',
                         default=multiprocessing.cpu_count(),
                         type=int,
-                        help='Processes for parallel mode.')
+                        help='Amount of parallel processes.')
     parser.add_argument('index_path',
                         metavar='INDEX',
                         help='OGR Ahn2 index')
@@ -106,16 +106,23 @@ def convert(source_path, target_dir):
 def command(index_path, target_dir, source_paths, processes):
     """ Do something spectacular. """
     logger.info('Prepare index.')
-    initializer(utils.get_geo_transforms(index_path))
-
-    # parallel conversion for sources from stdin
-    pool = multiprocessing.Pool(processes=processes,
-                                initializer=initializer,
-                                initargs=[geo_transforms])
+    initargs = [{'geo_transforms': utils.get_geo_transforms(index_path)}]
     iterable = (dict(source_path=source_path,
                      target_dir=target_dir) for source_path in source_paths)
-    pool.map(func, iterable)
-    pool.close()
+
+    if processes > 1:
+        # multiprocessing
+        pool = multiprocessing.Pool(
+            processes=processes,
+            initializer=initializer,
+            initargs=initargs,
+        )
+        pool.map(func, iterable)
+        pool.close()
+    else:
+        # singleprocessing
+        initializer(*initargs)
+        map(func, iterable)
 
 
 def main():
