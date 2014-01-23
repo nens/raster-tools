@@ -57,9 +57,11 @@ def func(kwargs):
 
 def get_parser():
     """ Return argument parser. """
-    parser = argparse.ArgumentParser(
-        description="Note that other paths in source location may be read."
-    )
+    parser = argparse.ArgumentParser(description=(
+        'This is the complex interpolation verison taking into account '
+        'more leafs than the source leaf only to mitigate edge effects. '
+        'Note that other paths in source location may be read.'
+    ))
     parser.add_argument('-p', '--processes',
                         default=multiprocessing.cpu_count(),
                         type=int,

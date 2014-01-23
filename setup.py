@@ -37,6 +37,7 @@ setup(name='raster-tools',
       entry_points={
           'console_scripts': [
               'interpolate = raster_tools.interpolate:main',
+              'fillnodata = raster_tools.fillnodata:main',
               'ahn2aig2tif = raster_tools.ahn2aig2tif:main',
               'extract = raster_tools.extract:main',
           ]},
