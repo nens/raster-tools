@@ -14,6 +14,10 @@ import sys
 import tempfile
 
 from osgeo import gdal
+from osgeo import gdal_array
+import numpy as np
+
+from raster_tools import utils
 
 GDAL_DRIVER_GTIFF = gdal.GetDriverByName(b'gtiff')
 
@@ -57,33 +61,61 @@ def interpolate(source_path, target_dir):
         logger.info('{} exists.'.format(os.path.basename(source_path)))
         return 1
 
-    logger.debug('Copy.')
+    logger.debug('Read.')
+    source = gdal.Open(source_path)
+    source_band = source.GetRasterBand(1)
+    source_data_type = source_band.DataType
+    no_data_value = source_band.GetNoDataValue()
+    target_array = np.empty(
+        (source.RasterCount, source.RasterYSize, source.RasterXSize),
+        dtype=gdal_array.flip_code(source_data_type),
+    )
+    source.ReadAsArray(buf_obj=target_array)
+    target = utils.array2dataset(target_array)
+    target.SetProjection(source.GetProjection())
+    target.SetGeoTransform(source.GetGeoTransform())
+    target_band = target.GetRasterBand(1)
+    target_band.SetNoDataValue(no_data_value)
+
+    # switch dir
+    curdir = os.getcwd()
+    tmpdir = tempfile.mkdtemp(dir='/dev/shm')
+    os.chdir(tmpdir)
+
+    # fill no data
+    iterations = 0
+    while no_data_value in target_array:
+        logger.debug('Fill')
+        mask_array = np.not_equal(target_array, no_data_value).view('u1')
+        mask = utils.array2dataset(mask_array)
+        mask_band = mask.GetRasterBand(1)
+        gdal.FillNodata(
+            target_band,
+            mask_band,
+            100,  # search distance
+            0,    # smoothing iterations
+        )
+        target.FlushCache()
+        iterations += 1
+
+    # switch back
+    os.chdir(curdir)
+    os.rmdir(tmpdir)
+
+    logger.debug('Write.')
     try:
         os.makedirs(os.path.dirname(target_path))
     except OSError:
         pass  # it existed
-    source = gdal.Open(source_path)
-    target = GDAL_DRIVER_GTIFF.CreateCopy(
+    GDAL_DRIVER_GTIFF.CreateCopy(
         target_path,
-        source,
+        target,
         1,
         ['COMPRESS=DEFLATE', 'TILED=YES'],
     )
-    target_band = target.GetRasterBand(1)
-    logger.debug('Fill.')
-
-    curdir = os.getcwd()
-    tmpdir = tempfile.mkdtemp(dir='/dev/shm')
-    os.chdir(tmpdir)
-    gdal.FillNodata(
-        target_band,
-        None,
-        100,  # search distance
-        0,    # smoothing iterations
-    )
-    os.chdir(curdir)
-    os.rmdir(tmpdir)
-    logger.info('{} interpolated.'.format(os.path.basename(source_path)))
+    logger.info('{} interpolated ({}).'.format(
+        os.path.basename(source_path), iterations,
+    ))
     return 0
 
 
@@ -104,5 +136,5 @@ def command(target_dir, source_paths, processes):
 
 def main():
     """ Call command with args from parser. """
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO)
+    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
     return command(**vars(get_parser().parse_args()))
