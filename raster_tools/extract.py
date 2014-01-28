@@ -12,6 +12,7 @@ import logging
 import os
 import sys
 import urllib
+import urlparse
 
 from osgeo import gdal
 from osgeo import ogr
@@ -21,27 +22,11 @@ logger = logging.getLogger(__name__)
 operations = {}
 
 DRIVER_OGR_MEMORY = ogr.GetDriverByName(b'Memory')
+DRIVER_OGR_SHAPE = ogr.GetDriverByName(b'ESRI Shapefile')
+DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
 DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
+
 POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
-
-
-class Index(object):
-    """ Base class for index """
-
-class RemoteIndex(object):
-    def __init__(self, server, layer, polygon):
-        """ Call strategy and transform it into an index. """
-        parameters = dict(
-            layers=','.join(layers),
-            request='getstrategy',
-            polygon=polygon.ExportToWkt(),
-            projection=projection,
-        )
-        self.url = '{}?{}'.format(
-            server,
-            urllib.urlencode(parameters)
-        )
-        strategy = json.load(urllib.urlopen(urlfile))
 
 
 class Operation(object):
@@ -50,51 +35,26 @@ class Operation(object):
     """
     def __init__(self, **kwargs):
         """ An init that accepts kwargs. """
+        self.kwargs = kwargs
+
 
 class Elevation(Operation):
     """ Just store the elevation. """
     name = 'elevation'
-    
+
     layers = dict(elevation=['elevation'])
     no_data_value = 3.4028235e+38
     data_type = 6
-    
-    def calculate(block):
-        block[self.layers['elevation']].ReadAsArray().tostring()
 
+    def calculate(datasets):
+        """ Return bytes. """
+        return datasets['elevation'].ReadRaster()
 
-def get_remote_index(server, layer, feature, projection):
-    """
-localhost:5000/data?request=getstrategy&layers=elevation&polygon=POLYGON((0.1%200.1,255.9%200.1,%20255.9%20255.9,%200.1%20255.9,0.1%200.1))&projection=epsg:28992&width=256&height=256
-    """
-    """
-    Return ogr memory datasource
-    """
-    polygon = layer.GetExtent()
-    # build the strayegy request url
-    get_parameters = dict(
-        request='getstrategy',
-        layers=layers,
-        polygon=None,
-    )
-    remote = urllib.urlopen(url)
-    strategy = None
-    ogr_driver = ogr.GetDriverByName('Memory')
-    return json.load(remote)
-
-def create_gdal_dataset(strategy, target_dir, name):
-    """ Create the big tiff dataset. """
-    gdal_driver = gdal.GetDriverByName('gtiff')
-    gdal_driver.Create()
-
-
-def get_dataset(layer, block):
-    pass
 
 class Chunk():
-    """ 
+    """
     Represents a remote chunk of data.
-    
+
     Ideally maps exactly to a remote storage chunk.
     """
     def __init__(self, width, height, layers, server, polygon, projection):
@@ -114,7 +74,10 @@ class Chunk():
         )
 
     def load(self):
-        """ Load dataset from server. """
+        """
+        Load dataset from server.
+        Caching happens at this level, if any.
+        """
         url_file = urllib.urlopen(self.url)
         vsi_file = gdal.VSIFOpenL('myfile', 'w')
         vsi_file.write(url_file.read())
@@ -122,40 +85,63 @@ class Chunk():
         # now what?
         self.dataset = None
 
+
 class Block(object):
     """ Self saving local chunk of data. """
-    def __init__(self, polygon):
+    def __init__(self, band, attrs, geometry, operation):
+        self.band = band
+        self.attrs = attrs
+        self.geometry = geometry
+        self.operation = operation
+
+    def save():
+        """
+        """
+        #self.band.WriteRaster(
+            #xoff, yoff, xsize, ysize,
+            #self.operation.calculate(self.layers),
+        #)
+
+
+class Source(object):
+    """
+    Factory of source chunks.
+    """
+    def __init__(self, index, server, layers):
+        """  """
+        self.server = server
+        self.index = index
+        self.layers = layers
+
+    def get_chunks(self, geometry):
+        """
+        Returns chunk list for a geometry.
+        """
+        # transform geometry to own sr
+        # set filter
+        # return chunks
         pass
+
 
 class Target(object):
     """
+    Factory of target blocks
     """
-    def __init__(self, path, operation, **kwargs):
-        pass
-   
-    def __iter__(self):
-        for i in []:
-            yield Block()
-        
+    def __init__(self, band, index, operation):
+        self.band = band
+        self.index = index
+        self.operation = operation
 
-def extract(ogr_feature, target_dir, **kwargs):
-    """ Extract for a single feature. """
-    target = Target(path=target_path,
-                    operation=target_operation)
-    for block in target:  # target knows what has been done.
-        for layer in operation.layers:
-            # get some chunk
-            for chunks in get_chunks:
-                gdal.ReprojectImage(chunk, block['layer'])
-        block.excute()  # no execute if no data!
+    def __iter__(self):
+        """ Yields blocks. """
+        for feature in self.index:
+            yield Block(feature)
+
 
 class Preparation(object):
-    """ Preparation. """
-    # transform geometry
-    # determine target path
-    # get or create local index
-    # get or create target tif
-    # fail if existing tif does not match
+    """
+    Preparation.
+    """
     def __init__(self, path, feature, **kwargs):
         """ Prepare a lot. """
         attribute = kwargs.pop('attribute')
@@ -165,8 +151,36 @@ class Preparation(object):
         self.projection = kwargs.pop('projection')
         self.operation = operations[kwargs.pop('operation')](**kwargs)
         self.geometry = self._prepare_geometry(feature)
+        self.polygon = self._get_polygon()
         self.dataset = self._get_or_create_dataset()
-        self.index = self._create_index()
+        self.blocks = self._create_blocks()
+        self.chunks = self._create_chunks()
+
+        DRIVER_OGR_SHAPE.CopyDataSource(self.blocks,
+                                        os.path.join(path, 'blocks.shp'))
+        for name, chunks in self.chunks.items():
+            DRIVER_OGR_SHAPE.CopyDataSource(chunks,
+                                            os.path.join(path, name + '.shp'))
+
+    def get_target(self):
+        """ Return target object. """
+        target = Target(
+            band=self.dataset.GetRasterBand(1),
+            index=self.blocks[0],
+            operation=self.operation,
+        )
+        return target
+
+    def get_sources(self):
+        """ Return dictionary of source objects. """
+        sources = {}
+        for name, layers in self.operation.layers.items():
+            sources[name] = Source(
+                server=self.server,
+                layers=layers,
+                index=self.chunks[name][0],
+            )
+        return sources
 
     def _make_path(self, path, feature, attribute):
         """ Prepare a path from feature attribute or id. """
@@ -188,16 +202,50 @@ class Preparation(object):
             geometry.Transform(ct)
         return geometry
 
+    def _get_polygon(self):
+        """ Return envelope as polygon. """
+        x1, x2, y1, y2 = self.geometry.GetEnvelope()
+        return POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
 
-    def _create_index(self):
-        """ 
-        Create index dataset.
+    def _get_or_create_dataset(self):
+        """ Create a tif and check against operation and index. """
+        if os.path.exists(self.path):
+            return gdal.Open(self.path, gdal.GA_Update)
+
+        # dir
+        try:
+            os.makedirs(os.path.dirname(self.path))
+        except OSError:
+            pass
+
+        # properties
+        a, b, c, d = self.cellsize[0], 0.0, 0.0, -self.cellsize[1]
+        x1, x2, y1, y2 = self.geometry.GetEnvelope()
+        p, q = a * (x1 // a), d * (y2 // d)
+
+        width = -int((p - x2) // a)
+        height = -int((q - y1) // d)
+        geo_transform = p, a, b, q, c, d
+        projection = osr.GetUserInputAsWKT(str(self.projection))
+
+        # create
+        dataset = DRIVER_GDAL_GTIFF.Create(
+            self.path, width, height, 1, self.operation.data_type,
+            ['TILED=YES', 'BIGTIFF=YES', 'SPARSE_OK=TRUE', 'COMPRESS=DEFLATE'],
+        )
+        dataset.SetProjection(projection)
+        dataset.SetGeoTransform(geo_transform)
+        dataset.GetRasterBand(1).SetNoDataValue(self.operation.no_data_value)
+        return dataset
+
+    def _create_blocks(self):
         """
-        index = DRIVER_OGR_MEMORY.CreateDataSource('')
-
-        # create layer
+        Create block index datasource.
+        """
+        # create datasource
+        blocks = DRIVER_OGR_MEMORY.CreateDataSource('')
         wkt = osr.GetUserInputAsWKT(str(self.projection))
-        layer = index.CreateLayer(b'index', osr.SpatialReference(wkt))
+        layer = blocks.CreateLayer(b'blocks', osr.SpatialReference(wkt))
         layer.CreateField(ogr.FieldDefn(b'p1', ogr.OFTInteger))
         layer.CreateField(ogr.FieldDefn(b'q1', ogr.OFTInteger))
         layer.CreateField(ogr.FieldDefn(b'p2', ogr.OFTInteger))
@@ -217,83 +265,83 @@ class Preparation(object):
                 q1 = j * v
                 p2 = min(p1 + u, U)
                 q2 = min(q1 + v, V)
-                
+
                 # polygon
                 x1, y2 = p + a * p1 + b * q1, q + c * p1 + d * q1
                 x2, y1 = p + a * p2 + b * q2, q + c * p2 + d * q2
                 polygon = ogr.CreateGeometryFromWkt(
                     POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2),
                 )
-                if not polygon.Intersects(self.geometry):
+                intersection = self.geometry.Intersection(polygon)
+                if not intersection.GetGeometryCount():
                     continue
-                
+
                 # feature
                 feature = ogr.Feature(layer_defn)
                 feature[b'p1'] = p1
                 feature[b'q1'] = q1
                 feature[b'p2'] = p2
                 feature[b'q2'] = q2
-                feature.SetGeometry(polygon)
+                feature.SetGeometry(intersection)
                 layer.CreateFeature(feature)
-        DRIVER_OGR_SHAPE = ogr.GetDriverByName(b'ESRI Shapefile')
-        DRIVER_OGR_SHAPE.CopyDataSource(index, 'tmp')
-        exit()
+
+        return blocks
+
+    def _create_chunks(self):
+        """ Return a dictionary with chunk index objects. """
+        result = {}
+        for name, layers in self.operation.layers.items():
+            parameters = dict(
+                layers=','.join(layers),
+                request='getstrategy',
+                polygon=self.polygon,
+                projection=self.projection,
+            )
+            url = '{}?{}'.format(
+                urlparse.urljoin(self.server, 'data'),
+                urllib.urlencode(parameters)
+            )
+            strategy = json.load(urllib.urlopen(url))
+
+            # create datasource
+            chunks = DRIVER_OGR_MEMORY.CreateDataSource('')
+            wkt = osr.GetUserInputAsWKT(str(strategy['projection']))
+            layer = chunks.CreateLayer(b'chunks', osr.SpatialReference(wkt))
+            layer_defn = layer.GetLayerDefn()
+
+            # add the polygons
+            p, a, b, q, c, d = strategy['geo_transform']
+            u, v = strategy['chunks'][1:]
+
+            # add features
+            for q1, q2 in strategy['blocks'][0]:
+                for p1, p2 in strategy['blocks'][1]:
+                    # polygon
+                    x1, y2 = p + a * p1 + b * q1, q + c * p1 + d * q1
+                    x2, y1 = p + a * p2 + b * q2, q + c * p2 + d * q2
+                    polygon = ogr.CreateGeometryFromWkt(
+                        POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2),
+                    )
+                    # feature
+                    feature = ogr.Feature(layer_defn)
+                    feature.SetGeometry(polygon)
+                    layer.CreateFeature(feature)
+            result[name] = chunks
+            return result
 
 
-    def _get_or_create_dataset(self):
-        """ Create a tif and check against operation and index. """
-        if os.path.exists(self.path):
-            return gdal.Open(self.path, gdal.GA_Update)
-        
-        # dir
-        try:
-            os.makedirs(os.path.dirname(self.path))
-        except OSError:
-            pass
-
-        # properties
-        a, b, c, d = self.cellsize[0], 0.0, 0.0, -self.cellsize[1]
-        x1, x2, y1, y2 = self.geometry.GetEnvelope()
-        p, q = a * (x1 // a), d * (y2 // d)
-        
-        width = -int((p - x2) // a)
-        height = -int((q - y1) // d)
-        import ipdb
-        ipdb.set_trace() 
-        geo_transform = p, a, b, q, c, d
-        projection = osr.GetUserInputAsWKT(str(self.projection))
-
-        # create
-        dataset = DRIVER_GDAL_GTIFF.Create(
-            self.path, width, height, 1, self.operation.data_type,
-            ['TILED=YES', 'BIGTIFF=YES', 'SPARSE_OK=TRUE', 'COMPRESS=DEFLATE'],
-        )
-        dataset.SetProjection(projection)
-        dataset.SetGeoTransform(geo_transform) 
-        dataset.GetRasterBand(1).SetNoDataValue(self.operation.no_data_value)
-    
-    def _create_dataset(self):
-        """ Create bigtiff dataset. """
-        # Arguments
-        datatype = gdal.GDT_Byte
-        options = ['BIGTIFF=YES',
-                   'TILED=YES',
-                   'SPARSE_OK=YES',
-                   'BLOCKXSIZE={}'.format(self.tilesize[0]),
-                   'BLOCKYSIZE={}'.format(self.tilesize[1]),
-                   'COMPRESS=DEFLATE']
-
-        # Create
-        driver = gdal.GetDriverByName(b'gtiff')
-        dataset = driver.Create(path, width, height, 1, datatype, options)
-
-        # Tweak
-        dataset.SetGeoTransform((x1, cellwidth, 0, y2, 0, -cellheight))
-        band = dataset.GetRasterBand(1)
-        nodatavalue = 255
-        band.SetNoDataValue(nodatavalue)
-
-        return dataset
+def extract(preparation):
+    """
+    Extract for a single feature.
+    """
+    target = preparation.get_target()
+    sources = preparation.get_sources()
+    for block in target:
+        for name, source in sources.items():
+            for chunk in source.chunks(block.geometry):
+                chunk.load()
+                gdal.ReprojectImage(chunk.dataset, block[name])
+        block.save()
 
 
 def command(shape_path, target_dir, **kwargs):
