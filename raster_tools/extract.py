@@ -19,6 +19,9 @@ from osgeo import ogr
 from osgeo import osr
 
 logger = logging.getLogger(__name__)
+gdal.UseExceptions()
+ogr.UseExceptions()
+osr.UseExceptions()
 operations = {}
 
 DRIVER_OGR_MEMORY = ogr.GetDriverByName(b'Memory')
@@ -51,93 +54,6 @@ class Elevation(Operation):
         return datasets['elevation'].ReadRaster()
 
 
-class Chunk():
-    """
-    Represents a remote chunk of data.
-
-    Ideally maps exactly to a remote storage chunk.
-    """
-    def __init__(self, width, height, layers, server, polygon, projection):
-        """ Prepare url. """
-        parameters = dict(
-            width=str(width),
-            height=str(width),
-            layers=','.join(layers),
-            request='getgeotiff',
-            compress='deflate',
-            polygon=polygon.ExportToWkt(),
-            projection=projection,
-        )
-        self.url = '{}?{}'.format(
-            server,
-            urllib.urlencode(parameters)
-        )
-
-    def load(self):
-        """
-        Load dataset from server.
-        Caching happens at this level, if any.
-        """
-        url_file = urllib.urlopen(self.url)
-        vsi_file = gdal.VSIFOpenL('myfile', 'w')
-        vsi_file.write(url_file.read())
-        vsi_file.close()
-        # now what?
-        self.dataset = None
-
-
-class Block(object):
-    """ Self saving local chunk of data. """
-    def __init__(self, band, attrs, geometry, operation):
-        self.band = band
-        self.attrs = attrs
-        self.geometry = geometry
-        self.operation = operation
-
-    def save():
-        """
-        """
-        #self.band.WriteRaster(
-            #xoff, yoff, xsize, ysize,
-            #self.operation.calculate(self.layers),
-        #)
-
-
-class Source(object):
-    """
-    Factory of source chunks.
-    """
-    def __init__(self, index, server, layers):
-        """  """
-        self.server = server
-        self.index = index
-        self.layers = layers
-
-    def get_chunks(self, geometry):
-        """
-        Returns chunk list for a geometry.
-        """
-        # transform geometry to own sr
-        # set filter
-        # return chunks
-        pass
-
-
-class Target(object):
-    """
-    Factory of target blocks
-    """
-    def __init__(self, band, index, operation):
-        self.band = band
-        self.index = index
-        self.operation = operation
-
-    def __iter__(self):
-        """ Yields blocks. """
-        for feature in self.index:
-            yield Block(feature)
-
-
 class Preparation(object):
     """
     Preparation.
@@ -155,7 +71,6 @@ class Preparation(object):
         self.dataset = self._get_or_create_dataset()
         self.blocks = self._create_blocks()
         self.chunks = self._create_chunks()
-
         DRIVER_OGR_SHAPE.CopyDataSource(self.blocks,
                                         os.path.join(path, 'blocks.shp'))
         for name, chunks in self.chunks.items():
@@ -165,8 +80,8 @@ class Preparation(object):
     def get_target(self):
         """ Return target object. """
         target = Target(
-            band=self.dataset.GetRasterBand(1),
             index=self.blocks[0],
+            dataset=self.dataset,
             operation=self.operation,
         )
         return target
@@ -185,7 +100,7 @@ class Preparation(object):
     def _make_path(self, path, feature, attribute):
         """ Prepare a path from feature attribute or id. """
         if attribute:
-            name = feature[attribute] + '.tif'
+            name = feature[str(attribute)] + '.tif'
         else:
             name = str(feature.GetFID()) + '.tif'
         return os.path.join(path, name)
@@ -322,12 +237,129 @@ class Preparation(object):
                     polygon = ogr.CreateGeometryFromWkt(
                         POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2),
                     )
+                    # intersection
+                    intersection = self.geometry.Intersection(polygon)
+                    if not intersection.GetGeometryCount():
+                        continue
                     # feature
                     feature = ogr.Feature(layer_defn)
-                    feature.SetGeometry(polygon)
+                    feature.SetGeometry(intersection)
                     layer.CreateFeature(feature)
             result[name] = chunks
             return result
+
+
+class Source(object):
+    """
+    Factory of source chunks.
+    """
+    def __init__(self, index, server, layers):
+        """  """
+        self.server = server
+        self.index = index
+        self.layers = layers
+
+    def get_chunks(self, geometry):
+        """
+        Returns chunk list for a geometry.
+        """
+        # transform geometry to own sr
+        # set filter
+        # return chunks
+        pass
+
+
+class Chunk():
+    """
+    Represents a remote chunk of data.
+
+    Ideally maps exactly to a remote storage chunk.
+    """
+    def __init__(self, width, height, layers, server, polygon, projection):
+        """ Prepare url. """
+        parameters = dict(
+            width=str(width),
+            height=str(width),
+            layers=','.join(layers),
+            request='getgeotiff',
+            compress='deflate',
+            polygon=polygon.ExportToWkt(),
+            projection=projection,
+        )
+        self.url = '{}?{}'.format(
+            server,
+            urllib.urlencode(parameters)
+        )
+
+    def load(self):
+        """
+        Load dataset from server.
+        Caching happens at this level, if any.
+        """
+        url_file = urllib.urlopen(self.url)
+        vsi_file = gdal.VSIFOpenL('myfile', 'w')
+        vsi_file.write(url_file.read())
+        vsi_file.close()
+        # now what?
+        self.dataset = None
+
+
+class Target(object):
+    """
+    Factory of target blocks
+    """
+    def __init__(self, index, dataset, operation):
+        self.index = index
+        self.dataset = dataset
+        self.operation = operation
+
+    def __iter__(self):
+        """ Yields blocks. """
+        self.index.ResetReading()
+        for feature in self.index:
+            block = Block(
+                attrs=feature.items(),
+                dataset=self.dataset,
+                geometry=feature.geometry(),
+                operation=self.operation,
+            )
+            yield block
+
+
+class Block(object):
+    """ Self saving local chunk of data. """
+    def __init__(self, attrs, dataset, geometry, operation):
+        self.attrs = attrs
+        self.dataset = dataset
+        self.geometry = geometry
+        self.operation = operation
+        self.layers = self._create_layers()
+
+    def _create_layers:
+        """ Create datasets for the operation. """
+        layers = []
+        for l in self.operation.layers:
+            p, a, b, q, c, d = self.dataset.GetGeoTransform()
+            p, q = p + a * attrs['p0'] 
+            DRIVER_GDAL_MEM.Create(
+                
+
+
+    def save(string):
+        """
+        """
+        p1 = self.attrs['p1']
+        q1 = self.attrs['q1']
+        band = self.GetRasterBand(1)
+        band.WriteRaster(
+            p1,
+            q1,
+            self.attrs['p2'] - p1,
+            self.attrs['q2'] - q1,
+            self.operation.calculate(self.layers),
+        )
+
+
 
 
 def extract(preparation):
@@ -337,6 +369,8 @@ def extract(preparation):
     target = preparation.get_target()
     sources = preparation.get_sources()
     for block in target:
+        print(block)
+        exit()
         for name, source in sources.items():
             for chunk in source.chunks(block.geometry):
                 chunk.load()
@@ -353,6 +387,7 @@ def command(shape_path, target_dir, **kwargs):
     for feature in layer:
         preparation = Preparation(feature=feature, path=target_dir, **kwargs)
         extract(preparation)
+        break
 
 
 def get_parser():
@@ -373,6 +408,7 @@ def get_parser():
                         default='elevation',
                         help='Operation')
     parser.add_argument('-a', '--attribute',
+                        default='Model',
                         help='Attribute for tif filename.')
     parser.add_argument('-f', '--floor',
                         default=0.15,
