@@ -7,6 +7,7 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
+import itertools
 import json
 import logging
 import os
@@ -45,13 +46,13 @@ class Elevation(Operation):
     """ Just store the elevation. """
     name = 'elevation'
 
-    layers = dict(elevation=['elevation'])
+    inputs = dict(elevation=dict(layers=['elevation']))
     no_data_value = 3.4028235e+38
     data_type = 6
 
-    def calculate(datasets):
+    def calculate(inputs):
         """ Return bytes. """
-        return datasets['elevation'].ReadRaster()
+        return inputs['elevation'].ReadRaster()
 
 
 class Preparation(object):
@@ -67,10 +68,19 @@ class Preparation(object):
         self.projection = kwargs.pop('projection')
         self.operation = operations[kwargs.pop('operation')](**kwargs)
         self.geometry = self._prepare_geometry(feature)
-        self.polygon = self._get_polygon()
         self.dataset = self._get_or_create_dataset()
         self.blocks = self._create_blocks()
+        self.area = self._get_area()
+        self.cell = self._get_cell()
+        self.strategies = self._get_strategies()
         self.chunks = self._create_chunks()
+
+        # put inputs properties on operation object
+        for name, strategy in self.strategies.items():
+            for key in ['no_data_value', 'data_type']:
+                self.operation.inputs[name].update({key: strategy[key]})
+
+        # debugging copy of indexes
         DRIVER_OGR_SHAPE.CopyDataSource(self.blocks,
                                         os.path.join(path, 'blocks.shp'))
         for name, chunks in self.chunks.items():
@@ -89,11 +99,13 @@ class Preparation(object):
     def get_sources(self):
         """ Return dictionary of source objects. """
         sources = {}
-        for name, layers in self.operation.layers.items():
+        for name in self.operation.inputs:
             sources[name] = Source(
-                server=self.server,
-                layers=layers,
+                projection=self.strategies[name]['projection'],
+                layers=self.operation.inputs[name]['layers'],
                 index=self.chunks[name][0],
+                server=self.server,
+                name=name,
             )
         return sources
 
@@ -116,11 +128,6 @@ class Preparation(object):
             )
             geometry.Transform(ct)
         return geometry
-
-    def _get_polygon(self):
-        """ Return envelope as polygon. """
-        x1, x2, y1, y2 = self.geometry.GetEnvelope()
-        return POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
 
     def _get_or_create_dataset(self):
         """ Create a tif and check against operation and index. """
@@ -153,6 +160,19 @@ class Preparation(object):
         dataset.GetRasterBand(1).SetNoDataValue(self.operation.no_data_value)
         return dataset
 
+    def _get_geoms(self, x1, y1, x2, y2):
+        """ Return polygon, intersection tuple. """
+        polygon = ogr.CreateGeometryFromWkt(
+            POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2),
+        )
+        overlap = self.geometry.Overlaps(polygon)
+        contain = self.geometry.Contains(polygon)
+        if overlap or contain:
+            intersection = self.geometry.Intersection(polygon)
+        else:
+            intersection = None
+        return polygon, intersection
+
     def _create_blocks(self):
         """
         Create block index datasource.
@@ -161,6 +181,7 @@ class Preparation(object):
         blocks = DRIVER_OGR_MEMORY.CreateDataSource('')
         wkt = osr.GetUserInputAsWKT(str(self.projection))
         layer = blocks.CreateLayer(b'blocks', osr.SpatialReference(wkt))
+        layer.CreateField(ogr.FieldDefn(b'serial', ogr.OFTInteger))
         layer.CreateField(ogr.FieldDefn(b'p1', ogr.OFTInteger))
         layer.CreateField(ogr.FieldDefn(b'q1', ogr.OFTInteger))
         layer.CreateField(ogr.FieldDefn(b'p2', ogr.OFTInteger))
@@ -173,6 +194,7 @@ class Preparation(object):
         U, V = self.dataset.RasterXSize, self.dataset.RasterYSize
 
         # add features
+        serial = itertools.count()
         for j in range(1 + (V - 1) // v):
             for i in range(1 + (U - 1) // u):
                 # pixel indices and coordinates
@@ -181,18 +203,16 @@ class Preparation(object):
                 p2 = min(p1 + u, U)
                 q2 = min(q1 + v, V)
 
-                # polygon
+                # geometries
                 x1, y2 = p + a * p1 + b * q1, q + c * p1 + d * q1
                 x2, y1 = p + a * p2 + b * q2, q + c * p2 + d * q2
-                polygon = ogr.CreateGeometryFromWkt(
-                    POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2),
-                )
-                intersection = self.geometry.Intersection(polygon)
-                if not intersection.GetGeometryCount():
+                polygon, intersection = self._get_geoms(x1, y1, x2, y2)
+                if intersection is None:
                     continue
 
                 # feature
                 feature = ogr.Feature(layer_defn)
+                feature[b'serial'] = serial.next()
                 feature[b'p1'] = p1
                 feature[b'q1'] = q1
                 feature[b'p2'] = p2
@@ -202,71 +222,127 @@ class Preparation(object):
 
         return blocks
 
-    def _create_chunks(self):
-        """ Return a dictionary with chunk index objects. """
-        result = {}
-        for name, layers in self.operation.layers.items():
+    def _get_area(self):
+        """ Return area envelope as wkt polygon. """
+        x1, x2, y1, y2 = self.geometry.GetEnvelope()
+        return POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
+
+    def _get_cell(self):
+        """ Return topleft cell as wkt polygon. """
+        x1, dx, b, y2, c, dy = self.dataset.GetGeoTransform()
+        x2 = x1 + dx
+        y1 = y2 + dy
+        return POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
+
+    def _get_strategies(self):
+        """ Return a dictionary with strategies. """
+        strategies = {}
+        for name in self.operation.inputs:
             parameters = dict(
-                layers=','.join(layers),
+                area=self.area,
+                cell=self.cell,
                 request='getstrategy',
-                polygon=self.polygon,
+                layers=','.join(self.operation.inputs[name]['layers']),
                 projection=self.projection,
             )
             url = '{}?{}'.format(
                 urlparse.urljoin(self.server, 'data'),
                 urllib.urlencode(parameters)
             )
-            strategy = json.load(urllib.urlopen(url))
+            strategies[name] = json.load(urllib.urlopen(url))
+        return strategies
+
+    def _adjust(self, width, height, before, after):
+        """ Adjust width and height by geom ratios. """
+        size = lambda x1, x2, y1, y2: (x2 - x1, y2 - y1)
+
+        w1, h1 = size(*before.GetEnvelope())
+        w2, h2 = size(*after.GetEnvelope())
+
+        return int(round(width * w2 / w1)), int(round(height * h2 / h1))
+
+    def _create_chunks(self):
+        """ Return a dictionary with chunk index objects. """
+        chunks = {}
+        for name, strategy in self.strategies.items():
 
             # create datasource
-            chunks = DRIVER_OGR_MEMORY.CreateDataSource('')
             wkt = osr.GetUserInputAsWKT(str(strategy['projection']))
-            layer = chunks.CreateLayer(b'chunks', osr.SpatialReference(wkt))
+            chunks[name] = DRIVER_OGR_MEMORY.CreateDataSource('')
+            layer = chunks[name].CreateLayer(
+                b'chunks', osr.SpatialReference(wkt),
+            )
+            layer.CreateField(ogr.FieldDefn(b'serial', ogr.OFTInteger))
+            layer.CreateField(ogr.FieldDefn(b'width', ogr.OFTInteger))
+            layer.CreateField(ogr.FieldDefn(b'height', ogr.OFTInteger))
             layer_defn = layer.GetLayerDefn()
 
-            # add the polygons
-            p, a, b, q, c, d = strategy['geo_transform']
-            u, v = strategy['chunks'][1:]
-
             # add features
-            for q1, q2 in strategy['blocks'][0]:
-                for p1, p2 in strategy['blocks'][1]:
-                    # polygon
+            p, a, b, q, c, d = strategy['geo_transform']
+            serial = itertools.count()
+            for q1, q2 in strategy['chunks'][0]:
+                for p1, p2 in strategy['chunks'][1]:
+                    # geometries
                     x1, y2 = p + a * p1 + b * q1, q + c * p1 + d * q1
                     x2, y1 = p + a * p2 + b * q2, q + c * p2 + d * q2
-                    polygon = ogr.CreateGeometryFromWkt(
-                        POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2),
-                    )
-                    # intersection
-                    intersection = self.geometry.Intersection(polygon)
-                    if not intersection.GetGeometryCount():
+                    polygon, intersection = self._get_geoms(x1, y1, x2, y2)
+                    if intersection is None:
                         continue
+
                     # feature
+                    width, height = self._adjust(
+                        width=p2 - p1,
+                        height=q2 - q1,
+                        before=polygon,
+                        after=intersection,
+                    )
                     feature = ogr.Feature(layer_defn)
+                    feature[b'serial'] = serial.next()
+                    feature[b'width'] = width
+                    feature[b'height'] = height
                     feature.SetGeometry(intersection)
                     layer.CreateFeature(feature)
-            result[name] = chunks
-            return result
+            return chunks
 
 
 class Source(object):
     """
     Factory of source chunks.
     """
-    def __init__(self, index, server, layers):
+    def __init__(self, projection, server, layers, index, name):
         """  """
+        self.projection = projection
         self.server = server
-        self.index = index
         self.layers = layers
+        self.index = index
+        self.name = name
+        self.url = self._create_url()
 
-    def get_chunks(self, geometry):
+    def _create_url(self):
+        """ Build the general part of the url. """
+        parameters = dict(
+            layers=','.join(self.layers),
+            request='getgeotiff',
+            compress='deflate',
+            projection=self.projection,
+        )
+        url = '{}?{}'.format(
+            urlparse.urljoin(self.server, 'data'),
+            urllib.urlencode(parameters),
+        )
+        return url
+
+    def chunks(self, block):
         """
         Returns chunk list for a geometry.
         """
-        # transform geometry to own sr
-        # set filter
-        # return chunks
-        pass
+        self.index.SetSpatialFilter(block.geometry)
+        for feature in self.index:
+            chunk = Chunk(source=self,
+                          block=block,
+                          attrs=feature.items(),
+                          polygon=feature.geometry())
+            yield chunk
 
 
 class Chunk():
@@ -275,31 +351,36 @@ class Chunk():
 
     Ideally maps exactly to a remote storage chunk.
     """
-    def __init__(self, width, height, layers, server, polygon, projection):
+    def __init__(self, source, block, attrs, polygon):
         """ Prepare url. """
+        self.serial = attrs['serial']
+        self.source = source
+        self.block = block
         parameters = dict(
-            width=str(width),
-            height=str(width),
-            layers=','.join(layers),
-            request='getgeotiff',
-            compress='deflate',
+            width=str(attrs['width']),
+            height=str(attrs['height']),
             polygon=polygon.ExportToWkt(),
-            projection=projection,
         )
-        self.url = '{}?{}'.format(
-            server,
+        self.url = '{}&{}'.format(
+            self.source.url,
             urllib.urlencode(parameters)
         )
 
-    def load(self):
+    def retrieve(self):
         """
-        Load dataset from server.
+        Load dataset from server or cache
         Caching happens at this level, if any.
         """
+        cache.get
         url_file = urllib.urlopen(self.url)
-        vsi_file = gdal.VSIFOpenL('myfile', 'w')
-        vsi_file.write(url_file.read())
+        self.data = url_file.read()
+    
+    def convert(self):
+        """ Copy bytes tif to gdal dataset. """
+        vsi_file = gdal.VSIFOpenL('file', 'w')
+        vsi_file.write(self.data)
         vsi_file.close()
+        gdal.
         # now what?
         self.dataset = None
 
@@ -317,49 +398,62 @@ class Target(object):
         """ Yields blocks. """
         self.index.ResetReading()
         for feature in self.index:
-            block = Block(
-                attrs=feature.items(),
-                dataset=self.dataset,
-                geometry=feature.geometry(),
-                operation=self.operation,
-            )
+            block = Block(dataset=self.dataset,
+                          attrs=feature.items(),
+                          operation=self.operation,
+                          geometry=feature.geometry())
             yield block
 
 
 class Block(object):
     """ Self saving local chunk of data. """
     def __init__(self, attrs, dataset, geometry, operation):
-        self.attrs = attrs
+        self.serial = attrs.pop('serial')
+        self.pixels = attrs
         self.dataset = dataset
         self.geometry = geometry
         self.operation = operation
-        self.layers = self._create_layers()
+        self.inputs = self._create_inputs()
 
-    def _create_layers:
+    def _create_inputs(self):
         """ Create datasets for the operation. """
-        layers = []
-        for l in self.operation.layers:
+        inputs = {}
+        for name in self.operation.inputs:
+            # fancy sorting
+            p1, p2, q1, q2 = (self.pixels[k] for k in sorted(self.pixels))
+
+            # offset geo_transform
             p, a, b, q, c, d = self.dataset.GetGeoTransform()
-            p, q = p + a * attrs['p0'] 
-            DRIVER_GDAL_MEM.Create(
-                
+            p = p + a * p1 + b * q1
+            q = q + c * p1 + d * q1
+            geo_transform = p, a, b, q, c, d
 
+            # create dataset
+            data_type = self.operation.inputs[name]['data_type']
+            dataset = DRIVER_GDAL_MEM.Create(
+                '', p2 - p1, q2 - q1, 1, data_type,
+            )
+            dataset.SetGeoTransform(geo_transform)
+            dataset.SetProjection(self.dataset.GetProjection())
+            no_data_value = self.operation.inputs[name]['no_data_value']
+            band = dataset.GetRasterBand(1)
+            band.SetNoDataValue(no_data_value)
+            band.Fill(no_data_value)
+            inputs[name] = dataset
 
-    def save(string):
+    def save(self, string):
         """
         """
-        p1 = self.attrs['p1']
-        q1 = self.attrs['q1']
-        band = self.GetRasterBand(1)
+        p1 = self.pixels['p1']
+        q1 = self.pixels['q1']
+        band = self.dataset.GetRasterBand(1)
         band.WriteRaster(
             p1,
             q1,
-            self.attrs['p2'] - p1,
-            self.attrs['q2'] - q1,
+            self.pixels['p2'] - p1,
+            self.pixels['q2'] - q1,
             self.operation.calculate(self.layers),
         )
-
-
 
 
 def extract(preparation):
@@ -369,12 +463,10 @@ def extract(preparation):
     target = preparation.get_target()
     sources = preparation.get_sources()
     for block in target:
-        print(block)
-        exit()
-        for name, source in sources.items():
-            for chunk in source.chunks(block.geometry):
+        for name in sources:
+            for chunk in sources[name].chunks(block):
                 chunk.load()
-                gdal.ReprojectImage(chunk.dataset, block[name])
+                gdal.ReprojectImage(chunk.dataset, block.inputs[name])
         block.save()
 
 
@@ -408,7 +500,7 @@ def get_parser():
                         default='elevation',
                         help='Operation')
     parser.add_argument('-a', '--attribute',
-                        default='Model',
+                        default='model',
                         help='Attribute for tif filename.')
     parser.add_argument('-f', '--floor',
                         default=0.15,
