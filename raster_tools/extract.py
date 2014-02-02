@@ -459,6 +459,21 @@ class Block(object):
 def extract(preparation):
     """
     Extract for a single feature.
+
+    Plans:
+        - Each chunk must know related blocks (and how many)
+        - Each block must know related chunks (and how many)
+        - Put n empty chunks on a task queue
+        - Get any loaded chunks from a result queue
+        - Get any related blocks
+        - If now chunks loaded, do a loadstep yourself
+        - Warp chunks into blocks, decrement counters
+        - Check if any blocks are complete
+        - Save those blocks, decrement counters
+        - Check if any chunks are fully used
+        - Remove from list
+        - Have a threadpool do the loadsteps.
+    Presto.
     """
     target = preparation.get_target()
     sources = preparation.get_sources()
