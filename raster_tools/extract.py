@@ -7,13 +7,17 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
+import collections
+import copy
 import itertools
 import json
 import logging
 import os
+import Queue
 import sys
 import urllib
 import urlparse
+from multiprocessing import pool
 
 from osgeo import gdal
 from osgeo import ogr
@@ -31,6 +35,17 @@ DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
 DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
 
 POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
+
+Key = collections.namedtuple('Key', ['name', 'serial'])
+
+
+"""
+TODO:
+- update raster server
+- shrink by percent of pixel when determining related geometries
+- check single block on server or need to shrink by pixel there, too.
+- check result
+"""
 
 
 class Operation(object):
@@ -86,28 +101,6 @@ class Preparation(object):
         for name, chunks in self.chunks.items():
             DRIVER_OGR_SHAPE.CopyDataSource(chunks,
                                             os.path.join(path, name + '.shp'))
-
-    def get_target(self):
-        """ Return target object. """
-        target = Target(
-            index=self.blocks[0],
-            dataset=self.dataset,
-            operation=self.operation,
-        )
-        return target
-
-    def get_sources(self):
-        """ Return dictionary of source objects. """
-        sources = {}
-        for name in self.operation.inputs:
-            sources[name] = Source(
-                projection=self.strategies[name]['projection'],
-                layers=self.operation.inputs[name]['layers'],
-                index=self.chunks[name][0],
-                server=self.server,
-                name=name,
-            )
-        return sources
 
     def _make_path(self, path, feature, attribute):
         """ Prepare a path from feature attribute or id. """
@@ -303,102 +296,146 @@ class Preparation(object):
                     feature.SetGeometry(intersection)
                     layer.CreateFeature(feature)
             return chunks
+    
+    def get_source(self):
+        """ Return dictionary of source objects. """
+        strategies = self.strategies
+        inputs = self.operation.inputs
+        source = Source(
+            projection={k: strategies[k]['projection'] for k in strategies},
+            layers={k: inputs[k]['layers'] for k in inputs},
+            blocks=DRIVER_OGR_MEMORY.CopyDataSource(self.blocks, ''),
+            chunks=self.chunks,
+            server=self.server,
+        )
+        return source
+    
+    def get_target(self):
+        """ Return target object. """
+        chunks = {}
+        for name in self.chunks:
+            chunks[name] = DRIVER_OGR_MEMORY.CopyDataSource(
+                self.chunks[name], '',
+            )
+        
+        target = Target(chunks=chunks,
+                        blocks=self.blocks,
+                        dataset=self.dataset,
+                        operation=self.operation)
+        return target
 
 
 class Source(object):
     """
     Factory of source chunks.
     """
-    def __init__(self, projection, server, layers, index, name):
+    def __init__(self, projection, server, layers, chunks, blocks):
         """  """
         self.projection = projection
         self.server = server
         self.layers = layers
-        self.index = index
-        self.name = name
+        self.chunks = chunks
+        self.blocks = blocks
         self.url = self._create_url()
 
     def _create_url(self):
         """ Build the general part of the url. """
-        parameters = dict(
-            layers=','.join(self.layers),
-            request='getgeotiff',
-            compress='deflate',
-            projection=self.projection,
-        )
-        url = '{}?{}'.format(
-            urlparse.urljoin(self.server, 'data'),
-            urllib.urlencode(parameters),
-        )
+        url = {}
+        for name in self.projection:
+            parameters = dict(
+                layers=','.join(self.layers[name]),
+                request='getgeotiff',
+                compress='deflate',
+                projection=self.projection[name],
+            )
+            url[name] = '{}?{}'.format(
+                urlparse.urljoin(self.server, 'data'),
+                urllib.urlencode(parameters),
+            )
         return url
 
-    def chunks(self, block):
-        """
-        Returns chunk list for a geometry.
-        """
-        self.index.SetSpatialFilter(block.geometry)
-        for feature in self.index:
-            chunk = Chunk(source=self,
-                          block=block,
-                          attrs=feature.items(),
-                          polygon=feature.geometry())
-            yield chunk
+    def __getitem__(self, key):
+        """ Get the chunk referenced by key. """
+        # fetch chunk feature corresponding to key
+        chunks = self.chunks[key.name][0]
+        chunks.SetAttributeFilter(b'serial={}'.format(key.serial))
+        feature = chunks.GetNextFeature()
+        geometry = feature.geometry()
+
+        # count blocks involved
+        blocks = self.blocks[0]
+        blocks.SetSpatialFilter(geometry)
+        refs = blocks.GetFeatureCount()
+
+        # instantiate
+        chunk = Chunk(key=key,
+                      refs=refs,
+                      url=self.url[key.name],
+                      width=str(feature[b'width']),
+                      height=str(feature[b'height']),
+                      polygon=geometry.ExportToWkt())
+        return chunk
 
 
 class Chunk():
     """
     Represents a remote chunk of data.
 
-    Ideally maps exactly to a remote storage chunk.
+    Ideally maps exactly to a remote storage chunk...
     """
-    def __init__(self, source, block, attrs, polygon):
+    def __init__(self, key, refs, url, width, height, polygon):
         """ Prepare url. """
-        self.serial = attrs['serial']
-        self.source = source
-        self.block = block
-        parameters = dict(
-            width=str(attrs['width']),
-            height=str(attrs['height']),
-            polygon=polygon.ExportToWkt(),
-        )
-        self.url = '{}&{}'.format(
-            self.source.url,
-            urllib.urlencode(parameters)
-        )
+        parameters = dict(width=width, height=height, polygon=polygon)
+        self.url = '{}&{}'.format(url, urllib.urlencode(parameters))
+        self.refs = refs
+        self.key = key
 
-    def retrieve(self):
-        """
-        Load dataset from server or cache
-        Caching happens at this level, if any.
-        """
-        cache.get
+    def load(self):
+        """ Load url into gdal dataset. """
+
+        # retrieve file into gdal vsimem system
+        vsi_path = '/vsimem/{}_{}'.format(*self.key)
+        vsi_file = gdal.VSIFOpenL(str(vsi_path), b'w')
         url_file = urllib.urlopen(self.url)
-        self.data = url_file.read()
-    
-    def convert(self):
-        """ Copy bytes tif to gdal dataset. """
-        vsi_file = gdal.VSIFOpenL('file', 'w')
-        vsi_file.write(self.data)
-        vsi_file.close()
-        gdal.
-        # now what?
-        self.dataset = None
+        size = int(url_file.info().get('content-length'))
+        gdal.VSIFWriteL(url_file.read(), size, 1, vsi_file)
+        gdal.VSIFCloseL(vsi_file)
+
+        # copy and remove
+        dataset = gdal.Open(vsi_path)
+        self.dataset = DRIVER_GDAL_MEM.CreateCopy('', dataset)
+        dataset = None
+        gdal.Unlink(vsi_path)
 
 
 class Target(object):
     """
     Factory of target blocks
     """
-    def __init__(self, index, dataset, operation):
-        self.index = index
+    def __init__(self, blocks, chunks, dataset, operation):
+        self.blocks = blocks
+        self.chunks = chunks
         self.dataset = dataset
         self.operation = operation
 
     def __iter__(self):
         """ Yields blocks. """
-        self.index.ResetReading()
-        for feature in self.index:
-            block = Block(dataset=self.dataset,
+        blocks = self.blocks[0]
+        blocks.ResetReading()
+        for feature in blocks:
+            
+            # add the keys for the chunks
+            geometry = feature.geometry()
+            chunks = []
+            for name in self.chunks:
+                layer = self.chunks[name][0]
+                layer.SetSpatialFilter(geometry)
+                chunks.extend([Key(name=name,
+                                   serial=c[b'serial']) for c in layer])
+            
+            # create the block object
+            block = Block(chunks=chunks,
+                          dataset=self.dataset,
                           attrs=feature.items(),
                           operation=self.operation,
                           geometry=feature.geometry())
@@ -407,13 +444,18 @@ class Target(object):
 
 class Block(object):
     """ Self saving local chunk of data. """
-    def __init__(self, attrs, dataset, geometry, operation):
+    def __init__(self, attrs, dataset, geometry, operation, chunks):
         self.serial = attrs.pop('serial')
+        self.chunks = chunks
         self.pixels = attrs
         self.dataset = dataset
         self.geometry = geometry
         self.operation = operation
         self.inputs = self._create_inputs()
+
+    def __getitem__(self, key):
+        """ Return corresponding value from inputs. """
+        return self.inputs[key]
 
     def _create_inputs(self):
         """ Create datasets for the operation. """
@@ -440,6 +482,8 @@ class Block(object):
             band.SetNoDataValue(no_data_value)
             band.Fill(no_data_value)
             inputs[name] = dataset
+        
+        return inputs
 
     def save(self, string):
         """
@@ -456,33 +500,85 @@ class Block(object):
         )
 
 
+def load(toload, loaded):
+    """ Load chunks until None comes out of the queue. """
+    while True:
+        chunk = toload.get()
+        if chunk is None:
+            break
+        chunk.load()
+        loaded.put(chunk)
+
+
 def extract(preparation):
     """
     Extract for a single feature.
-
-    Plans:
-        - Each chunk must know related blocks (and how many)
-        - Each block must know related chunks (and how many)
-        - Put n empty chunks on a task queue
-        - Get any loaded chunks from a result queue
-        - Get any related blocks
-        - If now chunks loaded, do a loadstep yourself
-        - Warp chunks into blocks, decrement counters
-        - Check if any blocks are complete
-        - Save those blocks, decrement counters
-        - Check if any chunks are fully used
-        - Remove from list
-        - Have a threadpool do the loadsteps.
-    Presto.
     """
-    target = preparation.get_target()
-    sources = preparation.get_sources()
-    for block in target:
-        for name in sources:
-            for chunk in sources[name].chunks(block):
-                chunk.load()
-                gdal.ReprojectImage(chunk.dataset, block.inputs[name])
-        block.save()
+    toload = Queue.Queue(maxsize=1)  # limits the amount of cache
+    loaded = Queue.Queue()           # limits the amount of what?
+    thread_pool = pool.ThreadPool(
+        processes=3,                 # limits the amount of connections
+        initializer=load,
+        initargs=[toload, loaded],
+    )
+
+    loading = {}
+    ready = {}
+    blocks = {}
+
+    target = iter(preparation.get_target())
+    source = preparation.get_source()
+
+    while True:
+        # see if any blocks left
+        try:
+            block = target.next()
+        except StopIteration:
+            break
+        
+        # remember block
+        blocks[block.serial] = block
+
+        # add all related chunks
+        for key in block.chunks:
+            if key in loading or key in ready:
+                continue
+            chunk = source[key]
+            toload.put(chunk)
+            # remember chunk
+            loading[key] = chunk
+
+
+        # move chunks from loading to ready
+        while True:
+            try:
+                chunk = loaded.get(block=False)
+            except Queue.Empty:
+                break
+            key = chunk.key
+            ready[key] = chunk
+            del loading[key]
+
+        # warp loaded chunks into blocks
+        for serial, block in blocks.items():
+            for key in copy.copy(block.chunks):
+                chunk = ready.get(key)
+                if not chunk:
+                    continue
+                gdal.ReprojectImage(chunk.dataset, block[key.name])
+                # chunk administration and optional purge
+                chunk.refs -= 1
+                if not chunk.refs:
+                    del ready[key]
+                # block administration
+                block.chunks.remove(key)
+            if not block.chunks:
+                continue
+                block.save()
+                del blocks[key]
+    
+    thread_pool.close()
+    thread_pool.join()
 
 
 def command(shape_path, target_dir, **kwargs):
