@@ -110,10 +110,11 @@ class Preparation(object):
 
     def _make_path(self, path, feature, attribute):
         """ Prepare a path from feature attribute or id. """
-        if attribute:
+        try:
             model = feature[str(attribute)]
-        else:
+        except ValueError:
             model = str(feature.GetFID())
+
         logger.debug('Creating model: {}'.format(model))
         return os.path.join(path, model + '.tif')
 
