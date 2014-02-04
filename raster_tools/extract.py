@@ -39,15 +39,6 @@ POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 Key = collections.namedtuple('Key', ['name', 'serial'])
 
 
-"""
-TODO:
-- update raster server
-- shrink by percent of pixel when determining related geometries
-- check single block on server or need to shrink by pixel there, too.
-- check result
-"""
-
-
 class Operation(object):
     """
     Base class for operations.
@@ -62,12 +53,16 @@ class Elevation(Operation):
     name = 'elevation'
 
     inputs = dict(elevation=dict(layers=['elevation']))
-    no_data_value = 3.4028235e+38
+    no_data_value = 3.4028234663852886e+38
     data_type = 6
 
-    def calculate(inputs):
+    def calculate(self, elevation):
         """ Return bytes. """
-        return inputs['elevation'].ReadRaster()
+        data = elevation.ReadAsArray()
+        no_data_value = elevation.GetRasterBand(1).GetNoDataValue()
+        mask = (data == no_data_value)
+        data[mask] = self.no_data_value
+        return data.tostring()
 
 
 class Preparation(object):
@@ -90,25 +85,37 @@ class Preparation(object):
         self.strategies = self._get_strategies()
         self.chunks = self._create_chunks()
 
+        # Get resume value from dataset
+        try:
+            self.resume = int(self.dataset.GetMetadataItem(b'resume'))
+            logger.debug('Resuming from block {}'.format(self.resume))
+        except TypeError:
+            self.resume = -1
+
         # put inputs properties on operation object
         for name, strategy in self.strategies.items():
             for key in ['no_data_value', 'data_type']:
                 self.operation.inputs[name].update({key: strategy[key]})
 
-        # debugging copy of indexes
-        DRIVER_OGR_SHAPE.CopyDataSource(self.blocks,
-                                        os.path.join(path, 'blocks.shp'))
-        for name, chunks in self.chunks.items():
-            DRIVER_OGR_SHAPE.CopyDataSource(chunks,
-                                            os.path.join(path, name + '.shp'))
+        #debugging copy of indexes
+        #blocks_path = os.path.join(path, 'blocks.shp')
+        #if os.path.exists(blocks_path):
+            #DRIVER_OGR_SHAPE.DeleteDataSource(blocks_path)
+        #DRIVER_OGR_SHAPE.CopyDataSource(self.blocks, blocks_path)
+        #for name, chunks in self.chunks.items():
+            #chunks_path = os.path.join(path, name + '.shp')
+            #if os.path.exists(chunks_path):
+                #DRIVER_OGR_SHAPE.DeleteDataSource(chunks_path)
+            #DRIVER_OGR_SHAPE.CopyDataSource(chunks, chunks_path)
 
     def _make_path(self, path, feature, attribute):
         """ Prepare a path from feature attribute or id. """
         if attribute:
-            name = feature[str(attribute)] + '.tif'
+            model = feature[str(attribute)]
         else:
-            name = str(feature.GetFID()) + '.tif'
-        return os.path.join(path, name)
+            model = str(feature.GetFID())
+        logger.debug('Creating model: {}'.format(model))
+        return os.path.join(path, model + '.tif')
 
     def _prepare_geometry(self, feature):
         """ Transform geometry if necessary. """
@@ -296,31 +303,35 @@ class Preparation(object):
                     feature.SetGeometry(intersection)
                     layer.CreateFeature(feature)
             return chunks
-    
+
     def get_source(self):
         """ Return dictionary of source objects. """
         strategies = self.strategies
         inputs = self.operation.inputs
+        blocks = DRIVER_OGR_MEMORY.CopyDataSource(self.blocks, '')
+        blocks[0].SetAttributeFilter(b'serial>{}'.format(self.resume))
         source = Source(
             projection={k: strategies[k]['projection'] for k in strategies},
             layers={k: inputs[k]['layers'] for k in inputs},
-            blocks=DRIVER_OGR_MEMORY.CopyDataSource(self.blocks, ''),
+            blocks=blocks,
+            cellsize=self.cellsize,
             chunks=self.chunks,
             server=self.server,
         )
         return source
-    
+
     def get_target(self):
         """ Return target object. """
+        self.blocks[0].SetAttributeFilter(b'serial>{}'.format(self.resume))
         chunks = {}
         for name in self.chunks:
             chunks[name] = DRIVER_OGR_MEMORY.CopyDataSource(
                 self.chunks[name], '',
             )
-        
         target = Target(chunks=chunks,
                         blocks=self.blocks,
                         dataset=self.dataset,
+                        cellsize=self.cellsize,
                         operation=self.operation)
         return target
 
@@ -329,9 +340,10 @@ class Source(object):
     """
     Factory of source chunks.
     """
-    def __init__(self, projection, server, layers, chunks, blocks):
+    def __init__(self, projection, cellsize, server, layers, chunks, blocks):
         """  """
         self.projection = projection
+        self.cellsize = cellsize
         self.server = server
         self.layers = layers
         self.chunks = chunks
@@ -364,7 +376,7 @@ class Source(object):
 
         # count blocks involved
         blocks = self.blocks[0]
-        blocks.SetSpatialFilter(geometry)
+        blocks.SetSpatialFilter(geometry.Buffer(-0.01 * min(self.cellsize)))
         refs = blocks.GetFeatureCount()
 
         # instantiate
@@ -392,7 +404,6 @@ class Chunk():
 
     def load(self):
         """ Load url into gdal dataset. """
-
         # retrieve file into gdal vsimem system
         vsi_path = '/vsimem/{}_{}'.format(*self.key)
         vsi_file = gdal.VSIFOpenL(str(vsi_path), b'w')
@@ -412,27 +423,34 @@ class Target(object):
     """
     Factory of target blocks
     """
-    def __init__(self, blocks, chunks, dataset, operation):
+    def __init__(self, blocks, chunks, dataset, cellsize, operation):
         self.blocks = blocks
         self.chunks = chunks
         self.dataset = dataset
+        self.cellsize = cellsize
         self.operation = operation
+
+    def __len__(self):
+        """ Returns the featurecount. """
+        return self.blocks[0].GetFeatureCount()
 
     def __iter__(self):
         """ Yields blocks. """
         blocks = self.blocks[0]
         blocks.ResetReading()
         for feature in blocks:
-            
+
             # add the keys for the chunks
             geometry = feature.geometry()
             chunks = []
             for name in self.chunks:
                 layer = self.chunks[name][0]
-                layer.SetSpatialFilter(geometry)
+                layer.SetSpatialFilter(
+                    geometry.Buffer(-0.01 * min(self.cellsize)),
+                )
                 chunks.extend([Key(name=name,
                                    serial=c[b'serial']) for c in layer])
-            
+
             # create the block object
             block = Block(chunks=chunks,
                           dataset=self.dataset,
@@ -482,31 +500,39 @@ class Block(object):
             band.SetNoDataValue(no_data_value)
             band.Fill(no_data_value)
             inputs[name] = dataset
-        
+
         return inputs
 
-    def save(self, string):
+    def save(self):
         """
         """
         p1 = self.pixels['p1']
         q1 = self.pixels['q1']
         band = self.dataset.GetRasterBand(1)
+        DRIVER_GDAL_GTIFF.CreateCopy('test.tif', self.inputs['elevation'])
         band.WriteRaster(
             p1,
             q1,
             self.pixels['p2'] - p1,
             self.pixels['q2'] - q1,
-            self.operation.calculate(self.layers),
+            self.operation.calculate(**self.inputs),
         )
+        self.dataset.SetMetadataItem(b'resume', str(self.serial))
 
 
 def load(toload, loaded):
     """ Load chunks until None comes out of the queue. """
     while True:
+        # get
         chunk = toload.get()
+
         if chunk is None:
             break
+
+        # load
         chunk.load()
+
+        # put
         loaded.put(chunk)
 
 
@@ -514,10 +540,11 @@ def extract(preparation):
     """
     Extract for a single feature.
     """
-    toload = Queue.Queue(maxsize=1)  # limits the amount of cache
-    loaded = Queue.Queue()           # limits the amount of what?
+    processes = 4
+    toload = Queue.Queue(maxsize=processes)
+    loaded = Queue.Queue()
     thread_pool = pool.ThreadPool(
-        processes=3,                 # limits the amount of connections
+        processes=processes,
         initializer=load,
         initargs=[toload, loaded],
     )
@@ -526,30 +553,40 @@ def extract(preparation):
     ready = {}
     blocks = {}
 
-    target = iter(preparation.get_target())
+    target = preparation.get_target()
     source = preparation.get_source()
+    iterator = iter(target)
+
+    total = len(target)
+    count = 0
+    gdal.TermProgress_nocb(0)
+
+    if total == 0:
+        gdal.TermProgress_nocb(1)
+        return
 
     while True:
         # see if any blocks left
         try:
-            block = target.next()
+            block = iterator.next()
         except StopIteration:
-            break
-        
-        # remember block
-        blocks[block.serial] = block
+            block = None
 
-        # add all related chunks
-        for key in block.chunks:
-            if key in loading or key in ready:
-                continue
-            chunk = source[key]
-            toload.put(chunk)
-            # remember chunk
-            loading[key] = chunk
+        if block:
+            # remember block
+            blocks[block.serial] = block
 
+            # add all related chunks
+            for key in block.chunks:
+                # skip if chunk already around
+                if key in loading or key in ready:
+                    continue
+                chunk = source[key]
+                toload.put(chunk)
+                # remember chunk
+                loading[key] = chunk
 
-        # move chunks from loading to ready
+        #move chunks from loading to ready
         while True:
             try:
                 chunk = loaded.get(block=False)
@@ -565,18 +602,33 @@ def extract(preparation):
                 chunk = ready.get(key)
                 if not chunk:
                     continue
-                gdal.ReprojectImage(chunk.dataset, block[key.name])
-                # chunk administration and optional purge
+                gdal.ReprojectImage(
+                    chunk.dataset,
+                    block[key.name],
+                    None,
+                    None,
+                    gdal.GRA_NearestNeighbour,
+                    0.0,
+                    0.125,
+                )
+                #chunk administration and optional purge
                 chunk.refs -= 1
                 if not chunk.refs:
                     del ready[key]
                 # block administration
                 block.chunks.remove(key)
             if not block.chunks:
-                continue
                 block.save()
-                del blocks[key]
-    
+                del blocks[serial]
+                count += 1
+                gdal.TermProgress_nocb(count / total)
+
+        if not blocks:
+            break
+
+    # Signal the end for the processes
+    for element in [None] * processes:
+        toload.put(element)
     thread_pool.close()
     thread_pool.join()
 
@@ -586,11 +638,11 @@ def command(shape_path, target_dir, **kwargs):
     Prepare and extract for each feature.
     """
     datasource = ogr.Open(shape_path)
-    layer = datasource[0]
-    for feature in layer:
-        preparation = Preparation(feature=feature, path=target_dir, **kwargs)
-        extract(preparation)
-        break
+    for layer in datasource:
+        for feature in layer:
+            preparation = Preparation(feature=feature,
+                                      path=target_dir, **kwargs)
+            extract(preparation)
 
 
 def get_parser():
