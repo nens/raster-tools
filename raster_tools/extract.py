@@ -69,10 +69,10 @@ class Preparation(object):
     """
     Preparation.
     """
-    def __init__(self, path, feature, **kwargs):
+    def __init__(self, path, layer, feature, **kwargs):
         """ Prepare a lot. """
         attribute = kwargs.pop('attribute')
-        self.path = self._make_path(path, feature, attribute)
+        self.path = self._make_path(path, layer, feature, attribute)
         self.server = kwargs.pop('server')
         self.cellsize = kwargs.pop('cellsize')
         self.projection = kwargs.pop('projection')
@@ -108,12 +108,12 @@ class Preparation(object):
                 #DRIVER_OGR_SHAPE.DeleteDataSource(chunks_path)
             #DRIVER_OGR_SHAPE.CopyDataSource(chunks, chunks_path)
 
-    def _make_path(self, path, feature, attribute):
+    def _make_path(self, path, layer, feature, attribute):
         """ Prepare a path from feature attribute or id. """
         try:
             model = feature[str(attribute)]
         except ValueError:
-            model = str(feature.GetFID())
+            model = layer.GetName() + str(feature.GetFID())
 
         logger.debug('Creating model: {}'.format(model))
         return os.path.join(path, model + '.tif')
@@ -641,7 +641,8 @@ def command(shape_path, target_dir, **kwargs):
     datasource = ogr.Open(shape_path)
     for layer in datasource:
         for feature in layer:
-            preparation = Preparation(feature=feature,
+            preparation = Preparation(layer=layer,
+                                      feature=feature,
                                       path=target_dir, **kwargs)
             extract(preparation)
 
