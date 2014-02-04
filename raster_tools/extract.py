@@ -685,3 +685,7 @@ def main():
                        for cls in Operation.__subclasses__()})
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
     return command(**vars(get_parser().parse_args()))
+
+
+if __name__ == '__main__':
+    exit(main())
