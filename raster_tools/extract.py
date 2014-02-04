@@ -52,8 +52,8 @@ class Elevation(Operation):
     """ Just store the elevation. """
     name = 'elevation'
 
-    inputs = dict(elevation=dict(layers=['elevation']))
-    no_data_value = 3.4028234663852886e+38
+    inputs = dict(elevation=dict(layers=['ahn2:int']))
+    no_data_value = -9999
     data_type = 6
 
     def calculate(self, elevation):
@@ -98,15 +98,15 @@ class Preparation(object):
                 self.operation.inputs[name].update({key: strategy[key]})
 
         #debugging copy of indexes
-        #blocks_path = os.path.join(path, 'blocks.shp')
-        #if os.path.exists(blocks_path):
-            #DRIVER_OGR_SHAPE.DeleteDataSource(blocks_path)
-        #DRIVER_OGR_SHAPE.CopyDataSource(self.blocks, blocks_path)
-        #for name, chunks in self.chunks.items():
-            #chunks_path = os.path.join(path, name + '.shp')
-            #if os.path.exists(chunks_path):
-                #DRIVER_OGR_SHAPE.DeleteDataSource(chunks_path)
-            #DRIVER_OGR_SHAPE.CopyDataSource(chunks, chunks_path)
+        blocks_path = os.path.join(path, 'blocks.shp')
+        if os.path.exists(blocks_path):
+            DRIVER_OGR_SHAPE.DeleteDataSource(blocks_path)
+        DRIVER_OGR_SHAPE.CopyDataSource(self.blocks, blocks_path)
+        for name, chunks in self.chunks.items():
+            chunks_path = os.path.join(path, name + '.shp')
+            if os.path.exists(chunks_path):
+                DRIVER_OGR_SHAPE.DeleteDataSource(chunks_path)
+            DRIVER_OGR_SHAPE.CopyDataSource(chunks, chunks_path)
 
     def _make_path(self, path, layer, feature, attribute):
         """ Prepare a path from feature attribute or id. """
