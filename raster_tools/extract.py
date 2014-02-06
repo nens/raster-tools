@@ -340,12 +340,7 @@ class Preparation(object):
     def get_target(self):
         """ Return target object. """
         self.blocks[0].SetAttributeFilter(b'serial>{}'.format(self.resume))
-        chunks = {}
-        for name in self.chunks:
-            chunks[name] = DRIVER_OGR_MEMORY.CopyDataSource(
-                self.chunks[name], '',
-            )
-        target = Target(chunks=chunks,
+        target = Target(chunks=self.chunks,
                         blocks=self.blocks,
                         dataset=self.dataset,
                         cellsize=self.cellsize,
@@ -389,6 +384,7 @@ class Source(object):
         chunks = self.chunks[key.name][0]
         chunks.SetAttributeFilter(b'serial={}'.format(key.serial))
         feature = chunks.GetNextFeature()
+        chunks.SetAttributeFilter(None)
         geometry = feature.geometry()
 
         # count blocks involved
@@ -467,6 +463,7 @@ class Target(object):
                 )
                 chunks.extend([Key(name=name,
                                    serial=c[b'serial']) for c in layer])
+                layer.SetSpatialFilter(None)
 
             # create the block object
             block = Block(chunks=chunks,
