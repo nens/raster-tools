@@ -127,7 +127,7 @@ class Preparation(object):
             for key in ['no_data_value', 'data_type']:
                 self.operation.inputs[name].update({key: strategy[key]})
 
-        #debugging copy of indexes
+        # debugging copy of indexes
         blocks_path = os.path.join(path, 'blocks.shp')
         if os.path.exists(blocks_path):
             DRIVER_OGR_SHAPE.DeleteDataSource(blocks_path)
@@ -191,18 +191,18 @@ class Preparation(object):
         dataset.GetRasterBand(1).SetNoDataValue(self.operation.no_data_value)
         return dataset
 
-    def _get_geoms(self, x1, y1, x2, y2):
-        """ Return polygon, intersection tuple. """
-        polygon = ogr.CreateGeometryFromWkt(
-            POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2),
-        )
+    def _overlaps(self, polygon):
+        """
+        Return wether polygon is overlapping or contained by geometry.
+
+        Ogr thinks contained polygons are not overlapping.
+        """
         overlap = self.geometry.Overlaps(polygon)
         contain = self.geometry.Contains(polygon)
-        if overlap or contain:
-            intersection = self.geometry.Intersection(polygon)
-        else:
-            intersection = None
-        return polygon, intersection
+        return overlap or contain
+
+    def _get_geoms(self, x1, y1, x2, y2):
+        """ Return polygon, intersection tuple. """
 
     def _create_blocks(self):
         """
@@ -237,9 +237,10 @@ class Preparation(object):
                 # geometries
                 x1, y2 = p + a * p1 + b * q1, q + c * p1 + d * q1
                 x2, y1 = p + a * p2 + b * q2, q + c * p2 + d * q2
-                polygon, intersection = self._get_geoms(x1, y1, x2, y2)
-                if intersection is None:
+                polygon = make_polygon(x1, y1, x2, y2)
+                if not self._overlaps(polygon):
                     continue
+                intersection = self.geometry.Intersection(polygon)
 
                 # feature
                 feature = ogr.Feature(layer_defn)
@@ -307,10 +308,11 @@ class Preparation(object):
                     # geometries
                     x1, y2 = p + a * p1 + b * q1, q + c * p1 + d * q1
                     x2, y1 = p + a * p2 + b * q2, q + c * p2 + d * q2
-                    polygon, intersection = self._get_geoms(x1, y1, x2, y2)
-                    if intersection is None:
+                    polygon = make_polygon(x1, y1, x2, y2)
+                    if not self._overlaps(polygon):
                         continue
 
+                    # feature
                     feature = ogr.Feature(layer_defn)
                     feature[b'serial'] = serial.next()
                     feature[b'width'] = p2 - p1
@@ -525,9 +527,7 @@ class Block(object):
         h = dataset.RasterYSize
         x2 = x1 + w * a + h * b
         y1 = y2 + w * c + h * d
-        return ogr.CreateGeometryFromWkt(
-            POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2),
-        )
+        return make_polygon(x1, y1, x2, y2)
 
     def _mask(self, dataset):
         """ Mask dataset where outside geometry. """
@@ -560,6 +560,14 @@ class Block(object):
         self._mask(dataset)
         self._write(dataset)
         self.dataset.SetMetadataItem(b'resume', str(self.serial))
+
+
+def make_polygon(x1, y2, x2, y1):
+    """ Return ogr wkb polygon for a rectangle. """
+    polygon = ogr.CreateGeometryFromWkt(
+        POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2),
+    )
+    return polygon
 
 
 def load(toload, loaded):
