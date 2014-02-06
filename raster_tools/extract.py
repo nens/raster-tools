@@ -39,9 +39,9 @@ POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 Key = collections.namedtuple('Key', ['name', 'serial'])
 
 """
-TODO:
-- Make source handle the threading, keeping extract func simple
-- Fix missing blocks, if any.
+- Fix projection when -p epsg:3857
+- Add operation model using ahn2:water and 15cm ahn2:bag
+- Test larger models
 """
 
 
@@ -644,7 +644,7 @@ def extract(preparation):
             del loading[key]
 
         # warp loaded chunks into blocks
-        for serial, block in blocks.items():
+        for block in blocks.values():
             for key in copy.copy(block.chunks):
                 chunk = ready.get(key)
                 if not chunk:
@@ -664,11 +664,17 @@ def extract(preparation):
                     del ready[key]
                 # block administration
                 block.chunks.remove(key)
-            if not block.chunks:
-                block.save()
-                del blocks[serial]
-                count += 1
-                gdal.TermProgress_nocb(count / total)
+
+        # save blocks in serial order if possible
+        while blocks:
+            serial = min(blocks)
+            block = blocks[serial]
+            if block.chunks:
+                break
+            block.save()
+            del blocks[serial]
+            count += 1
+            gdal.TermProgress_nocb(count / total)
 
         if not blocks:
             break
