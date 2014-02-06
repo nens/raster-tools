@@ -38,6 +38,12 @@ POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 
 Key = collections.namedtuple('Key', ['name', 'serial'])
 
+"""
+TODO:
+- Make source handle the threading, keeping extract func simple
+- Fix missing blocks, if any.
+"""
+
 
 class Operation(object):
     """
@@ -46,6 +52,25 @@ class Operation(object):
     def __init__(self, **kwargs):
         """ An init that accepts kwargs. """
         self.kwargs = kwargs
+
+    def _dataset(self, template):
+        """
+        Return dataset with dimensions, geo_transform and projection
+        from template but data_type and no_data_value from self.
+        """
+        dataset = DRIVER_GDAL_MEM.Create(
+            '',
+            template.RasterXSize,
+            template.RasterYSize,
+            template.RasterCount,
+            self.data_type,
+        )
+        dataset.SetProjection(template.GetProjection())
+        dataset.SetGeoTransform(template.GetGeoTransform())
+        band = dataset.GetRasterBand(1)
+        band.SetNoDataValue(self.no_data_value)
+        band.Fill(self.no_data_value)
+        return dataset
 
 
 class Elevation(Operation):
@@ -57,12 +82,17 @@ class Elevation(Operation):
     data_type = 6
 
     def calculate(self, elevation):
-        """ Return bytes. """
+        """ Return dataset. """
+        result = self._dataset(elevation)
+        # read
         data = elevation.ReadAsArray()
+        # change no_data_values
         no_data_value = elevation.GetRasterBand(1).GetNoDataValue()
         mask = (data == no_data_value)
         data[mask] = self.no_data_value
-        return data.tostring()
+        # write
+        result.GetRasterBand(1).WriteArray(data)
+        return result
 
 
 class Preparation(object):
@@ -88,7 +118,7 @@ class Preparation(object):
         # Get resume value from dataset
         try:
             self.resume = int(self.dataset.GetMetadataItem(b'resume'))
-            logger.debug('Resuming from block {}'.format(self.resume))
+            print('Resuming from block {}'.format(self.resume))
         except TypeError:
             self.resume = -1
 
@@ -115,7 +145,7 @@ class Preparation(object):
         except ValueError:
             model = layer.GetName() + str(feature.GetFID())
 
-        logger.debug('Creating model: {}'.format(model))
+        print('Creating model: {}'.format(model))
         return os.path.join(path, model + '.tif')
 
     def _prepare_geometry(self, feature):
@@ -230,9 +260,9 @@ class Preparation(object):
 
     def _get_cell(self):
         """ Return topleft cell as wkt polygon. """
-        x1, dx, b, y2, c, dy = self.dataset.GetGeoTransform()
-        x2 = x1 + dx
-        y1 = y2 + dy
+        x1, a, b, y2, c, d = self.dataset.GetGeoTransform()
+        x2 = x1 + a + b
+        y1 = y2 + c + d
         return POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
 
     def _get_strategies(self):
@@ -252,15 +282,6 @@ class Preparation(object):
             )
             strategies[name] = json.load(urllib.urlopen(url))
         return strategies
-
-    def _adjust(self, width, height, before, after):
-        """ Adjust width and height by geom ratios. """
-        size = lambda x1, x2, y1, y2: (x2 - x1, y2 - y1)
-
-        w1, h1 = size(*before.GetEnvelope())
-        w2, h2 = size(*after.GetEnvelope())
-
-        return int(round(width * w2 / w1)), int(round(height * h2 / h1))
 
     def _create_chunks(self):
         """ Return a dictionary with chunk index objects. """
@@ -290,18 +311,11 @@ class Preparation(object):
                     if intersection is None:
                         continue
 
-                    # feature
-                    width, height = self._adjust(
-                        width=p2 - p1,
-                        height=q2 - q1,
-                        before=polygon,
-                        after=intersection,
-                    )
                     feature = ogr.Feature(layer_defn)
                     feature[b'serial'] = serial.next()
-                    feature[b'width'] = width
-                    feature[b'height'] = height
-                    feature.SetGeometry(intersection)
+                    feature[b'width'] = p2 - p1
+                    feature[b'height'] = q2 - q1
+                    feature.SetGeometry(polygon)
                     layer.CreateFeature(feature)
             return chunks
 
@@ -457,7 +471,7 @@ class Target(object):
                           dataset=self.dataset,
                           attrs=feature.items(),
                           operation=self.operation,
-                          geometry=feature.geometry())
+                          geometry=feature.geometry().Clone())
             yield block
 
 
@@ -504,20 +518,47 @@ class Block(object):
 
         return inputs
 
-    def save(self):
-        """
-        """
+    def _polygon(self, dataset):
+        """ Return polygon for dataset outline. """
+        x1, a, b, y2, c, d = dataset.GetGeoTransform()
+        w = dataset.RasterXSize
+        h = dataset.RasterYSize
+        x2 = x1 + w * a + h * b
+        y1 = y2 + w * c + h * d
+        return ogr.CreateGeometryFromWkt(
+            POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2),
+        )
+
+    def _mask(self, dataset):
+        """ Mask dataset where outside geometry. """
+        wkt = dataset.GetProjection()
+        polygon = self._polygon(dataset)
+        difference = polygon.Difference(self.geometry)
+        no_data_value = dataset.GetRasterBand(1).GetNoDataValue()
+        datasource = DRIVER_OGR_MEMORY.CreateDataSource('')
+        layer = datasource.CreateLayer(b'blocks', osr.SpatialReference(wkt))
+        layer_defn = layer.GetLayerDefn()
+        feature = ogr.Feature(layer_defn)
+        feature.SetGeometry(difference)
+        layer.CreateFeature(feature)
+        gdal.RasterizeLayer(dataset, [1], layer, burn_values=[no_data_value])
+
+    def _write(self, dataset):
+        """ Write dataset into block. """
         p1 = self.pixels['p1']
         q1 = self.pixels['q1']
-        band = self.dataset.GetRasterBand(1)
-        DRIVER_GDAL_GTIFF.CreateCopy('test.tif', self.inputs['elevation'])
-        band.WriteRaster(
-            p1,
-            q1,
-            self.pixels['p2'] - p1,
-            self.pixels['q2'] - q1,
-            self.operation.calculate(**self.inputs),
+        self.dataset.WriteRaster(
+            p1, q1, self.pixels['p2'] - p1, self.pixels['q2'] - q1,
+            dataset.ReadRaster(0, 0, dataset.RasterXSize, dataset.RasterYSize),
         )
+
+    def save(self):
+        """
+        Cut out and save block.
+        """
+        dataset = self.operation.calculate(**self.inputs)
+        self._mask(dataset)
+        self._write(dataset)
         self.dataset.SetMetadataItem(b'resume', str(self.serial))
 
 

@@ -57,11 +57,11 @@ def command(index_path, source_path, target_dir):
     index_datasource = ogr.Open(index_path)
     index_layer = index_datasource[0]
     total = index_layer.GetFeatureCount()
-    for count, index_feature in enumerate(index_layer):
+    for count, index_feature in enumerate(index_layer, 1):
         index_geometry = index_feature.geometry()
         source_layer.SetSpatialFilter(index_geometry)
         if not source_layer.GetFeatureCount():
-            gdal.TermProgress_nocb(count / total)
+            gdal.TermProgress_nocb((count) / total)
             continue
 
         # prepare dataset
