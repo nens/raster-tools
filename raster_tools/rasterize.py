@@ -27,13 +27,6 @@ ogr.UseExceptions()
 osr.UseExceptions()
 
 
-def get_memory_copy(path):
-    """ Return in-memory datasource. """
-    logger.debug('Reading {} into memory.'.format(path))
-    datasource = ogr.Open(path)
-    return DRIVER_OGR_MEMORY.CopyDataSource(datasource, '')
-
-
 def get_geotransform(geometry, cellsize=(0.5, -0.5)):
     """ Return geotransform. """
     a, b, c, d = cellsize[0], 0.0, 0.0, cellsize[1]
@@ -44,7 +37,8 @@ def get_geotransform(geometry, cellsize=(0.5, -0.5)):
 def command(index_path, source_path, target_dir):
     """ Do something spectacular. """
     # investigate source
-    source_datasource = get_memory_copy(source_path)
+    #source_datasource = get_memory_copy(source_path)
+    source_datasource = ogr.Open(source_path)
     source_layer = source_datasource[0]
     source_layer_defn = source_layer.GetLayerDefn()
     if source_layer_defn.GetFieldCount() != 1:
@@ -52,11 +46,18 @@ def command(index_path, source_path, target_dir):
         exit()
     source_field_defn = source_layer_defn.GetFieldDefn(0)
     source_field_name = source_field_defn.GetName()
+    logger.debug('Creating spatial index on source.')
+    source_datasource.ExecuteSQL(
+        b'CREATE SPATIAL INDEX ON {}'.format(source_layer.GetName()),
+    )
 
     # loop index
     index_datasource = ogr.Open(index_path)
     index_layer = index_datasource[0]
+    x1, x2, y1, y2 = source_layer.GetExtent()
+    index_layer.SetSpatialFilterRect(x1, y1, x2, y2)
     total = index_layer.GetFeatureCount()
+    logger.debug('Starting rasterize.')
     for count, index_feature in enumerate(index_layer, 1):
         index_geometry = index_feature.geometry()
         source_layer.SetSpatialFilter(index_geometry)
