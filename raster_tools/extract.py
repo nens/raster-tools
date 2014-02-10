@@ -740,7 +740,7 @@ def check_version():
         print('This script is outdated. Get the latest at:\n{}'.format(
             GITHUB_URL,
         ))
-    exit()
+        exit()
 
 
 def command(shape_path, target_dir, **kwargs):
