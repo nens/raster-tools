@@ -34,18 +34,35 @@ def get_geotransform(geometry, cellsize=(0.5, -0.5)):
     return x1, a, b, y2, c, d
 
 
-def command(index_path, source_path, target_dir):
+def get_source_field_name(layer, attribute):
+    """
+    Return the name of the sole field, or exit if there are more.
+    """
+    layer_defn = layer.GetLayerDefn()
+    names = [layer_defn.GetFieldDefn(i).GetName().lower()
+             for i in range(layer_defn.GetFieldCount())]
+    text = " or ".join([', '.join(names[:-1])] + names[-1:])
+    # attribute given
+    if attribute:
+        if attribute.lower() in names:
+            return attribute.lower()
+        print('"{}" not in source. Choose from {}'.format(attribute, text))
+    # no attribute given
+    else:
+        if len(names) == 1:
+            return names[0]
+        print('Source has more than one attribute. Use -a option.\n'
+              'Available names: {}'.format(text))
+    exit()
+
+
+def command(index_path, source_path, target_dir, attribute):
     """ Do something spectacular. """
     # investigate source
     #source_datasource = get_memory_copy(source_path)
     source_datasource = ogr.Open(source_path)
     source_layer = source_datasource[0]
-    source_layer_defn = source_layer.GetLayerDefn()
-    if source_layer_defn.GetFieldCount() != 1:
-        logger.debug('Source must only have one attribute.')
-        exit()
-    source_field_defn = source_layer_defn.GetFieldDefn(0)
-    source_field_name = source_field_defn.GetName()
+    source_field_name = get_source_field_name(source_layer, attribute)
     logger.debug('Creating spatial index on source.')
     source_datasource.ExecuteSQL(
         b'CREATE SPATIAL INDEX ON {}'.format(source_layer.GetName()),
@@ -112,6 +129,8 @@ def get_parser():
     parser.add_argument('target_dir',
                         metavar='TARGET',
                         help='Output folder')
+    parser.add_argument('-a', '--attribute',
+                        help='Attribute to take burn value from.')
     return parser
 
 
