@@ -156,9 +156,13 @@ class Preparation(object):
         # Get resume value from dataset
         try:
             self.resume = int(self.dataset.GetMetadataItem(b'resume'))
-            print('Resuming from block {}'.format(self.resume))
         except TypeError:
             self.resume = -1
+        if self.resume + 1 == self.blocks[0].GetFeatureCount():
+            print('Already complete.')
+            exit()
+        elif self.resume > -1:
+            print('Resuming from block {}.'.format(self.resume))
 
         # put inputs properties on operation object
         for name, strategy in self.strategies.items():
@@ -166,15 +170,15 @@ class Preparation(object):
                 self.operation.inputs[name].update({key: strategy[key]})
 
         # debugging copy of indexes
-        blocks_path = os.path.join(path, 'blocks.shp')
-        if os.path.exists(blocks_path):
-            DRIVER_OGR_SHAPE.DeleteDataSource(blocks_path)
-        DRIVER_OGR_SHAPE.CopyDataSource(self.blocks, blocks_path)
-        for name, chunks in self.chunks.items():
-            chunks_path = os.path.join(path, name + '.shp')
-            if os.path.exists(chunks_path):
-                DRIVER_OGR_SHAPE.DeleteDataSource(chunks_path)
-            DRIVER_OGR_SHAPE.CopyDataSource(chunks, chunks_path)
+        #blocks_path = os.path.join(path, 'blocks.shp')
+        #if os.path.exists(blocks_path):
+            #DRIVER_OGR_SHAPE.DeleteDataSource(blocks_path)
+        #DRIVER_OGR_SHAPE.CopyDataSource(self.blocks, blocks_path)
+        #for name, chunks in self.chunks.items():
+            #chunks_path = os.path.join(path, name + '.shp')
+            #if os.path.exists(chunks_path):
+                #DRIVER_OGR_SHAPE.DeleteDataSource(chunks_path)
+            #DRIVER_OGR_SHAPE.CopyDataSource(chunks, chunks_path)
 
     def _make_path(self, path, layer, feature, attribute):
         """ Prepare a path from feature attribute or id. """
@@ -625,7 +629,7 @@ def extract(preparation):
     """
     Extract for a single feature.
     """
-    processes = 4
+    processes = 8
     toload = Queue.Queue(maxsize=processes)
     loaded = Queue.Queue()
     thread_pool = pool.ThreadPool(
