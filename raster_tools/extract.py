@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
+# version = 1
 
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -49,6 +50,9 @@ class Operation(object):
     """
     Base class for operations.
     """
+    no_data_value = -9999
+    data_type = 6
+
     def __init__(self, **kwargs):
         """ An init that accepts kwargs. """
         self.kwargs = kwargs
@@ -78,17 +82,48 @@ class Elevation(Operation):
     name = 'elevation'
 
     inputs = dict(elevation=dict(layers=['ahn2:int']))
-    no_data_value = -9999
-    data_type = 6
 
     def calculate(self, elevation):
         """ Return dataset. """
         result = self._dataset(elevation)
         # read
-        data = elevation.ReadAsArray()
-        # change no_data_values
-        no_data_value = elevation.GetRasterBand(1).GetNoDataValue()
-        mask = (data == no_data_value)
+        band = elevation.GetRasterBand(1)
+        data = band.ReadAsArray()
+        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
+        # use target no data value
+        data[mask] = self.no_data_value
+        # write
+        result.GetRasterBand(1).WriteArray(data)
+        return result
+
+
+class ThreeDi(Operation):
+    """ Elevation, with water and buildings at some threshold. """
+    name = '3di'
+
+    inputs = dict(bag=dict(layers=['ahn2:bag']),
+                  water=dict(layers=['water']),
+                  elevation=dict(layers=['ahn2:int']))
+
+    def calculate(self, bag, water, elevation):
+        floor = self.kwargs['floor']
+        result = self._dataset(elevation)
+        # read bag
+        band_bag = bag.GetRasterBand(1)
+        data_bag = band_bag.ReadAsArray()
+        mask_bag = band_bag.GetMaskBand().ReadAsArray().astype('b1')
+        # read water
+        band_water = water.GetRasterBand(1)
+        data_water = band_water.ReadAsArray()
+        mask_water = band_water.GetMaskBand().ReadAsArray().astype('b1')
+        # read elevation and call it data
+        band = elevation.GetRasterBand(1)
+        data = band.ReadAsArray()
+        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
+        # add bag with floor
+        data[mask_water] = data_water[mask_water]
+        data[mask_bag] = data_bag[mask_bag] + floor
+        # put target no data value
         data[mask] = self.no_data_value
         # write
         result.GetRasterBand(1).WriteArray(data)
@@ -319,7 +354,7 @@ class Preparation(object):
                     feature[b'height'] = q2 - q1
                     feature.SetGeometry(polygon)
                     layer.CreateFeature(feature)
-            return chunks
+        return chunks
 
     def get_source(self):
         """ Return dictionary of source objects. """
@@ -714,13 +749,14 @@ def get_parser():
     parser.add_argument('-s', '--server',
                         default='https://raster.lizard.net')
     parser.add_argument('-o', '--operation',
-                        default='elevation',
+                        default='3di',
                         help='Operation')
     parser.add_argument('-a', '--attribute',
                         default='model',
                         help='Attribute for tif filename.')
     parser.add_argument('-f', '--floor',
                         default=0.15,
+                        type=float,
                         help='Floor elevation above ground level')
     parser.add_argument('-c', '--cellsize',
                         default=[0.5, 0.5],
