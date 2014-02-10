@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
-# version = 1
 
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -29,6 +28,10 @@ gdal.UseExceptions()
 ogr.UseExceptions()
 osr.UseExceptions()
 operations = {}
+
+VERSION = 1
+GITHUB_URL = ('https://raw.github.com/nens'
+              '/raster-tools/master/raster_tools/extract.py')
 
 DRIVER_OGR_MEMORY = ogr.GetDriverByName(b'Memory')
 DRIVER_OGR_SHAPE = ogr.GetDriverByName(b'ESRI Shapefile')
@@ -721,10 +724,30 @@ def extract(preparation):
     thread_pool.join()
 
 
+def check_version():
+    """
+    Check if this is the highest available version of the script.
+    """
+    url_file = urllib.urlopen(GITHUB_URL)
+    lines = url_file.readlines()
+    url_file.close()
+
+    for l in lines:
+        if l.startswith('VERSION ='):
+            remote_version = int(l.split('=')[-1].strip())
+            break
+    if remote_version > VERSION:
+        print('This script is outdated. Get the latest at:\n{}'.format(
+            GITHUB_URL,
+        ))
+    exit()
+
+
 def command(shape_path, target_dir, **kwargs):
     """
     Prepare and extract for each feature.
     """
+    check_version()
     datasource = ogr.Open(shape_path)
     for layer in datasource:
         for feature in layer:
