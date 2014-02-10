@@ -44,8 +44,6 @@ Key = collections.namedtuple('Key', ['name', 'serial'])
 
 """
 - Fix projection when -p epsg:3857
-- Add operation model using ahn2:water and 15cm ahn2:bag
-- Test larger models
 """
 
 
@@ -771,7 +769,7 @@ def get_parser():
     parser.add_argument('shape_path',
                         metavar='SHAPE')
     parser.add_argument('target_dir',
-                        metavar='GTIFF')
+                        metavar='OUTPUT')
     # options
     parser.add_argument('-s', '--server',
                         default='https://raster.lizard.net')
