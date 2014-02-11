@@ -34,71 +34,116 @@ def get_geotransform(geometry, cellsize=(0.5, -0.5)):
     return x1, a, b, y2, c, d
 
 
-def get_source_field_name(layer, attribute):
+def get_field_name(layer, attribute):
     """
     Return the name of the sole field, or exit if there are more.
     """
+    layer_name = layer.GetName()
     layer_defn = layer.GetLayerDefn()
     names = [layer_defn.GetFieldDefn(i).GetName().lower()
              for i in range(layer_defn.GetFieldCount())]
-    text = " or ".join([', '.join(names[:-1])] + names[-1:])
+    choices = " or ".join([', '.join(names[:-1])] + names[-1:])
     # attribute given
     if attribute:
         if attribute.lower() in names:
             return attribute.lower()
-        print('"{}" not in source. Choose from {}'.format(attribute, text))
+        print('"{}" not in layer "{}". Choose from {}'.format(
+            attribute, layer_name, choices
+        ))
     # no attribute given
     else:
         if len(names) == 1:
             return names[0]
-        print('Source has more than one attribute. Use -a option.\n'
-              'Available names: {}'.format(text))
+        print('Layer "{}" has more than one attribute. Use -a option.\n'
+              'Available names: {}'.format(layer_name, choices))
     exit()
+
+
+def get_data_type(datasource, field_names):
+    """
+    Return the raster datatype corresponding to the field.
+    """
+    data_types = []
+    for i, layer in enumerate(datasource):
+        layer_defn = layer.GetLayerDefn()
+        index = layer_defn.GetFieldIndex(field_names[i])
+        field_defn = layer_defn.GetFieldDefn(index)
+        data_types.append(field_defn.GetTypeName())
+    if len(set(data_types)) > 1:
+        print('Incompatible datatypes:')
+        for i, layer in enumerate(datasource):
+            print('{:<20} {:<10} {:<7}'.format(
+                layer.GetName(), field_names[i], data_types[i],
+            ))
+        exit()
+    return dict(Integer=gdal.GDT_Byte, Real=gdal.GDT_Float32)[data_types[0]]
 
 
 def command(index_path, source_path, target_dir, attribute):
     """ Do something spectacular. """
-    # investigate source
+    # investigate sources
     #source_datasource = get_memory_copy(source_path)
     source_datasource = ogr.Open(source_path)
-    source_layer = source_datasource[0]
-    source_field_name = get_source_field_name(source_layer, attribute)
-    logger.debug('Creating spatial index on source.')
-    source_datasource.ExecuteSQL(
-        b'CREATE SPATIAL INDEX ON {}'.format(source_layer.GetName()),
+    source_field_names = []
+    for source_layer in source_datasource:
+        # check attribute for all source layers
+        source_field_names.append(
+            get_field_name(layer=source_layer, attribute=attribute)
+        )
+    data_type = get_data_type(
+        datasource=source_datasource, field_names=source_field_names,
     )
 
-    # loop index
+    # Create indexes for shapefiles if necessary
+    if source_datasource.GetDriver().GetName() == 'ESRI Shapefile':
+        for source_layer in source_datasource:
+            source_layer_name = source_layer.GetName()
+            if os.path.isfile(source_path):
+                source_layer_index_path = source_path[-4:] + '.qix'
+            else:
+                source_layer_index_path = os.path.join(
+                    source_path, source_layer_name + '.qix',
+                )
+            if os.path.exists(source_layer_index_path):
+                    continue
+            print('Creating spatial index on {}.'.format(source_layer_name))
+            source_datasource.ExecuteSQL(
+                b'CREATE SPATIAL INDEX ON {}'.format(source_layer_name),
+            )
+
+    # rasterize
     index_datasource = ogr.Open(index_path)
     index_layer = index_datasource[0]
     x1, x2, y1, y2 = source_layer.GetExtent()
     index_layer.SetSpatialFilterRect(x1, y1, x2, y2)
     total = index_layer.GetFeatureCount()
-    logger.debug('Starting rasterize.')
+    print('Starting rasterize.')
     for count, index_feature in enumerate(index_layer, 1):
         index_geometry = index_feature.geometry()
-        source_layer.SetSpatialFilter(index_geometry)
-        if not source_layer.GetFeatureCount():
-            gdal.TermProgress_nocb((count) / total)
-            continue
 
         # prepare dataset
-        dataset = DRIVER_GDAL_MEM.Create(
-            '', 2000, 2500, 1, gdal.GDT_Float32,
-        )
+        dataset = DRIVER_GDAL_MEM.Create('', 2000, 2500, 1, data_type)
         dataset.SetProjection(osr.GetUserInputAsWKT(b'epsg:28992'))
         dataset.SetGeoTransform(get_geotransform(index_geometry))
         band = dataset.GetRasterBand(1)
         band.SetNoDataValue(NO_DATA_VALUE)
         band.Fill(NO_DATA_VALUE)
 
-        # rasterize
-        gdal.RasterizeLayer(
-            dataset,
-            [1],
-            source_layer,
-            options=['ATTRIBUTE={}'.format(source_field_name)]
-        )
+        for i, source_layer in enumerate(source_datasource):
+            source_layer = source_datasource[i]
+            source_field_name = source_field_names[i]
+            source_layer.SetSpatialFilter(index_geometry)
+            if not source_layer.GetFeatureCount():
+                gdal.TermProgress_nocb((count) / total)
+                continue
+
+            # rasterize
+            gdal.RasterizeLayer(
+                dataset,
+                [1],
+                source_layer,
+                options=['ATTRIBUTE={}'.format(source_field_name)]
+            )
 
         # save
         leaf_number = index_feature[b'BLADNR']
