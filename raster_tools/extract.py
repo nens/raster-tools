@@ -29,7 +29,7 @@ ogr.UseExceptions()
 osr.UseExceptions()
 operations = {}
 
-VERSION = 1
+VERSION = 2
 GITHUB_URL = ('https://raw.github.com/nens'
               '/raster-tools/master/raster_tools/extract.py')
 
@@ -43,7 +43,8 @@ POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 Key = collections.namedtuple('Key', ['name', 'serial'])
 
 """
-- Fix projection when -p epsg:3857
+TODO
+- Fix projection when not epsg:28992
 """
 
 
@@ -53,10 +54,6 @@ class Operation(object):
     """
     no_data_value = -9999
     data_type = 6
-
-    def __init__(self, **kwargs):
-        """ An init that accepts kwargs. """
-        self.kwargs = kwargs
 
     def _dataset(self, template):
         """
@@ -78,11 +75,17 @@ class Operation(object):
         return dataset
 
 
-class Elevation(Operation):
+class ThreeDi(Operation):
     """ Just store the elevation. """
-    name = 'elevation'
+    name = '3di'
 
-    inputs = dict(elevation=dict(layers=['ahn2:int']))
+    def __init__(self, floor):
+        """ An init that accepts kwargs. """
+        self.inputs = dict(elevation=dict(layers=','.join([
+            'ahn2:int',
+            'ahn2:bag!{}'.format(floor),
+            'water',
+        ])))
 
     def calculate(self, elevation):
         """ Return dataset. """
@@ -92,39 +95,6 @@ class Elevation(Operation):
         data = band.ReadAsArray()
         mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
         # use target no data value
-        data[mask] = self.no_data_value
-        # write
-        result.GetRasterBand(1).WriteArray(data)
-        return result
-
-
-class ThreeDi(Operation):
-    """ Elevation, with water and buildings at some threshold. """
-    name = '3di'
-
-    inputs = dict(bag=dict(layers=['ahn2:bag']),
-                  water=dict(layers=['water']),
-                  elevation=dict(layers=['ahn2:int']))
-
-    def calculate(self, bag, water, elevation):
-        floor = self.kwargs['floor']
-        result = self._dataset(elevation)
-        # read bag
-        band_bag = bag.GetRasterBand(1)
-        data_bag = band_bag.ReadAsArray()
-        mask_bag = band_bag.GetMaskBand().ReadAsArray().astype('b1')
-        # read water
-        band_water = water.GetRasterBand(1)
-        data_water = band_water.ReadAsArray()
-        mask_water = band_water.GetMaskBand().ReadAsArray().astype('b1')
-        # read elevation and call it data
-        band = elevation.GetRasterBand(1)
-        data = band.ReadAsArray()
-        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
-        # add bag with floor
-        data[mask_water] = data_water[mask_water]
-        data[mask_bag] = data_bag[mask_bag] + floor
-        # put target no data value
         data[mask] = self.no_data_value
         # write
         result.GetRasterBand(1).WriteArray(data)
@@ -307,14 +277,18 @@ class Preparation(object):
         return POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
 
     def _get_strategies(self):
-        """ Return a dictionary with strategies. """
+        """
+        Return a dictionary with strategies.
+
+        The strategy is only for the first layer of each input.
+        """
         strategies = {}
-        for name in self.operation.inputs:
+        for name, inp in self.operation.inputs.items():
             parameters = dict(
                 area=self.area,
                 cell=self.cell,
                 request='getstrategy',
-                layers=','.join(self.operation.inputs[name]['layers']),
+                layer=inp['layers'].split(',')[0].split('!')[0],
                 projection=self.projection,
             )
             url = '{}?{}'.format(
@@ -407,7 +381,7 @@ class Source(object):
         url = {}
         for name in self.projection:
             parameters = dict(
-                layers=','.join(self.layers[name]),
+                layers=self.layers[name],
                 request='getgeotiff',
                 compress='deflate',
                 projection=self.projection[name],
