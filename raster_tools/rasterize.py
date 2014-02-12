@@ -139,12 +139,12 @@ def command(index_path, source_path, target_dir, attribute):
         band.SetNoDataValue(no_data_value)
         band.Fill(no_data_value)
 
+        burned = False
         for i, source_layer in enumerate(source_datasource):
             source_layer = source_datasource[i]
             source_field_name = source_field_names[i]
             source_layer.SetSpatialFilter(index_geometry)
             if not source_layer.GetFeatureCount():
-                gdal.TermProgress_nocb((count) / total)
                 continue
 
             # rasterize
@@ -154,19 +154,22 @@ def command(index_path, source_path, target_dir, attribute):
                 source_layer,
                 options=['ATTRIBUTE={}'.format(source_field_name)]
             )
+            burned = True
 
-        # save
-        leaf_number = index_feature[b'BLADNR']
-        target_path = os.path.join(
-            target_dir, leaf_number[1:4], leaf_number + '.tif',
-        )
-        try:
-            os.makedirs(os.path.dirname(target_path))
-        except OSError:
-            pass
-        DRIVER_GDAL_GTIFF.CreateCopy(
-            target_path, dataset, options=['COMPRESS=DEFLATE'],
-        )
+        if burned:
+            # save
+            leaf_number = index_feature[b'BLADNR']
+            target_path = os.path.join(
+                target_dir, leaf_number[1:4], leaf_number + '.tif',
+            )
+            try:
+                os.makedirs(os.path.dirname(target_path))
+            except OSError:
+                pass
+            DRIVER_GDAL_GTIFF.CreateCopy(
+                target_path, dataset, options=['COMPRESS=DEFLATE'],
+            )
+
         gdal.TermProgress_nocb(count / total)
 
 
