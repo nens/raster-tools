@@ -19,7 +19,15 @@ DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
 DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
 DRIVER_OGR_MEMORY = ogr.GetDriverByName(b'Memory')
 
-NO_DATA_VALUE = -3.4028234663852886e+38
+NO_DATA_VALUE = {
+    'Real': -3.4028234663852886e+38,
+    'Integer': 255,
+}
+
+DATA_TYPE = {
+    'Real': gdal.GDT_Float32,
+    'Integer': gdal.GDT_Byte,
+}
 
 logger = logging.getLogger(__name__)
 gdal.UseExceptions()
@@ -59,24 +67,24 @@ def get_field_name(layer, attribute):
     exit()
 
 
-def get_data_type(datasource, field_names):
+def get_ogr_type(datasource, field_names):
     """
     Return the raster datatype corresponding to the field.
     """
-    data_types = []
+    ogr_types = []
     for i, layer in enumerate(datasource):
         layer_defn = layer.GetLayerDefn()
         index = layer_defn.GetFieldIndex(field_names[i])
         field_defn = layer_defn.GetFieldDefn(index)
-        data_types.append(field_defn.GetTypeName())
-    if len(set(data_types)) > 1:
+        ogr_types.append(field_defn.GetTypeName())
+    if len(set(ogr_types)) > 1:
         print('Incompatible datatypes:')
         for i, layer in enumerate(datasource):
             print('{:<20} {:<10} {:<7}'.format(
-                layer.GetName(), field_names[i], data_types[i],
+                layer.GetName(), field_names[i], ogr_types[i],
             ))
         exit()
-    return dict(Integer=gdal.GDT_Byte, Real=gdal.GDT_Float32)[data_types[0]]
+    return ogr_types[0]
 
 
 def command(index_path, source_path, target_dir, attribute):
@@ -90,7 +98,7 @@ def command(index_path, source_path, target_dir, attribute):
         source_field_names.append(
             get_field_name(layer=source_layer, attribute=attribute)
         )
-    data_type = get_data_type(
+    ogr_type = get_ogr_type(
         datasource=source_datasource, field_names=source_field_names,
     )
 
@@ -122,12 +130,14 @@ def command(index_path, source_path, target_dir, attribute):
         index_geometry = index_feature.geometry()
 
         # prepare dataset
+        data_type = DATA_TYPE[ogr_type]
+        no_data_value = NO_DATA_VALUE[ogr_type]
         dataset = DRIVER_GDAL_MEM.Create('', 2000, 2500, 1, data_type)
         dataset.SetProjection(osr.GetUserInputAsWKT(b'epsg:28992'))
         dataset.SetGeoTransform(get_geotransform(index_geometry))
         band = dataset.GetRasterBand(1)
-        band.SetNoDataValue(NO_DATA_VALUE)
-        band.Fill(NO_DATA_VALUE)
+        band.SetNoDataValue(no_data_value)
+        band.Fill(no_data_value)
 
         for i, source_layer in enumerate(source_datasource):
             source_layer = source_datasource[i]
