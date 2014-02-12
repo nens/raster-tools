@@ -62,8 +62,11 @@ def get_field_name(layer, attribute):
     else:
         if len(names) == 1:
             return names[0]
-        print('Layer "{}" has more than one attribute. Use -a option.\n'
-              'Available names: {}'.format(layer_name, choices))
+        elif not names:
+            print('Layer "{}" has no attributes!')
+        else:
+            print('Layer "{}" has more than one attribute. Use -a option.\n'
+                  'Available names: {}'.format(layer_name, choices))
     exit()
 
 
