@@ -31,6 +31,7 @@ DATA_TYPE = {
 
 logger = logging.getLogger(__name__)
 gdal.UseExceptions()
+gdal.PushErrorHandler(b'CPLQuietErrorHandler')
 ogr.UseExceptions()
 osr.UseExceptions()
 
