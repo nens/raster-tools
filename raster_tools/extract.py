@@ -52,53 +52,145 @@ class Operation(object):
     """
     Base class for operations.
     """
-    no_data_value = -9999
-    data_type = 6
-
-    def _dataset(self, template):
-        """
-        Return dataset with dimensions, geo_transform and projection
-        from template but data_type and no_data_value from self.
-        """
-        dataset = DRIVER_GDAL_MEM.Create(
-            '',
-            template.RasterXSize,
-            template.RasterYSize,
-            template.RasterCount,
-            self.data_type,
-        )
-        dataset.SetProjection(template.GetProjection())
-        dataset.SetGeoTransform(template.GetGeoTransform())
-        band = dataset.GetRasterBand(1)
-        band.SetNoDataValue(self.no_data_value)
-        band.Fill(self.no_data_value)
-        return dataset
 
 
 class ThreeDi(Operation):
-    """ Just store the elevation. """
+    """ Extract all rasters for a 3Di model. """
     name = '3di'
+
+    # inputs
+    I_SOIL = 'soil'
+    I_LANDUSE = 'landuse'
+    I_BATHYMETRY = 'bathymetry'
+
+    # outputs
+    O_SOIL = 'soil'
+    O_CROP = 'crop'
+    O_FRICTION = 'friction'
+    O_BATHYMETRY = 'bathymetry'
+    O_INFILTRATION = 'infiltration'
+    O_INTERCEPTION = 'interception'
+    O_INTRINSIC_PERMEABILITY_X = 'intrinsic_permeability_x'
+    O_INTRINSIC_PERMEABILITY_Y = 'intrinsic_permeability_y'
+
+    no_data_value = {
+        O_SOIL: 255,
+        O_CROP: 255,
+        O_FRICTION: -9999,
+        O_BATHYMETRY: -9999,
+        O_INFILTRATION: -9999,
+        O_INTERCEPTION: -9999,
+        O_INTRINSIC_PERMEABILITY_X: -9999,
+        O_INTRINSIC_PERMEABILITY_Y: -9999,
+    }
+
+    data_type = {
+        O_SOIL: gdal.GDT_Byte,
+        O_CROP: gdal.GDT_Byte,
+        O_FRICTION: gdal.GDT_Float32,
+        O_BATHYMETRY: gdal.GDT_Float32,
+        O_INFILTRATION: gdal.GDT_Float32,
+        O_INTERCEPTION: gdal.GDT_Float32,
+        O_INTRINSIC_PERMEABILITY_X: gdal.GDT_Float32,
+        O_INTRINSIC_PERMEABILITY_Y: gdal.GDT_Float32,
+    }
+
+    outputs = {
+        O_SOIL: [I_SOIL],
+        #O_CROP: [I_LANDUSE],
+        #O_FRICTION: [I_LANDUSE],
+        O_BATHYMETRY: [I_BATHYMETRY],
+        #O_INFILTRATION: [I_SOIL, I_USE],
+        #O_INTERCEPTION: [I_USE],
+        #O_INTRINSIC_PERMEABILITY_X: [I_SOIL],
+        #O_INTRINSIC_PERMEABILITY_Y: [I_SOIL],
+    }
+
+    required = [y for x in outputs.values() for y in x]
 
     def __init__(self, floor):
         """ An init that accepts kwargs. """
-        self.inputs = dict(elevation=dict(layers=','.join([
-            'ahn2:int',
-            'ahn2:bag!{}'.format(floor),
-            'water',
-        ])))
+        self.layers = {
+            self.I_BATHYMETRY: dict(layers=','.join([
+                'ahn2:int',
+                'ahn2:bag!{}'.format(floor),
+                'water',
+            ])),
+            self.I_LANDUSE: dict(layers='use:wss'),
+            self.I_SOIL: dict(layers='soil'),
+        }
 
-    def calculate(self, elevation):
-        """ Return dataset. """
-        result = self._dataset(elevation)
+        self.inputs = {k: v
+                       for k, v in self.layers.items() if k in self.required}
+
+        self.calculators = {
+            self.O_SOIL: self._calculate_soil,
+            self.O_CROP: self._calculate_crop,
+            self.O_FRICTION: self._calculate_friction,
+            self.O_BATHYMETRY: self._calculate_bathymetry,
+            self.O_INFILTRATION: self._calculate_infiltration,
+            self.O_INTERCEPTION: self._calculate_interception,
+            self.O_INTRINSIC_PERMEABILITY_X: self._calculate_intr_perm_x,
+            self.O_INTRINSIC_PERMEABILITY_Y: self._calculate_intr_perm_y,
+        }
+
+    def _calculate_soil(self, datasets):
+        # short keys
+        i = self.I_SOIL
+        o = self.O_SOIL
+        # create
+        no_data_value = self.no_data_value[i]
+        soil = make_dataset(template=datasets[i],
+                            data_type=self.data_type[o],
+                            no_data_value=no_data_value)
         # read
-        band = elevation.GetRasterBand(1)
+        band = datasets[i].GetRasterBand(1)
         data = band.ReadAsArray()
         mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
-        # use target no data value
-        data[mask] = self.no_data_value
+        data[mask] = no_data_value
         # write
-        result.GetRasterBand(1).WriteArray(data)
-        return result
+        soil.GetRasterBand(1).WriteArray(data)
+        return soil
+
+    def _calculate_crop(self, datasets):
+        pass
+
+    def _calculate_friction(self, datasets):
+        pass
+
+    def _calculate_bathymetry(self, datasets):
+        # short keys
+        i = self.I_BATHYMETRY
+        o = self.O_BATHYMETRY
+        # create
+        no_data_value = self.no_data_value[i]
+        bathymetry = make_dataset(template=datasets[i],
+                                  data_type=self.data_type[o],
+                                  no_data_value=no_data_value)
+        # read
+        band = datasets[i].GetRasterBand(1)
+        data = band.ReadAsArray()
+        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
+        data[mask] = no_data_value
+        # write
+        bathymetry.GetRasterBand(1).WriteArray(data)
+        return bathymetry
+
+    def _calculate_infiltration(self, datasets):
+        pass
+
+    def _calculate_interception(self, datasets):
+        pass
+
+    def _calculate_intr_perm_x(self, datasets):
+        pass
+
+    def _calculate_intr_perm_y(self, datasets):
+        pass
+
+    def calculate(self, datasets):
+        """ Return dictionary of output datasets. """
+        return {key: self.calculators[key](datasets) for key in self.outputs}
 
 
 class Preparation(object):
@@ -108,13 +200,14 @@ class Preparation(object):
     def __init__(self, path, layer, feature, **kwargs):
         """ Prepare a lot. """
         attribute = kwargs.pop('attribute')
-        self.path = self._make_path(path, layer, feature, attribute)
         self.server = kwargs.pop('server')
         self.cellsize = kwargs.pop('cellsize')
         self.projection = kwargs.pop('projection')
         self.operation = operations[kwargs.pop('operation')](**kwargs)
+        self.paths = self._make_paths(path, layer, feature, attribute)
+        self.rpath = self.paths.pop('rpath')
         self.geometry = self._prepare_geometry(feature)
-        self.dataset = self._get_or_create_dataset()
+        self.datasets = self._get_or_create_datasets()
         self.blocks = self._create_blocks()
         self.area = self._get_area()
         self.cell = self._get_cell()
@@ -123,8 +216,9 @@ class Preparation(object):
 
         # Get resume value from dataset
         try:
-            self.resume = int(self.dataset.GetMetadataItem(b'resume'))
-        except TypeError:
+            with open(self.rpath) as resume_file:
+                self.resume = int(resume_file.read())
+        except IOError:
             self.resume = -1
         if self.resume + 1 == self.blocks[0].GetFeatureCount():
             print('Already complete.')
@@ -148,15 +242,19 @@ class Preparation(object):
                 #DRIVER_OGR_SHAPE.DeleteDataSource(chunks_path)
             #DRIVER_OGR_SHAPE.CopyDataSource(chunks, chunks_path)
 
-    def _make_path(self, path, layer, feature, attribute):
-        """ Prepare a path from feature attribute or id. """
+    def _make_paths(self, path, layer, feature, attribute):
+        """ Prepare paths from feature attribute or id. """
         try:
             model = feature[str(attribute)]
         except ValueError:
             model = layer.GetName() + str(feature.GetFID())
 
         print('Creating model: {}'.format(model))
-        return os.path.join(path, model + '.tif')
+        root = os.path.join(path, model)
+        paths = dict(rpath=os.path.join(root, 'resume.txt'))
+        paths.update({n: os.path.join(root, n + '.tif')
+                      for n in self.operation.outputs})
+        return paths
 
     def _prepare_geometry(self, feature):
         """ Transform geometry if necessary. """
@@ -170,14 +268,11 @@ class Preparation(object):
             geometry.Transform(ct)
         return geometry
 
-    def _get_or_create_dataset(self):
-        """ Create a tif and check against operation and index. """
-        if os.path.exists(self.path):
-            return gdal.Open(self.path, gdal.GA_Update)
-
+    def _create_dataset(self, name, path):
+        """ """
         # dir
         try:
-            os.makedirs(os.path.dirname(self.path))
+            os.makedirs(os.path.dirname(path))
         except OSError:
             pass
 
@@ -193,13 +288,25 @@ class Preparation(object):
 
         # create
         dataset = DRIVER_GDAL_GTIFF.Create(
-            self.path, width, height, 1, self.operation.data_type,
+            path, width, height, 1, self.operation.data_type[name],
             ['TILED=YES', 'BIGTIFF=YES', 'SPARSE_OK=TRUE', 'COMPRESS=DEFLATE'],
         )
         dataset.SetProjection(projection)
         dataset.SetGeoTransform(geo_transform)
-        dataset.GetRasterBand(1).SetNoDataValue(self.operation.no_data_value)
+        dataset.GetRasterBand(1).SetNoDataValue(
+            self.operation.no_data_value[name],
+        )
         return dataset
+
+    def _get_or_create_datasets(self):
+        """ Return a tif for each output. """
+        datasets = {}
+        for name, path in self.paths.items():
+            if os.path.exists(path):
+                datasets[name] = gdal.Open(path, gdal.GA_Update)
+            else:
+                datasets[name] = self._create_dataset(name, path)
+        return datasets
 
     def _overlaps(self, polygon):
         """
@@ -230,9 +337,10 @@ class Preparation(object):
         layer_defn = layer.GetLayerDefn()
 
         # add the polygons
-        p, a, b, q, c, d = self.dataset.GetGeoTransform()
-        u, v = self.dataset.GetRasterBand(1).GetBlockSize()
-        U, V = self.dataset.RasterXSize, self.dataset.RasterYSize
+        dataset = self.datasets.itervalues().next()
+        p, a, b, q, c, d = dataset.GetGeoTransform()
+        u, v = dataset.GetRasterBand(1).GetBlockSize()
+        U, V = dataset.RasterXSize, dataset.RasterYSize
 
         # add features
         serial = itertools.count()
@@ -271,7 +379,8 @@ class Preparation(object):
 
     def _get_cell(self):
         """ Return topleft cell as wkt polygon. """
-        x1, a, b, y2, c, d = self.dataset.GetGeoTransform()
+        dataset = self.datasets.itervalues().next()
+        x1, a, b, y2, c, d = dataset.GetGeoTransform()
         x2 = x1 + a + b
         y1 = y2 + c + d
         return POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
@@ -354,9 +463,10 @@ class Preparation(object):
     def get_target(self):
         """ Return target object. """
         self.blocks[0].SetAttributeFilter(b'serial>{}'.format(self.resume))
-        target = Target(chunks=self.chunks,
+        target = Target(rpath=self.rpath,
+                        chunks=self.chunks,
                         blocks=self.blocks,
-                        dataset=self.dataset,
+                        datasets=self.datasets,
                         cellsize=self.cellsize,
                         operation=self.operation)
         return target
@@ -450,10 +560,11 @@ class Target(object):
     """
     Factory of target blocks
     """
-    def __init__(self, blocks, chunks, dataset, cellsize, operation):
+    def __init__(self, rpath, blocks, chunks, datasets, cellsize, operation):
+        self.rpath = rpath
         self.blocks = blocks
         self.chunks = chunks
-        self.dataset = dataset
+        self.datasets = datasets
         self.cellsize = cellsize
         self.operation = operation
 
@@ -481,8 +592,9 @@ class Target(object):
 
             # create the block object
             block = Block(chunks=chunks,
-                          dataset=self.dataset,
+                          rpath=self.rpath,
                           attrs=feature.items(),
+                          datasets=self.datasets,
                           operation=self.operation,
                           geometry=feature.geometry().Clone())
             yield block
@@ -490,11 +602,12 @@ class Target(object):
 
 class Block(object):
     """ Self saving local chunk of data. """
-    def __init__(self, attrs, dataset, geometry, operation, chunks):
+    def __init__(self, attrs, datasets, geometry, operation, chunks, rpath):
         self.serial = attrs.pop('serial')
         self.chunks = chunks
         self.pixels = attrs
-        self.dataset = dataset
+        self.rpath = rpath
+        self.datasets = datasets
         self.geometry = geometry
         self.operation = operation
         self.inputs = self._create_inputs()
@@ -511,7 +624,8 @@ class Block(object):
             p1, p2, q1, q2 = (self.pixels[k] for k in sorted(self.pixels))
 
             # offset geo_transform
-            p, a, b, q, c, d = self.dataset.GetGeoTransform()
+            bigdataset = self.datasets.itervalues().next()
+            p, a, b, q, c, d = bigdataset.GetGeoTransform()
             p = p + a * p1 + b * q1
             q = q + c * p1 + d * q1
             geo_transform = p, a, b, q, c, d
@@ -522,7 +636,7 @@ class Block(object):
                 '', p2 - p1, q2 - q1, 1, data_type,
             )
             dataset.SetGeoTransform(geo_transform)
-            dataset.SetProjection(self.dataset.GetProjection())
+            dataset.SetProjection(bigdataset.GetProjection())
             no_data_value = self.operation.inputs[name]['no_data_value']
             band = dataset.GetRasterBand(1)
             band.SetNoDataValue(no_data_value)
@@ -554,23 +668,47 @@ class Block(object):
         layer.CreateFeature(feature)
         gdal.RasterizeLayer(dataset, [1], layer, burn_values=[no_data_value])
 
-    def _write(self, dataset):
+    def _write(self, source, target):
         """ Write dataset into block. """
         p1 = self.pixels['p1']
         q1 = self.pixels['q1']
-        self.dataset.WriteRaster(
+        target.WriteRaster(
             p1, q1, self.pixels['p2'] - p1, self.pixels['q2'] - q1,
-            dataset.ReadRaster(0, 0, dataset.RasterXSize, dataset.RasterYSize),
+            source.ReadRaster(0, 0, source.RasterXSize, source.RasterYSize),
         )
 
     def save(self):
         """
         Cut out and save block.
         """
-        dataset = self.operation.calculate(**self.inputs)
-        self._mask(dataset)
-        self._write(dataset)
-        self.dataset.SetMetadataItem(b'resume', str(self.serial))
+        outputs = self.operation.calculate(self.inputs)
+        for name in outputs:
+            self._mask(outputs[name])
+            self._write(source=outputs[name],
+                        target=self.datasets[name])
+
+        with open(self.rpath, 'w') as resume_file:
+            resume_file.write(str(self.serial))
+
+
+def make_dataset(template, data_type, no_data_value):
+    """
+    Return dataset with dimensions, geo_transform and projection
+    from template but data_type and no_data_value from arguments.
+    """
+    dataset = DRIVER_GDAL_MEM.Create(
+        '',
+        template.RasterXSize,
+        template.RasterYSize,
+        template.RasterCount,
+        data_type,
+    )
+    dataset.SetProjection(template.GetProjection())
+    dataset.SetGeoTransform(template.GetGeoTransform())
+    band = dataset.GetRasterBand(1)
+    band.SetNoDataValue(no_data_value)
+    band.Fill(no_data_value)
+    return dataset
 
 
 def make_polygon(x1, y2, x2, y1):
@@ -756,7 +894,7 @@ def get_parser():
     parser.add_argument('-f', '--floor',
                         default=0.15,
                         type=float,
-                        help='Floor elevation above ground level')
+                        help='Floor height above ground level')
     parser.add_argument('-c', '--cellsize',
                         default=[0.5, 0.5],
                         type=float,
