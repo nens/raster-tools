@@ -9,6 +9,7 @@ from __future__ import division
 import argparse
 import collections
 import copy
+import csv
 import itertools
 import json
 import logging
@@ -20,6 +21,7 @@ import urlparse
 from multiprocessing import pool
 
 from osgeo import gdal
+from osgeo import gdalnumeric as np
 from osgeo import ogr
 from osgeo import osr
 
@@ -29,7 +31,7 @@ ogr.UseExceptions()
 osr.UseExceptions()
 operations = {}
 
-VERSION = 2
+VERSION = 3
 GITHUB_URL = ('https://raw.github.com/nens'
               '/raster-tools/master/raster_tools/extract.py')
 
@@ -37,6 +39,10 @@ DRIVER_OGR_MEMORY = ogr.GetDriverByName(b'Memory')
 DRIVER_OGR_SHAPE = ogr.GetDriverByName(b'ESRI Shapefile')
 DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
 DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
+
+DEFAULT_CSV_LANDUSE = 'Conversietabel_landgebruik.csv'
+DEFAULT_CSV_SOIL = 'Conversietabel_bodem.csv'
+
 
 POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 
@@ -74,19 +80,19 @@ class ThreeDi(Operation):
     O_INTRINSIC_PERMEABILITY_Y = 'intrinsic_permeability_y'
 
     no_data_value = {
-        O_SOIL: 255,
-        O_CROP: 255,
-        O_FRICTION: -9999,
-        O_BATHYMETRY: -9999,
-        O_INFILTRATION: -9999,
-        O_INTERCEPTION: -9999,
-        O_INTRINSIC_PERMEABILITY_X: -9999,
-        O_INTRINSIC_PERMEABILITY_Y: -9999,
+        O_SOIL: -9999,
+        O_CROP: -9999,
+        O_FRICTION: -9999.,
+        O_BATHYMETRY: -9999.,
+        O_INFILTRATION: -9999.,
+        O_INTERCEPTION: -9999.,
+        O_INTRINSIC_PERMEABILITY_X: -9999.,
+        O_INTRINSIC_PERMEABILITY_Y: -9999.,
     }
 
     data_type = {
-        O_SOIL: gdal.GDT_Byte,
-        O_CROP: gdal.GDT_Byte,
+        O_SOIL: gdal.GDT_Int32,
+        O_CROP: gdal.GDT_Int32,
         O_FRICTION: gdal.GDT_Float32,
         O_BATHYMETRY: gdal.GDT_Float32,
         O_INFILTRATION: gdal.GDT_Float32,
@@ -97,18 +103,18 @@ class ThreeDi(Operation):
 
     outputs = {
         O_SOIL: [I_SOIL],
-        #O_CROP: [I_LANDUSE],
-        #O_FRICTION: [I_LANDUSE],
+        O_CROP: [I_LANDUSE],
+        O_FRICTION: [I_LANDUSE],
         O_BATHYMETRY: [I_BATHYMETRY],
-        #O_INFILTRATION: [I_SOIL, I_USE],
-        #O_INTERCEPTION: [I_USE],
-        #O_INTRINSIC_PERMEABILITY_X: [I_SOIL],
-        #O_INTRINSIC_PERMEABILITY_Y: [I_SOIL],
+        O_INFILTRATION: [I_SOIL, I_LANDUSE],
+        O_INTERCEPTION: [I_LANDUSE],
+        O_INTRINSIC_PERMEABILITY_X: [I_SOIL],
+        O_INTRINSIC_PERMEABILITY_Y: [I_SOIL],
     }
 
     required = [y for x in outputs.values() for y in x]
 
-    def __init__(self, floor):
+    def __init__(self, floor, landuse, soil):
         """ An init that accepts kwargs. """
         self.layers = {
             self.I_BATHYMETRY: dict(layers=','.join([
@@ -130,16 +136,99 @@ class ThreeDi(Operation):
             self.O_BATHYMETRY: self._calculate_bathymetry,
             self.O_INFILTRATION: self._calculate_infiltration,
             self.O_INTERCEPTION: self._calculate_interception,
-            self.O_INTRINSIC_PERMEABILITY_X: self._calculate_intr_perm_x,
-            self.O_INTRINSIC_PERMEABILITY_Y: self._calculate_intr_perm_y,
+            self.O_INTRINSIC_PERMEABILITY_X: self._calculate_intr_perm,
+            self.O_INTRINSIC_PERMEABILITY_Y: self._calculate_intr_perm,
         }
+
+        self.soil_tables = self._get_soil_tables(soil)
+        self.landuse_tables = self._get_landuse_tables(landuse)
+
+    def _get_soil_tables(self, path):
+        """
+        Return conversion tables for landuse.
+        """
+        intr_perm = [None] * 256
+        max_infil = [None] * 256
+        with open(path) as soil_file:
+            reader = csv.DictReader(soil_file, delimiter=b';')
+            reader.next()  # skip second line
+            for record in reader:
+                code = int(record['Code'])
+                # intrinsic permeability
+                field = 'Intrinsic_permeability'
+                try:
+                    intr_perm[code] = float(record[field].replace(',', '.'))
+                except ValueError:
+                    print('Invalid {} for code {}: "{}"'.format(
+                        field, code, record[field],
+                    ))
+                # max infiltration rate
+                field = 'Max_infiltration_rate'
+                try:
+                    max_infil[code] = float(record[field].replace(',', '.'))
+                except ValueError:
+                    print('Invalid {} for code {}: "{}"'.format(
+                        field, code, record[field],
+                    ))
+        return dict(max_infil=max_infil,
+                    intr_perm=intr_perm)
+
+    def _get_landuse_tables(self, path):
+        """
+        Return conversion tables for landuse.
+        """
+        friction = [None] * 256
+        crop_type = [None] * 256
+        interception = [None] * 256
+        permeability = [None] * 256
+        with open(path) as landuse_file:
+            reader = csv.DictReader(landuse_file, delimiter=b';')
+            reader.next()  # skip second line
+            for record in reader:
+                code = int(record['Code'])
+                # friction
+                field = 'Friction'
+                try:
+                    friction[code] = float(record[field].replace(',', '.'))
+                except ValueError:
+                    print('Invalid {} for code {}: "{}"'.format(
+                        field, code, record[field],
+                    ))
+                # crop
+                field = 'Crop_type'
+                try:
+                    crop_type[code] = int(record[field])
+                except ValueError:
+                    print('Invalid {} for code {}: "{}"'.format(
+                        field, code, record[field],
+                    ))
+                # interception
+                field = 'Interception'
+                try:
+                    interception[code] = float(record[field].replace(',', '.'))
+                except ValueError:
+                    print('Invalid {} for code {}: "{}"'.format(
+                        field, code, record[field],
+                    ))
+                # permeability
+                field = 'Permeability'
+                try:
+                    permeability[code] = float(record[field].replace(',', '.'))
+                except ValueError:
+                    print('Invalid {} for code {}: "{}"'.format(
+                        field, code, record[field],
+                    ))
+        return dict(friction=friction,
+                    crop_type=crop_type,
+                    interception=interception,
+                    permeability=permeability)
 
     def _calculate_soil(self, datasets):
         # short keys
         i = self.I_SOIL
         o = self.O_SOIL
         # create
-        no_data_value = self.no_data_value[i]
+        no_data_value = self.no_data_value[o]
         soil = make_dataset(template=datasets[i],
                             data_type=self.data_type[o],
                             no_data_value=no_data_value)
@@ -153,17 +242,51 @@ class ThreeDi(Operation):
         return soil
 
     def _calculate_crop(self, datasets):
-        pass
+        # short keys
+        i = self.I_LANDUSE
+        o = self.O_CROP
+        # create
+        no_data_value = self.no_data_value[o]
+        crop = make_dataset(template=datasets[i],
+                            data_type=self.data_type[o],
+                            no_data_value=no_data_value)
+        # read and convert
+        conversion = np.array([x if x else no_data_value
+                               for x in self.landuse_tables['crop_type']])
+        band = datasets[i].GetRasterBand(1)
+        data = conversion[band.ReadAsArray()]
+        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
+        data[mask] = no_data_value
+        # write
+        crop.GetRasterBand(1).WriteArray(data)
+        return crop
 
     def _calculate_friction(self, datasets):
-        pass
+        # short keys
+        i = self.I_LANDUSE
+        o = self.O_FRICTION
+        # create
+        no_data_value = self.no_data_value[o]
+        friction = make_dataset(template=datasets[i],
+                                data_type=self.data_type[o],
+                                no_data_value=no_data_value)
+        # read and convert
+        conversion = np.array([x if x else no_data_value
+                               for x in self.landuse_tables['friction']])
+        band = datasets[i].GetRasterBand(1)
+        data = conversion[band.ReadAsArray()]
+        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
+        data[mask] = no_data_value
+        # write
+        friction.GetRasterBand(1).WriteArray(data)
+        return friction
 
     def _calculate_bathymetry(self, datasets):
         # short keys
         i = self.I_BATHYMETRY
         o = self.O_BATHYMETRY
         # create
-        no_data_value = self.no_data_value[i]
+        no_data_value = self.no_data_value[o]
         bathymetry = make_dataset(template=datasets[i],
                                   data_type=self.data_type[o],
                                   no_data_value=no_data_value)
@@ -177,16 +300,78 @@ class ThreeDi(Operation):
         return bathymetry
 
     def _calculate_infiltration(self, datasets):
-        pass
+        # short keys
+        s = self.I_SOIL
+        l = self.I_LANDUSE
+        o = self.O_INFILTRATION
+        # create
+        no_data_value = self.no_data_value[o]
+        infiltration = make_dataset(template=datasets[s],
+                                    data_type=self.data_type[o],
+                                    no_data_value=no_data_value)
+        # read and convert soil
+        s_conv = np.array([x if x else no_data_value
+                           for x in self.soil_tables['max_infil']])
+        s_band = datasets[s].GetRasterBand(1)
+        s_data = s_conv[s_band.ReadAsArray()]
+        s_mask = ~s_band.GetMaskBand().ReadAsArray().astype('b1')
+        s_data[s_mask] = no_data_value
+        # read and convert landuse
+        l_conv = np.array([x if x else no_data_value
+                           for x in self.landuse_tables['permeability']])
+        l_band = datasets[l].GetRasterBand(1)
+        l_data = l_conv[l_band.ReadAsArray()]
+        l_mask = ~l_band.GetMaskBand().ReadAsArray().astype('b1')
+        l_data[l_mask] = no_data_value
+        # calculate
+        data = np.where(
+            np.logical_and(l_data != no_data_value, s_data != no_data_value),
+            l_data * s_data,
+            no_data_value,
+        )
+        # write
+        infiltration.GetRasterBand(1).WriteArray(data)
+        return infiltration
 
     def _calculate_interception(self, datasets):
-        pass
+        # short keys
+        i = self.I_LANDUSE
+        o = self.O_INTERCEPTION
+        # create
+        no_data_value = self.no_data_value[o]
+        interception = make_dataset(template=datasets[i],
+                                    data_type=self.data_type[o],
+                                    no_data_value=no_data_value)
+        # read and convert
+        conversion = np.array([x if x else no_data_value
+                               for x in self.landuse_tables['interception']])
+        band = datasets[i].GetRasterBand(1)
+        data = conversion[band.ReadAsArray()]
+        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
+        data[mask] = no_data_value
+        # write
+        interception.GetRasterBand(1).WriteArray(data)
+        return interception
 
-    def _calculate_intr_perm_x(self, datasets):
-        pass
-
-    def _calculate_intr_perm_y(self, datasets):
-        pass
+    def _calculate_intr_perm(self, datasets):
+        # short keys
+        i = self.I_SOIL
+        o = self.O_INTRINSIC_PERMEABILITY_X
+        # create
+        no_data_value = self.no_data_value[o]
+        permeability = make_dataset(template=datasets[i],
+                                    data_type=self.data_type[o],
+                                    no_data_value=no_data_value)
+        # read and convert
+        conversion = np.array([x if x else no_data_value
+                               for x in self.soil_tables['intr_perm']])
+        band = datasets[i].GetRasterBand(1)
+        data = conversion[band.ReadAsArray()]
+        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
+        data[mask] = no_data_value
+        # write
+        permeability.GetRasterBand(1).WriteArray(data)
+        return permeability
 
     def calculate(self, datasets):
         """ Return dictionary of output datasets. """
@@ -770,6 +955,8 @@ def extract(preparation):
             block = iterator.next()
         except StopIteration:
             block = None
+            if not blocks:
+                break
 
         if block:
             # remember block
@@ -827,9 +1014,6 @@ def extract(preparation):
             del blocks[serial]
             count += 1
             gdal.TermProgress_nocb(count / total)
-
-        if not blocks:
-            break
 
     # Signal the end for the processes
     for element in [None] * processes:
@@ -903,6 +1087,12 @@ def get_parser():
     parser.add_argument('-p', '--projection',
                         default='epsg:28992',
                         help='Spatial reference system for output file.')
+    parser.add_argument('-tl', '--landuse',
+                        default=DEFAULT_CSV_LANDUSE,
+                        help='Path to landuse csv.')
+    parser.add_argument('-ts', '--soil',
+                        default=DEFAULT_CSV_SOIL,
+                        help='Path to soil csv.')
     return parser
 
 
