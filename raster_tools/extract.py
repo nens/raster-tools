@@ -151,9 +151,11 @@ class ThreeDi(Operation):
         max_infil = [None] * 256
         with open(path) as soil_file:
             reader = csv.DictReader(soil_file, delimiter=b';')
-            reader.next()  # skip second line
             for record in reader:
-                code = int(record['Code'])
+                try:
+                    code = int(record['Code'])
+                except ValueError:
+                    continue
                 # intrinsic permeability
                 field = 'Intrinsic_permeability'
                 try:
@@ -183,9 +185,11 @@ class ThreeDi(Operation):
         permeability = [None] * 256
         with open(path) as landuse_file:
             reader = csv.DictReader(landuse_file, delimiter=b';')
-            reader.next()  # skip second line
             for record in reader:
-                code = int(record['Code'])
+                try:
+                    code = int(record['Code'])
+                except ValueError:
+                    continue
                 # friction
                 field = 'Friction'
                 try:
