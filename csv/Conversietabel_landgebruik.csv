@@ -1,0 +1,63 @@
+Code;Landuse;Friction;Permeability;Interception;Crop_type
+Landuse code - Integer;Landuse - 1-99 - String;;Ratio pervious/impervious;Maximum interception thickness;Crop types for evaporation calculation
+;Landuse NenS;Manning;;;
+;-;[s/m1/3];-;[cm/d];-
+;1 - 99;10 - 100;0 - 1;0 - 20;1 - 16
+Integer;String;Double;Double;Double;Integer
+;;;;;
+1;Overig/onbekend;0.034;1;10;8
+2;Woonfunctie;0.058;0;2.5;8
+3;Celfunctie;0.058;0;2.5;8
+4;Industriefunctie;0.058;0;2.5;8
+5;Kantoorfunctie;0.058;0;2.5;8
+6;Winkelfunctie;0.058;0;2.5;8
+7;Kassen;0.058;0;2.5;8
+8;Logiesfunctie;0.058;0;2.5;8
+9;Bijeenkomstfunctie;0.058;0;2.5;8
+10;Sportfunctie;0.058;0;2.5;8
+11;Onderwijsfunctie;0.058;0;2.5;8
+12;Gezondheidszorgfunctie;0.058;0;2.5;8
+13;Overig kleiner dan 50 m2 (schuurtjes);0.058;0;2.5;8
+14;Overig groter dan 50 m2 (bedrijfspanden);0.058;0;2.5;8
+21;Water;0.026;1;0;8
+22;Primaire wegen;0.039;0;2.5;8
+23;Secundaire wegen;0.039;0.5;2.5;8
+24;Tertiaire wegen;0.039;0.5;2.5;8
+25;Bos/Natuur;0.058;1;5;13
+26;Bebouwd gebied;0.058;0;2.5;8
+27;Boomgaard;0.058;1;5;9
+28;Fruitkwekerij;0.058;1;5;9
+29;Begraafplaats;0.058;0.9;2.5;8
+30;Agrarisch Gras;0.03;1;13;1
+31;Overig gras;0.03;1;13;1
+32;Spoorbaanlichaam;0.058;1;2.5;8
+39;Bermen en taluds;0.03;1;13;1
+41;Agrarisch Gras;0.03;1;13;1
+42;Mais;0.034;1;2.5;2
+43;Aardappelen;0.034;1;2.5;3
+44;Bieten;0.034;1;2.5;4
+45;Granen;0.034;1;2.5;5
+46;Overige akkerbouw;0.034;1;2.5;6
+47;Overige akkerbouw;0.034;1;2.5;6
+48;Glastuinbouwterrein;0.058;1;5;8
+49;Boomgaard;0.058;1;2.5;9
+50;Bloembollen;0.034;1;2.5;10
+52;Gras overig;0.03;1;13;1
+53;Bos/Natuur;0.058;1;10;13
+56;Water;0.026;1;0;8
+58;Bebouwd gebied;0.058;0;2.5;8
+61;Spoorweg terrein;0.058;1;2.5;8
+62;Primaire wegen;0.039;0;2.5;8
+63;Woongebied;0.058;1;2.5;8
+64;Winkelgebied;0.058;0.5;2.5;8
+65;Bedrijventerrein;0.058;1;2.5;8
+66;Sportterrein;0.058;1;2.5;8
+67;Volkstuinen;0.034;1;10;14
+68;Recreatief terrein;0.058;1;2.5;8
+69;Glastuinbouwterrein;0.058;1;5;8
+70;Bos/Natuur;0.058;1;10;13
+71;Begraafplaats;0.058;0.9;2.5;8
+72;Zee;0.026;1;0;8
+73;Zoet water;0.026;1;0;8
+98;Erf;0.039;0;2.5;8
+99;Overig/Geen landgebruik;0.034;1;10;8

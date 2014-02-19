@@ -1,0 +1,28 @@
+Title;Code;Soiltype;Max_infiltration_rate;Hydraulic_conductivity
+Description;Soil code;Soiltype;Maximum infiltration rate;The darcy k-value
+Source;PAWN classification;PAWN classification;;Smedema and Rycroft (1983)
+Unit;-;-;[mm/d];[m/d]
+Range;1 - 21;-;0 - 1200;0.00001 - 250
+Type;Integer;String;Integer;Double
+;;;;
+;1;Veengrond met veraarde bovengrond';480;0.1
+;2;Veengrond met veraarde bovengrond, zand';480;0.1
+;3;Veengrond met kleidek';120;0.01
+;4;Veengrond met kleidek op zand';480;0.01
+;5;Veengrond met zanddek op zand';480;0.01
+;6;Veengrond op ongerijpte klei';120;0.01
+;7;Stuifzand';480;5
+;8;Podzol (Leemarm, fijn zand)';480;3
+;9;Podzol (zwak lemig, fijn zand)';480;3
+;10;Podzol (zwak lemig, fijn zand op grof zand)';480;3
+;11;Podzol (lemig keileem)';120;1
+;12;Enkeerd (zwak lemig, fijn zand)';120;3
+;13;Beekeerd (lemig fijn zand)';120;1
+;14;Podzol (grof zand)';480;50
+;15;Zavel';480;2
+;16;Lichte klei';120;0.1
+;17;Zware klei';120;0.002
+;18;Klei op veen';120;0.01
+;19;Klei op zand';120;0.1
+;20;Klei op grof zand';120;0.1
+;21;Leem';120;0.5
