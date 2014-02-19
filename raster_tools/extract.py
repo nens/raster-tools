@@ -264,7 +264,7 @@ class ThreeDi(Operation):
                             data_type=self.data_type[o],
                             no_data_value=no_data_value)
         # read and convert
-        conversion = np.array([x if x else no_data_value
+        conversion = np.array([no_data_value if x is None else x
                                for x in self.landuse_tables['crop_type']])
         band = datasets[i].GetRasterBand(1)
         data = conversion[band.ReadAsArray()]
@@ -284,7 +284,7 @@ class ThreeDi(Operation):
                                 data_type=self.data_type[o],
                                 no_data_value=no_data_value)
         # read and convert
-        conversion = np.array([x if x else no_data_value
+        conversion = np.array([no_data_value if x is None else x
                                for x in self.landuse_tables['friction']])
         band = datasets[i].GetRasterBand(1)
         data = conversion[band.ReadAsArray()]
@@ -323,14 +323,14 @@ class ThreeDi(Operation):
                                     data_type=self.data_type[o],
                                     no_data_value=no_data_value)
         # read and convert soil
-        s_conv = np.array([x if x else no_data_value
+        s_conv = np.array([no_data_value if x is None else x
                            for x in self.soil_tables['max_infil']])
         s_band = datasets[s].GetRasterBand(1)
         s_data = s_conv[s_band.ReadAsArray()]
         s_mask = ~s_band.GetMaskBand().ReadAsArray().astype('b1')
         s_data[s_mask] = no_data_value
         # read and convert landuse
-        l_conv = np.array([x if x else no_data_value
+        l_conv = np.array([no_data_value if x is None else x
                            for x in self.landuse_tables['permeability']])
         l_band = datasets[l].GetRasterBand(1)
         l_data = l_conv[l_band.ReadAsArray()]
@@ -356,7 +356,7 @@ class ThreeDi(Operation):
                                     data_type=self.data_type[o],
                                     no_data_value=no_data_value)
         # read and convert
-        conversion = np.array([x if x else no_data_value
+        conversion = np.array([no_data_value if x is None else x
                                for x in self.landuse_tables['interception']])
         band = datasets[i].GetRasterBand(1)
         data = conversion[band.ReadAsArray()]
@@ -376,7 +376,7 @@ class ThreeDi(Operation):
                                     data_type=self.data_type[o],
                                     no_data_value=no_data_value)
         # read and convert
-        conversion = np.array([x if x else no_data_value
+        conversion = np.array([no_data_value if x is None else x
                                for x in self.soil_tables['intr_perm']])
         band = datasets[i].GetRasterBand(1)
         data = conversion[band.ReadAsArray()]
