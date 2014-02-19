@@ -783,11 +783,15 @@ class Target(object):
 
             # add the keys for the chunks
             geometry = feature.geometry().Buffer(-0.01 * min(self.cellsize))
+            geometry.AssignSpatialReference(self.blocks[0].GetSpatialRef())
             chunks = []
             for name in self.chunks:
                 layer = self.chunks[name][0]
                 clone = geometry.Clone()
-                clone.TransformTo(layer.GetSpatialRef())
+                clone.Transform(osr.CoordinateTransformation(
+                    clone.GetSpatialReference(),
+                    layer.GetSpatialRef(),
+                ))
                 layer.SetSpatialFilter(clone)
                 chunks.extend([Key(name=name,
                                    serial=c[b'serial']) for c in layer])
