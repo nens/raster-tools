@@ -3,7 +3,7 @@ Landuse code - Integer;Landuse - 1-99 - String;;Ratio pervious/impervious;Maximu
 ;Landuse NenS;Manning;;;
 ;-;[s/m1/3];-;[cm/d];-
 ;1 - 99;10 - 100;0 - 1;0 - 20;1 - 16
-Integer;String;Double;Double;Double;Integer
+;String;Integer;Double;Double;Integer
 ;;;;;
 1;Overig/onbekend;0.034;1;10;8
 2;Woonfunctie;0.058;0;2.5;8
