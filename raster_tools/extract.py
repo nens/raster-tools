@@ -31,18 +31,16 @@ ogr.UseExceptions()
 osr.UseExceptions()
 operations = {}
 
-VERSION = 3
-GITHUB_URL = ('https://raw.github.com/nens'
-              '/raster-tools/master/raster_tools/extract.py')
+# Version management for outdated warning
+VERSION = 4
+
+GITHUB_URL = ('https://raw.github.com/nens/'
+              'raster-tools/master/raster_tools/extract.py')
 
 DRIVER_OGR_MEMORY = ogr.GetDriverByName(b'Memory')
 DRIVER_OGR_SHAPE = ogr.GetDriverByName(b'ESRI Shapefile')
 DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
 DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
-
-DEFAULT_CSV_LANDUSE = 'Conversietabel_landgebruik.csv'
-DEFAULT_CSV_SOIL = 'Conversietabel_bodem.csv'
-
 
 POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 
@@ -76,8 +74,8 @@ class ThreeDi(Operation):
     O_BATHYMETRY = 'bathymetry'
     O_INFILTRATION = 'infiltration'
     O_INTERCEPTION = 'interception'
-    O_INTRINSIC_PERMEABILITY_X = 'intrinsic_permeability_x'
-    O_INTRINSIC_PERMEABILITY_Y = 'intrinsic_permeability_y'
+    O_HYDRAULIC_CONDUCTIVITY_X = 'hydraulic_conductivity_x'
+    O_HYDRAULIC_CONDUCTIVITY_Y = 'hydraulic_conductivity_y'
 
     no_data_value = {
         O_SOIL: -9999,
@@ -86,8 +84,8 @@ class ThreeDi(Operation):
         O_BATHYMETRY: -9999.,
         O_INFILTRATION: -9999.,
         O_INTERCEPTION: -9999.,
-        O_INTRINSIC_PERMEABILITY_X: -9999.,
-        O_INTRINSIC_PERMEABILITY_Y: -9999.,
+        O_HYDRAULIC_CONDUCTIVITY_X: -9999.,
+        O_HYDRAULIC_CONDUCTIVITY_Y: -9999.,
     }
 
     data_type = {
@@ -97,8 +95,8 @@ class ThreeDi(Operation):
         O_BATHYMETRY: gdal.GDT_Float32,
         O_INFILTRATION: gdal.GDT_Float32,
         O_INTERCEPTION: gdal.GDT_Float32,
-        O_INTRINSIC_PERMEABILITY_X: gdal.GDT_Float32,
-        O_INTRINSIC_PERMEABILITY_Y: gdal.GDT_Float32,
+        O_HYDRAULIC_CONDUCTIVITY_X: gdal.GDT_Float32,
+        O_HYDRAULIC_CONDUCTIVITY_Y: gdal.GDT_Float32,
     }
 
     outputs = {
@@ -108,14 +106,14 @@ class ThreeDi(Operation):
         O_BATHYMETRY: [I_BATHYMETRY],
         O_INFILTRATION: [I_SOIL, I_LANDUSE],
         O_INTERCEPTION: [I_LANDUSE],
-        O_INTRINSIC_PERMEABILITY_X: [I_SOIL],
-        O_INTRINSIC_PERMEABILITY_Y: [I_SOIL],
+        O_HYDRAULIC_CONDUCTIVITY_X: [I_SOIL],
+        O_HYDRAULIC_CONDUCTIVITY_Y: [I_SOIL],
     }
 
     required = [y for x in outputs.values() for y in x]
 
     def __init__(self, floor, landuse, soil):
-        """ An init that accepts kwargs. """
+        """ Initialize the operation. """
         self.layers = {
             self.I_BATHYMETRY: dict(layers=','.join([
                 'ahn2:int',
@@ -136,8 +134,8 @@ class ThreeDi(Operation):
             self.O_BATHYMETRY: self._calculate_bathymetry,
             self.O_INFILTRATION: self._calculate_infiltration,
             self.O_INTERCEPTION: self._calculate_interception,
-            self.O_INTRINSIC_PERMEABILITY_X: self._calculate_intr_perm,
-            self.O_INTRINSIC_PERMEABILITY_Y: self._calculate_intr_perm,
+            self.O_HYDRAULIC_CONDUCTIVITY_X: self._calculate_intr_perm,
+            self.O_HYDRAULIC_CONDUCTIVITY_Y: self._calculate_intr_perm,
         }
 
         self.soil_tables = self._get_soil_tables(soil)
@@ -147,8 +145,16 @@ class ThreeDi(Operation):
         """
         Return conversion tables for landuse.
         """
+        # check
+        if not path:
+            print('Operation {} requires a soil table.'.format(
+                self.name,
+            ))
+            exit()
+        # init
         intr_perm = [None] * 256
         max_infil = [None] * 256
+        # fill
         with open(path) as soil_file:
             reader = csv.DictReader(soil_file, delimiter=b';')
             for record in reader:
@@ -157,7 +163,7 @@ class ThreeDi(Operation):
                 except ValueError:
                     continue
                 # intrinsic permeability
-                field = 'Intrinsic_permeability'
+                field = 'Hydraulic_conductivity'
                 try:
                     intr_perm[code] = float(record[field].replace(',', '.'))
                 except ValueError:
@@ -179,10 +185,18 @@ class ThreeDi(Operation):
         """
         Return conversion tables for landuse.
         """
+        # check
+        if not path:
+            print('Operation {} requires a landuse table.'.format(
+                self.name,
+            ))
+            exit()
+        # init
         friction = [None] * 256
         crop_type = [None] * 256
         interception = [None] * 256
         permeability = [None] * 256
+        # fill
         with open(path) as landuse_file:
             reader = csv.DictReader(landuse_file, delimiter=b';')
             for record in reader:
@@ -360,7 +374,7 @@ class ThreeDi(Operation):
     def _calculate_intr_perm(self, datasets):
         # short keys
         i = self.I_SOIL
-        o = self.O_INTRINSIC_PERMEABILITY_X
+        o = self.O_HYDRAULIC_CONDUCTIVITY_X
         # create
         no_data_value = self.no_data_value[o]
         permeability = make_dataset(template=datasets[i],
@@ -1062,8 +1076,10 @@ def command(shape_path, target_dir, **kwargs):
 def get_parser():
     """ Return argument parser. """
     parser = argparse.ArgumentParser(
-        description="",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description=(
+            'For 3di, the conversion tables are downloaded from the '
+            'repository by default.'
+        ),
     )
     # main
     parser.add_argument('shape_path',
@@ -1075,27 +1091,25 @@ def get_parser():
                         default='https://raster.lizard.net')
     parser.add_argument('-o', '--operation',
                         default='3di',
-                        help='Operation')
+                        help='Type of output to be created. default: 3di')
     parser.add_argument('-a', '--attribute',
                         default='model',
-                        help='Attribute for tif filename.')
+                        help='Attribute for tif filename. Default: model')
     parser.add_argument('-f', '--floor',
                         default=0.15,
                         type=float,
-                        help='Floor height above ground level')
+                        help='Floor height (3di). Default: 0.15')
     parser.add_argument('-c', '--cellsize',
                         default=[0.5, 0.5],
                         type=float,
                         nargs=2,
-                        help='Cellsize for output file')
+                        help='Cellsize for output file. Default: 0.5 0.5')
     parser.add_argument('-p', '--projection',
                         default='epsg:28992',
-                        help='Spatial reference system for output file.')
+                        help='Output srs. Default: epsg:28992.')
     parser.add_argument('-tl', '--landuse',
-                        default=DEFAULT_CSV_LANDUSE,
                         help='Path to landuse csv.')
     parser.add_argument('-ts', '--soil',
-                        default=DEFAULT_CSV_SOIL,
                         help='Path to soil csv.')
     return parser
 
