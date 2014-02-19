@@ -32,7 +32,7 @@ osr.UseExceptions()
 operations = {}
 
 # Version management for outdated warning
-VERSION = 4
+VERSION = 5
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -45,11 +45,6 @@ DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
 POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 
 Key = collections.namedtuple('Key', ['name', 'serial'])
-
-"""
-TODO
-- Fix projection when not epsg:28992
-"""
 
 
 class Operation(object):
@@ -406,6 +401,8 @@ class Preparation(object):
         self.server = kwargs.pop('server')
         self.cellsize = kwargs.pop('cellsize')
         self.projection = kwargs.pop('projection')
+        self.wkt = osr.GetUserInputAsWKT(str(self.projection))
+        self.sr = osr.SpatialReference(self.wkt)
         self.operation = operations[kwargs.pop('operation')](**kwargs)
         self.paths = self._make_paths(path, layer, feature, attribute)
         self.rpath = self.paths.pop('rpath')
@@ -464,11 +461,7 @@ class Preparation(object):
         geometry = feature.geometry()
         sr = geometry.GetSpatialReference()
         if sr:
-            wkt = osr.GetUserInputAsWKT(str(self.projection))
-            ct = osr.CoordinateTransformation(
-                sr, osr.SpatialReference(wkt),
-            )
-            geometry.Transform(ct)
+            geometry.Transform(osr.CoordinateTransformation(sr, self.sr))
         return geometry
 
     def _create_dataset(self, name, path):
@@ -487,7 +480,7 @@ class Preparation(object):
         width = -int((p - x2) // a)
         height = -int((q - y1) // d)
         geo_transform = p, a, b, q, c, d
-        projection = osr.GetUserInputAsWKT(str(self.projection))
+        projection = self.wkt
 
         # create
         dataset = DRIVER_GDAL_GTIFF.Create(
@@ -517,8 +510,15 @@ class Preparation(object):
 
         Ogr thinks contained polygons are not overlapping.
         """
-        overlap = self.geometry.Overlaps(polygon)
-        contain = self.geometry.Contains(polygon)
+        # clone and transform
+        clone = polygon.Clone()
+        clone.Transform(osr.CoordinateTransformation(
+            clone.GetSpatialReference(),
+            self.geometry.GetSpatialReference(),
+        ))
+        # check
+        overlap = self.geometry.Overlaps(clone)
+        contain = self.geometry.Contains(clone)
         return overlap or contain
 
     def _get_geoms(self, x1, y1, x2, y2):
@@ -530,8 +530,7 @@ class Preparation(object):
         """
         # create datasource
         blocks = DRIVER_OGR_MEMORY.CreateDataSource('')
-        wkt = osr.GetUserInputAsWKT(str(self.projection))
-        layer = blocks.CreateLayer(b'blocks', osr.SpatialReference(wkt))
+        layer = blocks.CreateLayer(b'blocks', self.sr)
         layer.CreateField(ogr.FieldDefn(b'serial', ogr.OFTInteger))
         layer.CreateField(ogr.FieldDefn(b'p1', ogr.OFTInteger))
         layer.CreateField(ogr.FieldDefn(b'q1', ogr.OFTInteger))
@@ -559,6 +558,7 @@ class Preparation(object):
                 x1, y2 = p + a * p1 + b * q1, q + c * p1 + d * q1
                 x2, y1 = p + a * p2 + b * q2, q + c * p2 + d * q2
                 polygon = make_polygon(x1, y1, x2, y2)
+                polygon.AssignSpatialReference(self.sr)
                 if not self._overlaps(polygon):
                     continue
                 intersection = self.geometry.Intersection(polygon)
@@ -617,10 +617,9 @@ class Preparation(object):
 
             # create datasource
             wkt = osr.GetUserInputAsWKT(str(strategy['projection']))
+            sr = osr.SpatialReference(wkt)
             chunks[name] = DRIVER_OGR_MEMORY.CreateDataSource('')
-            layer = chunks[name].CreateLayer(
-                b'chunks', osr.SpatialReference(wkt),
-            )
+            layer = chunks[name].CreateLayer(b'chunks', sr)
             layer.CreateField(ogr.FieldDefn(b'serial', ogr.OFTInteger))
             layer.CreateField(ogr.FieldDefn(b'width', ogr.OFTInteger))
             layer.CreateField(ogr.FieldDefn(b'height', ogr.OFTInteger))
@@ -635,6 +634,7 @@ class Preparation(object):
                     x1, y2 = p + a * p1 + b * q1, q + c * p1 + d * q1
                     x2, y1 = p + a * p2 + b * q2, q + c * p2 + d * q2
                     polygon = make_polygon(x1, y1, x2, y2)
+                    polygon.AssignSpatialReference(sr)
                     if not self._overlaps(polygon):
                         continue
 
@@ -782,13 +782,13 @@ class Target(object):
         for feature in blocks:
 
             # add the keys for the chunks
-            geometry = feature.geometry()
+            geometry = feature.geometry().Buffer(-0.01 * min(self.cellsize))
             chunks = []
             for name in self.chunks:
                 layer = self.chunks[name][0]
-                layer.SetSpatialFilter(
-                    geometry.Buffer(-0.01 * min(self.cellsize)),
-                )
+                clone = geometry.Clone()
+                clone.TransformTo(layer.GetSpatialRef())
+                layer.SetSpatialFilter(clone)
                 chunks.extend([Key(name=name,
                                    serial=c[b'serial']) for c in layer])
                 layer.SetSpatialFilter(None)
