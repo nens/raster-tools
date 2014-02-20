@@ -96,19 +96,26 @@ def command(index_path, source_path, target_dir, attribute):
     # investigate sources
     #source_datasource = get_memory_copy(source_path)
     source_datasource = ogr.Open(source_path)
+    if source_datasource.GetDriver().GetName() == 'ESRI Shapefile':
+        # seems 1.9.1 does not sort, while 1.9.2 does
+        ordered_source_datasource = sorted(source_datasource,
+                                           key=lambda l: l.GetName())
+    else:
+        ordered_source_datasource = source_datasource
+
     source_field_names = []
-    for source_layer in source_datasource:
+    for source_layer in ordered_source_datasource:
         # check attribute for all source layers
         source_field_names.append(
             get_field_name(layer=source_layer, attribute=attribute)
         )
     ogr_type = get_ogr_type(
-        datasource=source_datasource, field_names=source_field_names,
+        datasource=ordered_source_datasource, field_names=source_field_names,
     )
 
     # Create indexes for shapefiles if necessary
     if source_datasource.GetDriver().GetName() == 'ESRI Shapefile':
-        for source_layer in source_datasource:
+        for source_layer in ordered_source_datasource:
             source_layer_name = source_layer.GetName()
             if os.path.isfile(source_path):
                 source_layer_index_path = source_path[-4:] + '.qix'
@@ -144,8 +151,7 @@ def command(index_path, source_path, target_dir, attribute):
         band.Fill(no_data_value)
 
         burned = False
-        for i, source_layer in enumerate(source_datasource):
-            source_layer = source_datasource[i]
+        for i, source_layer in enumerate(ordered_source_datasource):
             source_field_name = source_field_names[i]
             source_layer.SetSpatialFilter(index_geometry)
             if not source_layer.GetFeatureCount():
