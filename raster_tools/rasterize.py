@@ -133,8 +133,6 @@ def command(index_path, source_path, target_dir, attribute):
     # rasterize
     index_datasource = ogr.Open(index_path)
     index_layer = index_datasource[0]
-    x1, x2, y1, y2 = source_layer.GetExtent()
-    index_layer.SetSpatialFilterRect(x1, y1, x2, y2)
     total = index_layer.GetFeatureCount()
     print('Starting rasterize.')
     for count, index_feature in enumerate(index_layer, 1):
