@@ -14,14 +14,16 @@ from osgeo import ogr
 logger = logging.getLogger(__name__)
 
 
+def get_geo_transform(feature):
+    """ Return a feature's geo_transform. """
+    x1, x2, y1, y2 = feature.geometry().GetEnvelope()
+    return x1, 0.5, 0.0, y2, 0.0, -0.5
+
+
 def get_geo_transforms(index_path):
     """
     Return dictionary mapping leaf number to geotransform.
     """
-    def get_geo_transform(feature):
-        """ Return a feature's geo_transform. """
-        x1, x2, y1, y2 = feature.geometry().GetEnvelope()
-        return x1, 0.5, 0.0, y2, 0.0, -0.5
 
     ogr_index_datasource = ogr.Open(index_path)
     ogr_index_layer = ogr_index_datasource[0]
