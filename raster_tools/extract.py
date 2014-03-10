@@ -47,6 +47,10 @@ POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 Key = collections.namedtuple('Key', ['name', 'serial'])
 
 
+class CompleteError(Exception):
+    pass
+
+
 class Operation(object):
     """
     Base class for operations.
@@ -425,7 +429,7 @@ class Preparation(object):
             self.resume = -1
         if self.resume + 1 == self.blocks[0].GetFeatureCount():
             print('Already complete.')
-            exit()
+            raise CompleteError()
         elif self.resume > -1:
             print('Resuming from block {}.'.format(self.resume))
 
@@ -1074,9 +1078,12 @@ def command(shape_path, target_dir, **kwargs):
     datasource = ogr.Open(shape_path)
     for layer in datasource:
         for feature in layer:
-            preparation = Preparation(layer=layer,
-                                      feature=feature,
-                                      path=target_dir, **kwargs)
+            try:
+                preparation = Preparation(layer=layer,
+                                          feature=feature,
+                                          path=target_dir, **kwargs)
+            except CompleteError:
+                continue
             extract(preparation)
 
 

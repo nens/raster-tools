@@ -96,10 +96,12 @@ def create_targets(source):
     layer = datasource[0]
     layer.SetSpatialFilter(polygon)
     wkt = osr.GetUserInputAsWKT(b'epsg:28992')
+    no_data_value = source.GetRasterBand(1).GetNoDataValue()
     for feature in layer:
         target = GDAL_MEM_DRIVER.Create('', 2000, 2500, 1, gdal.GDT_Float32)
         target.SetGeoTransform(utils.get_geo_transform(feature))
         target.SetProjection(osr.GetUserInputAsWKT(b'epsg:28992'))
+        target.GetRasterBand(1).SetNoDataValue(no_data_value)
         gdal.ReprojectImage(source, target, wkt, wkt, 0, 0.0, 0.125)
         yield feature[b'BLADNR'][1:], target
 
