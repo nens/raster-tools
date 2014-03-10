@@ -32,7 +32,7 @@ osr.UseExceptions()
 operations = {}
 
 # Version management for outdated warning
-VERSION = 7
+VERSION = 8
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -66,11 +66,10 @@ class ThreeDi(Operation):
     O_SOIL = 'soil'
     O_CROP = 'crop'
     O_FRICTION = 'friction'
-    O_BATHYMETRY = 'bathymetry'
+    O_BATHYMETRY = 'dem'
     O_INFILTRATION = 'infiltration'
     O_INTERCEPTION = 'interception'
-    O_HYDRAULIC_CONDUCTIVITY_X = 'hydraulic_conductivity_x'
-    O_HYDRAULIC_CONDUCTIVITY_Y = 'hydraulic_conductivity_y'
+    O_HYDRAULIC_CONDUCTIVITY = 'hydraulic_conductivity'
 
     no_data_value = {
         O_SOIL: -9999,
@@ -79,19 +78,17 @@ class ThreeDi(Operation):
         O_BATHYMETRY: -9999.,
         O_INFILTRATION: -9999.,
         O_INTERCEPTION: -9999.,
-        O_HYDRAULIC_CONDUCTIVITY_X: -9999.,
-        O_HYDRAULIC_CONDUCTIVITY_Y: -9999.,
+        O_HYDRAULIC_CONDUCTIVITY: -9999.,
     }
 
     data_type = {
-        O_SOIL: gdal.GDT_Int32,
-        O_CROP: gdal.GDT_Int32,
+        O_SOIL: gdal.GDT_Float32,
+        O_CROP: gdal.GDT_Float32,
         O_FRICTION: gdal.GDT_Float32,
         O_BATHYMETRY: gdal.GDT_Float32,
         O_INFILTRATION: gdal.GDT_Float32,
         O_INTERCEPTION: gdal.GDT_Float32,
-        O_HYDRAULIC_CONDUCTIVITY_X: gdal.GDT_Float32,
-        O_HYDRAULIC_CONDUCTIVITY_Y: gdal.GDT_Float32,
+        O_HYDRAULIC_CONDUCTIVITY: gdal.GDT_Float32,
     }
 
     outputs = {
@@ -101,8 +98,7 @@ class ThreeDi(Operation):
         O_BATHYMETRY: [I_BATHYMETRY],
         O_INFILTRATION: [I_SOIL, I_LANDUSE],
         O_INTERCEPTION: [I_LANDUSE],
-        O_HYDRAULIC_CONDUCTIVITY_X: [I_SOIL],
-        O_HYDRAULIC_CONDUCTIVITY_Y: [I_SOIL],
+        O_HYDRAULIC_CONDUCTIVITY: [I_SOIL],
     }
 
     required = [y for x in outputs.values() for y in x]
@@ -129,8 +125,7 @@ class ThreeDi(Operation):
             self.O_BATHYMETRY: self._calculate_bathymetry,
             self.O_INFILTRATION: self._calculate_infiltration,
             self.O_INTERCEPTION: self._calculate_interception,
-            self.O_HYDRAULIC_CONDUCTIVITY_X: self._calculate_intr_perm,
-            self.O_HYDRAULIC_CONDUCTIVITY_Y: self._calculate_intr_perm,
+            self.O_HYDRAULIC_CONDUCTIVITY: self._calculate_hydr_cond,
         }
 
         self.soil_tables = self._get_soil_tables(soil)
@@ -366,10 +361,10 @@ class ThreeDi(Operation):
         interception.GetRasterBand(1).WriteArray(data)
         return interception
 
-    def _calculate_intr_perm(self, datasets):
+    def _calculate_hydr_cond(self, datasets):
         # short keys
         i = self.I_SOIL
-        o = self.O_HYDRAULIC_CONDUCTIVITY_X
+        o = self.O_HYDRAULIC_CONDUCTIVITY
         # create
         no_data_value = self.no_data_value[o]
         permeability = make_dataset(template=datasets[i],
@@ -460,7 +455,7 @@ class Preparation(object):
         print('Creating model: {}'.format(model))
         root = os.path.join(path, model)
         paths = dict(rpath=os.path.join(root, 'resume.txt'))
-        paths.update({n: os.path.join(root, n + '.tif')
+        paths.update({n: os.path.join(root, '{}_{}.tif'.format(n, model))
                       for n in self.operation.outputs})
         return paths
 
