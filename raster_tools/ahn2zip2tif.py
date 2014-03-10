@@ -102,6 +102,7 @@ def create_targets(source):
         target.SetGeoTransform(utils.get_geo_transform(feature))
         target.SetProjection(osr.GetUserInputAsWKT(b'epsg:28992'))
         target.GetRasterBand(1).SetNoDataValue(no_data_value)
+        target.GetRasterBand(1).Fill(no_data_value)
         gdal.ReprojectImage(source, target, wkt, wkt, 0, 0.0, 0.125)
         yield feature[b'BLADNR'][1:], target
 
