@@ -15,9 +15,14 @@ logger = logging.getLogger(__name__)
 
 
 def get_geo_transform(feature):
-    """ Return a feature's geo_transform. """
+    """ 
+    Return a feature's geo_transform.
+
+    Specialized function for ahn2 index. The rounding is because the index
+    geometries have small deviations, but at most about a micrometer.
+    """
     x1, x2, y1, y2 = feature.geometry().GetEnvelope()
-    return x1, 0.5, 0.0, y2, 0.0, -0.5
+    return round(x1), 0.5, 0.0, round(y2), 0.0, -0.5
 
 
 def get_geo_transforms(index_path):
