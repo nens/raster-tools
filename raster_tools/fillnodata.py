@@ -71,6 +71,13 @@ def interpolate(source_path, target_dir):
         dtype=gdal_array.flip_code(source_data_type),
     )
     source.ReadAsArray(buf_obj=target_array)
+
+    if np.equal(target_array, no_data_value).all():
+        logger.info(
+            '{} contains only nodata.'.format(os.path.basename(source_path)),
+        )
+        return 1
+
     target = utils.array2dataset(target_array)
     target.SetProjection(source.GetProjection())
     target.SetGeoTransform(source.GetGeoTransform())
