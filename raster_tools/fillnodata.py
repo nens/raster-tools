@@ -136,5 +136,5 @@ def command(target_dir, source_paths, processes):
 
 def main():
     """ Call command with args from parser. """
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO)
+    logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
     return command(**vars(get_parser().parse_args()))

@@ -42,5 +42,6 @@ setup(name='raster-tools',
               'ahn2zip2tif = raster_tools.ahn2zip2tif:main',
               'rasterize = raster_tools.rasterize:main',
               'extract = raster_tools.extract:main',
+              'watershed = raster_tools.watershed:main',
           ]},
       )
