@@ -151,6 +151,32 @@ def command(index_path, source_path, target_dir, attribute):
         burned = False
         for i, source_layer in enumerate(ordered_source_datasource):
             source_field_name = source_field_names[i]
+            # start experiment
+            import psycopg2
+            connection = psycopg2.connect(database='vector')
+            cursor = connection.cursor()
+            cursor.execute(
+                ("select ST_AsBinary(geom), {} from data_verwerkt.top10_gras "
+                 "where ST_GeometryFromText('{}') && geom").format(
+                    source_field_name, index_geometry.ExportToWkt(),
+                ),
+            )
+            temp_data_source = DRIVER_OGR_MEMORY.CreateDataSource('')
+            temp_layer = temp_data_source.CreateLayer(
+                b'', source_layer.GetSpatialRef(),
+            )
+            temp_layer.CreateField(ogr.FieldDefn(
+                source_field_name, ogr.OFTInteger,
+            ))
+            temp_layer_defn = temp_layer.GetLayerDefn()
+            for wkb, attr in cursor:
+                temp_feature = ogr.Feature(temp_layer_defn)
+                temp_feature[source_field_name] = attr
+                temp_feature.SetGeometry(ogr.CreateGeometryFromWkb(str(wkb)))
+                temp_layer.CreateFeature(temp_feature)
+            source_layer = temp_layer
+            # stop experiment
+            source_field_name = source_field_names[i]
             source_layer.SetSpatialFilter(index_geometry)
             if not source_layer.GetFeatureCount():
                 continue
