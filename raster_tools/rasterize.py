@@ -176,7 +176,6 @@ def command(index_path, source_path, target_dir, attribute):
                 temp_layer.CreateFeature(temp_feature)
             source_layer = temp_layer
             # stop experiment
-            source_field_name = source_field_names[i]
             source_layer.SetSpatialFilter(index_geometry)
             if not source_layer.GetFeatureCount():
                 continue
