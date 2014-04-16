@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
+"""
+Rasterize according to some index file from data in an ogr source to
+raster files in AHN2 layout. Because of performance problems with the
+ogr postgis driver, this module features its own datasource for postgis
+connection strings, implemented using psycopg2.
+"""
 
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -14,6 +20,7 @@ import sys
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
+import psycopg2
 
 DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
 DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
@@ -28,6 +35,8 @@ DATA_TYPE = {
     'Real': gdal.GDT_Float32,
     'Integer': gdal.GDT_Byte,
 }
+
+POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 
 logger = logging.getLogger(__name__)
 gdal.UseExceptions()
@@ -71,19 +80,19 @@ def get_field_name(layer, attribute):
     exit()
 
 
-def get_ogr_type(datasource, field_names):
+def get_ogr_type(data_source, field_names):
     """
     Return the raster datatype corresponding to the field.
     """
     ogr_types = []
-    for i, layer in enumerate(datasource):
+    for i, layer in enumerate(data_source):
         layer_defn = layer.GetLayerDefn()
         index = layer_defn.GetFieldIndex(field_names[i])
         field_defn = layer_defn.GetFieldDefn(index)
         ogr_types.append(field_defn.GetTypeName())
     if len(set(ogr_types)) > 1:
         print('Incompatible datatypes:')
-        for i, layer in enumerate(datasource):
+        for i, layer in enumerate(data_source):
             print('{:<20} {:<10} {:<7}'.format(
                 layer.GetName(), field_names[i], ogr_types[i],
             ))
@@ -92,30 +101,33 @@ def get_ogr_type(datasource, field_names):
 
 
 def command(index_path, source_path, target_dir, attribute):
-    """ Do something spectacular. """
+    """ Rasterize some postgis tables. """
     # investigate sources
-    #source_datasource = get_memory_copy(source_path)
-    source_datasource = ogr.Open(source_path)
-    if source_datasource.GetDriver().GetName() == 'ESRI Shapefile':
-        # seems 1.9.1 does not sort, while 1.9.2 does
-        ordered_source_datasource = sorted(source_datasource,
-                                           key=lambda l: l.GetName())
+    if source_path.lower().startswith('pg:'):
+        source_data_source = PGDataSource(source_path)
     else:
-        ordered_source_datasource = source_datasource
+        source_data_source = ogr.Open(source_path)
+    if source_data_source.GetDriver().GetName() == 'ESRI Shapefile':
+        # seems 1.9.1 does not sort, while 1.9.2 does
+        ordered_source_data_source = sorted(source_data_source,
+                                            key=lambda l: l.GetName())
+    else:
+        ordered_source_data_source = source_data_source
 
     source_field_names = []
-    for source_layer in ordered_source_datasource:
+    for source_layer in ordered_source_data_source:
         # check attribute for all source layers
         source_field_names.append(
             get_field_name(layer=source_layer, attribute=attribute)
         )
     ogr_type = get_ogr_type(
-        datasource=ordered_source_datasource, field_names=source_field_names,
+        data_source=ordered_source_data_source,
+        field_names=source_field_names,
     )
 
     # Create indexes for shapefiles if necessary
-    if source_datasource.GetDriver().GetName() == 'ESRI Shapefile':
-        for source_layer in ordered_source_datasource:
+    if source_data_source.GetDriver().GetName() == 'ESRI Shapefile':
+        for source_layer in ordered_source_data_source:
             source_layer_name = source_layer.GetName()
             if os.path.isfile(source_path):
                 source_layer_index_path = source_path[-4:] + '.qix'
@@ -126,13 +138,13 @@ def command(index_path, source_path, target_dir, attribute):
             if os.path.exists(source_layer_index_path):
                     continue
             print('Creating spatial index on {}.'.format(source_layer_name))
-            source_datasource.ExecuteSQL(
+            source_data_source.ExecuteSQL(
                 b'CREATE SPATIAL INDEX ON {}'.format(source_layer_name),
             )
 
     # rasterize
-    index_datasource = ogr.Open(index_path)
-    index_layer = index_datasource[0]
+    index_data_source = ogr.Open(index_path)
+    index_layer = index_data_source[0]
     total = index_layer.GetFeatureCount()
     print('Starting rasterize.')
     for count, index_feature in enumerate(index_layer, 1):
@@ -149,36 +161,18 @@ def command(index_path, source_path, target_dir, attribute):
         band.Fill(no_data_value)
 
         burned = False
-        for i, source_layer in enumerate(ordered_source_datasource):
+        for i, source_layer in enumerate(ordered_source_data_source):
             source_field_name = source_field_names[i]
-            # start experiment
-            import psycopg2
-            connection = psycopg2.connect(database='vector')
-            cursor = connection.cursor()
-            cursor.execute(
-                ("select ST_AsBinary(geom), {} from data_verwerkt.top10_gras "
-                 "where ST_GeometryFromText('{}') && geom").format(
-                    source_field_name, index_geometry.ExportToWkt(),
-                ),
-            )
-            temp_data_source = DRIVER_OGR_MEMORY.CreateDataSource('')
-            temp_layer = temp_data_source.CreateLayer(
-                b'', source_layer.GetSpatialRef(),
-            )
-            temp_layer.CreateField(ogr.FieldDefn(
-                source_field_name, ogr.OFTInteger,
-            ))
-            temp_layer_defn = temp_layer.GetLayerDefn()
-            for wkb, attr in cursor:
-                temp_feature = ogr.Feature(temp_layer_defn)
-                temp_feature[source_field_name] = attr
-                temp_feature.SetGeometry(ogr.CreateGeometryFromWkb(str(wkb)))
-                temp_layer.CreateFeature(temp_feature)
-            source_layer = temp_layer
-            # stop experiment
             source_layer.SetSpatialFilter(index_geometry)
             if not source_layer.GetFeatureCount():
                 continue
+
+            # create ogr layer if necessary
+            if hasattr(source_layer, 'as_ogr_layer'):
+                temp_data_source, source_layer = source_layer.as_ogr_layer(
+                    name=source_field_name,
+                    sr=index_layer.GetSpatialRef(),
+                )
 
             # rasterize
             gdal.RasterizeLayer(
@@ -208,9 +202,7 @@ def command(index_path, source_path, target_dir, attribute):
 
 def get_parser():
     """ Return argument parser. """
-    parser = argparse.ArgumentParser(description=(
-        'Rasterize a vector source into multiple raster files.'
-    ))
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('index_path',
                         metavar='INDEX',
                         help='Path to ogr index')
@@ -229,3 +221,140 @@ def main():
     """ Call command with args from parser. """
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
     return command(**vars(get_parser().parse_args()))
+
+
+class PGFieldDefn(object):
+    def __init__(self, name, typename):
+        self.name = name
+        self.typename = typename
+
+    def GetName(self):
+        return self.name
+
+    def GetTypeName(self):
+        return self.typename
+
+
+class PGLayerDefn(object):
+    def __init__(self, fields):
+        self.names, self.typenames = zip(*fields)
+
+    def GetFieldCount(self):
+        return len(self.names)
+
+    def GetFieldDefn(self, index):
+        name = self.names[index]
+        typename = self.typenames[index]
+        return PGFieldDefn(name=name, typename=typename)
+
+    def GetFieldIndex(self, name):
+        return self.names.index(name)
+
+
+class PGLayer(object):
+    def __init__(self, connection, schema, table):
+        self.connection = connection
+        self.schema = schema
+        self.table = table
+
+    def GetName(self):
+        return self.table
+
+    def GetLayerDefn(self):
+        typenames = {
+            'integer': 'Integer',
+            'real': 'Real',
+        }
+        sql = """
+            select
+                column_name,
+                data_type
+            from
+                information_schema.columns
+            where
+                table_schema='{}'
+                and table_name='{}'
+            order by
+                ordinal_position
+        """.format(self.schema, self.table)
+        cursor = self.connection.cursor()
+        cursor.execute(sql)
+        fields = [(r[0], typenames.get(r[1])) for r in cursor.fetchall()]
+        return PGLayerDefn(fields=fields)
+
+    def SetSpatialFilter(self, geometry):
+        x1, x2, y1, y2 = geometry.GetEnvelope()
+        self.box = POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
+
+    def GetFeatureCount(self):
+        sql = """
+            select
+                count(*)
+            from
+                {}.{}
+            where
+                geom && ST_GeometryFromText('{}')
+        """.format(self.schema, self.table, self.box)
+        cursor = self.connection.cursor()
+        cursor.execute(sql)
+        return cursor.fetchall()[0][0]
+
+    def as_ogr_layer(self, name, sr):
+        sql = """
+            select
+                ST_AsBinary(geom),
+                {}
+            from
+                {}.{}
+            where
+                geom && ST_GeometryFromText('{}')
+            """.format(name, self.schema, self.table, self.box)
+
+        cursor = self.connection.cursor()
+        cursor.execute(sql)
+
+        data_source = DRIVER_OGR_MEMORY.CreateDataSource('')
+        layer = data_source.CreateLayer(b'', sr)
+        layer.CreateField(ogr.FieldDefn(name, ogr.OFTInteger))
+        layer_defn = layer.GetLayerDefn()
+        for wkb, value in cursor:
+            feature = ogr.Feature(layer_defn)
+            feature[name] = value
+            try:
+                feature.SetGeometry(ogr.CreateGeometryFromWkb(str(wkb)))
+            except RuntimeError:
+                pass
+            layer.CreateFeature(feature)
+        return data_source, layer
+
+
+class PGDataSource(object):
+    """
+    Behaves like an ogr datasource, but actually uses psycopg2.
+    """
+    def __init__(self, source_path):
+        info = dict(kv.split('=') for kv in source_path[3:].split())
+        self.connection = psycopg2.connect(
+            database=info['dbname'],
+            host=info.get('host'),
+            user=info.get('user'),
+            password=info.get('password'),
+        )
+        self.schema = info.get('schemas')
+        self.tables = info.get('tables').split(',')
+
+    """ Dummy driver """
+    def GetDriver(self):
+        class Driver(object):
+            def GetName(self):
+                return "PGDataSource"
+        return Driver()
+
+    def __iter__(self):
+        for t in self.tables:
+            l = PGLayer(
+                connection=self.connection,
+                schema=self.schema,
+                table=t
+            )
+            yield l
