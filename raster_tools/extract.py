@@ -32,7 +32,7 @@ osr.UseExceptions()
 operations = {}
 
 # Version management for outdated warning
-VERSION = 8
+VERSION = 9
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -113,10 +113,10 @@ class ThreeDi(Operation):
             self.I_BATHYMETRY: dict(layers=','.join([
                 'ahn2:int',
                 'ahn2:bag!{}'.format(floor),
-                'water',
+                '3di:water',
             ])),
             self.I_LANDUSE: dict(layers='use:wss'),
-            self.I_SOIL: dict(layers='soil'),
+            self.I_SOIL: dict(layers='3di:soil'),
         }
 
         self.inputs = {k: v
