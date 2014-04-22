@@ -32,7 +32,7 @@ osr.UseExceptions()
 operations = {}
 
 # Version management for outdated warning
-VERSION = 9
+VERSION = 10
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -246,7 +246,7 @@ class ThreeDi(Operation):
                             no_data_value=no_data_value)
         # read
         band = datasets[i].GetRasterBand(1)
-        data = band.ReadAsArray()
+        data = band.ReadAsArray().astype('f8')
         mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
         data[mask] = no_data_value
         # write
@@ -394,6 +394,14 @@ class ThreeDi(Operation):
         use_no_data_value = use_band.GetNoDataValue()
         use_array[use_array == use_no_data_value] = 99
         use_band.WriteArray(use_array)
+
+        # Temporarily change no data into 14 in soil
+        soil_dataset = datasets[self.I_SOIL]
+        soil_band = soil_dataset.GetRasterBand(1)
+        soil_array = soil_band.ReadAsArray()
+        soil_no_data_value = soil_band.GetNoDataValue()
+        soil_array[soil_array == soil_no_data_value] = 14
+        soil_band.WriteArray(soil_array)
 
         return {key: self.calculators[key](datasets) for key in self.outputs}
 
