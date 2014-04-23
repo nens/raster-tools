@@ -32,7 +32,7 @@ osr.UseExceptions()
 operations = {}
 
 # Version management for outdated warning
-VERSION = 10
+VERSION = 11
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -55,6 +55,48 @@ class Operation(object):
     """
     Base class for operations.
     """
+
+
+class Layers(Operation):
+    """ Extract rasters according to a layer parameter. """
+    name = 'layers'
+
+    def __init__(self, layers, dtype, fillvalue, **kwargs):
+        """ Initialize the operation. """
+        self.layers = layers
+        self.outputs = [self.name]
+        self.inputs = {self.name: dict(layers=layers)}
+
+        self.data_type = {
+            self.name: dict(f4=gdal.GDT_Float32)[dtype],
+        }
+
+        if fillvalue is None:
+            if dtype[0] == 'f':
+                no_data_value = float(np.finfo(dtype).max)
+            else:
+                no_data_value = int(np.iinfo(dtype).max)
+        else:
+            no_data_value = np.array(fillvalue, dtype).tolist()
+        self.no_data_value = {
+            self.name: no_data_value,
+        }
+
+    def calculate(self, datasets):
+        # create
+        no_data_value = self.no_data_value[self.name]
+        data_type = self.data_type[self.name]
+        result = make_dataset(template=datasets[self.name],
+                              data_type=data_type,
+                              no_data_value=no_data_value)
+        # read
+        band = datasets[self.name].GetRasterBand(1)
+        data = band.ReadAsArray().astype('f8')
+        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
+        data[mask] = no_data_value
+        # write
+        result.GetRasterBand(1).WriteArray(data)
+        return {self.name: result}
 
 
 class ThreeDi(Operation):
@@ -107,7 +149,7 @@ class ThreeDi(Operation):
 
     required = [y for x in outputs.values() for y in x]
 
-    def __init__(self, floor, landuse, soil):
+    def __init__(self, floor, landuse, soil, **kwargs):
         """ Initialize the operation. """
         self.layers = {
             self.I_BATHYMETRY: dict(layers=','.join([
@@ -1082,6 +1124,9 @@ def command(shape_path, target_dir, **kwargs):
     """
     Prepare and extract for each feature.
     """
+    if kwargs['version']:
+        print('Extract script version: {}'.format(VERSION))
+        exit()
     check_version()
     datasource = ogr.Open(shape_path)
     for layer in datasource:
@@ -1109,6 +1154,8 @@ def get_parser():
     parser.add_argument('target_dir',
                         metavar='OUTPUT')
     # options
+    parser.add_argument('-v', '--version',
+                        action='store_true')
     parser.add_argument('-s', '--server',
                         default='https://raster.lizard.net')
     parser.add_argument('-o', '--operation',
@@ -1133,6 +1180,13 @@ def get_parser():
                         help='Path to landuse csv.')
     parser.add_argument('-ts', '--soil',
                         help='Path to soil csv.')
+    parser.add_argument('-l', '--layers',
+                        help='Layers for layers operation.')
+    parser.add_argument('-dt', '--dtype',
+                        default='f4',
+                        help='Layers for layers operation.')
+    parser.add_argument('-fv', '--fillvalue',
+                        help='Layers for layers operation.')
     return parser
 
 
