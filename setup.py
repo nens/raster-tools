@@ -43,5 +43,6 @@ setup(name='raster-tools',
               'rasterize = raster_tools.rasterize:main',
               'extract = raster_tools.extract:main',
               'watershed = raster_tools.watershed:main',
+              'interpolate_points = raster_tools.interpolate_points:main',
           ]},
       )
