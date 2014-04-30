@@ -108,11 +108,11 @@ def get_points_and_values(data_source, attribute):
     return np.array(points), np.array(values)
 
 
-def command(index_path, dbname, host, buildings, points, where, target_dir):
+def command(index_path, target_dir, buildings, points, where, **kwargs):
     """
     What?
     """
-    postgis_source = postgis.PostgisSource(dbname=dbname, host=host)
+    postgis_source = postgis.PostgisSource(**kwargs)
     index_data_source = ogr.Open(index_path)
     index_layer = index_data_source[0]
     index_total = index_layer.GetFeatureCount()
@@ -208,9 +208,9 @@ def get_parser():
     parser.add_argument('-w', '--where',
                         default='AND code_function NOT IN (7, 13)',
                         help='additional where for the buildings table')
-    parser.add_argument('-u', '--username'),
-    parser.add_argument('-p', '--password'),
     parser.add_argument('-d', '--dbname')
+    parser.add_argument('-u', '--user'),
+    parser.add_argument('-p', '--password'),
     parser.add_argument('-s', '--host',
                         default='localhost')
     return parser
