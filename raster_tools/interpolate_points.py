@@ -42,7 +42,6 @@ POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 
 logger = logging.getLogger(__name__)
 gdal.UseExceptions()
-#gdal.PushErrorHandler(b'CPLQuietErrorHandler')
 ogr.UseExceptions()
 osr.UseExceptions()
 
@@ -120,22 +119,17 @@ def command(index_path, target_dir, buildings, points, where, **kwargs):
     # loop leafs
     for index_count, index_feature in enumerate(index_layer, 1):
         leaf = index_feature[b'BLADNR']
-        logger.debug('Processing {} ({}/{})'.format(
+        logger.info('Processing {} ({}/{})'.format(
             leaf, index_count, index_total),
         )
 
         index_geometry = index_feature.geometry()
-        #index_geometry = index_geometry.Buffer(-450)  # for fast development
 
         # retrieve buildings from database
         logger.debug('Retrieving buildings.')
         building_data_source = postgis_source.get_data_source(
             table=buildings, geometry=index_geometry, where=where,
         )
-        DRIVER_OGR_GEOJSON.CopyDataSource(
-            building_data_source, 'buildings_{}.geojson'.format(leaf)
-        )
-        #building_data_source[0].ResetReading()
 
         # retrieve points from database
         logger.debug('Retrieving points.')
@@ -143,40 +137,52 @@ def command(index_path, target_dir, buildings, points, where, **kwargs):
         points_data_source = postgis_source.get_data_source(
             table=points, geometry=building_geometry,
         )
-        DRIVER_OGR_GEOJSON.CopyDataSource(
-            points_data_source, 'points_{}.geojson'.format(leaf)
-        )
-        #points_data_source[0].ResetReading()
 
-        # find coordinates with buildings
+        # prepare dataset
         dataset = get_dataset(index_geometry)
         band = dataset.GetRasterBand(1)
+        no_data_value = band.GetNoDataValue()
         array = band.ReadAsArray()
         x, y = get_coordinates(dataset)
         building_layer = building_data_source[0]
         building_total = building_layer.GetFeatureCount()
 
         for building_count, building_feature in enumerate(building_layer, 1):
-            # rasterize a temporary data source with current building
-            tmp_data_source = get_tmp_data_source(feature=building_feature)
-            gdal.RasterizeLayer(
-                dataset, [1], tmp_data_source[0], burn_values=[0],
-            )
-            index = band.ReadAsArray() == 0
-            band.Fill(band.GetNoDataValue())
-
-            # interpolate selected points
+            # select points in building
             points_data_source[0].SetSpatialFilter(building_feature.geometry())
             if points_data_source[0].GetFeatureCount():
-                points, values = get_points_and_values(
+
+                # rasterize a temporary data source with current building
+                tmp_data_source = get_tmp_data_source(feature=building_feature)
+                gdal.RasterizeLayer(
+                    dataset, [1], tmp_data_source[0], burn_values=[0],
+                )
+                index = band.ReadAsArray() == 0
+                band.Fill(no_data_value)
+
+                # interpolate selected points
+                pts, values = get_points_and_values(
                     data_source=points_data_source, attribute='pnt_linear',
                 )
                 xi = np.array([x[index], y[index]]).transpose()
-                array[index] = interpolate.griddata(
-                    points, values, xi, method='linear',
+                nearest = interpolate.griddata(
+                    pts, values, xi, method='nearest',
                 )
+                # do linear where possible
+                if len(values) > 2:
+                    linear = interpolate.griddata(
+                        pts, values, xi, method='linear',
+                    )
+                    interpolated = np.where(np.isnan(linear), nearest, linear)
+                else:
+                    interpolated = nearest
+                array[index] = interpolated
 
             gdal.TermProgress_nocb(building_count / building_total)
+
+        if (array == no_data_value).all():
+            logger.debug('No points found in any building.')
+            continue
 
         # save
         band.WriteArray(array)
@@ -190,6 +196,7 @@ def command(index_path, target_dir, buildings, points, where, **kwargs):
         DRIVER_GDAL_GTIFF.CreateCopy(
             target_path, dataset, options=['COMPRESS=DEFLATE'],
         )
+        logger.debug('{} Saved.'.format(target_path))
 
 
 def get_parser():

@@ -53,7 +53,7 @@ class PostgisSource(object):
     """
 
     SQL_DATA_SOURCE = """
-        SELECT
+        SELECT DISTINCT ON ({geometry_column})
             {columns}
         FROM
             {schema}.{name}
@@ -100,8 +100,10 @@ class PostgisSource(object):
             geometry_column=geometry_column,
             wkb=psycopg2.Binary(geometry.ExportToWkb()),
         )
+
         cursor.execute(sql)
         records = cursor.fetchall()
+        cursor.close()
 
         return dict(
             srid=srid,
