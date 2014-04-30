@@ -84,10 +84,17 @@ def get_dataset(geometry, cellsize=(0.5, -0.5)):
 
 
 def get_tmp_data_source(feature):
+    """ Return a memory datasource with feature as its only feature. """
     data_source = DRIVER_OGR_MEMORY.CreateDataSource('')
     layer = data_source.CreateLayer(
         b'', feature.geometry().GetSpatialReference(),
     )
+
+    # copy field definitions from feature
+    feature_defn = feature.GetDefnRef()
+    for i in range(feature_defn.GetFieldCount()):
+        layer.CreateField(feature_defn.GetFieldDefn(i))
+
     layer.CreateFeature(feature)
     return data_source
 
