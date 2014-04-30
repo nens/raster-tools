@@ -17,7 +17,6 @@ import sys
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
-from scipy import interpolate
 
 import numpy as np
 
@@ -114,6 +113,19 @@ def get_points_and_values(data_source, attribute):
     return np.array(points), np.array(values)
 
 
+def interpolate_by_idw(points, values, xi, p=2):
+    """ Use idw for interpolation. """
+    sum_of_weights = np.zeros(len(xi))
+    sum_of_weighted_measurements = np.zeros(len(xi))
+    for i in range(values.size):
+        distance = np.sqrt(((points[i] - xi) ** 2).sum(1))
+        weight = 1.0 / distance ** p
+        weighted_measurement = values[i] * weight
+        sum_of_weights += weight
+        sum_of_weighted_measurements += weighted_measurement
+    return sum_of_weighted_measurements / sum_of_weights
+
+
 def command(index_path, target_dir, buildings, points, where, **kwargs):
     """
     What?
@@ -137,6 +149,9 @@ def command(index_path, target_dir, buildings, points, where, **kwargs):
         building_data_source = postgis_source.get_data_source(
             table=buildings, geometry=index_geometry, where=where,
         )
+        #DRIVER_OGR_GEOJSON.CopyDataSource(
+            #building_data_source, 'buildings_{}.geojson'.format(leaf),
+        #)
 
         # retrieve points from database
         logger.debug('Retrieving points.')
@@ -144,6 +159,9 @@ def command(index_path, target_dir, buildings, points, where, **kwargs):
         points_data_source = postgis_source.get_data_source(
             table=points, geometry=building_geometry,
         )
+        #DRIVER_OGR_GEOJSON.CopyDataSource(
+            #points_data_source, 'points_{}.geojson'.format(leaf),
+        #)
 
         # prepare dataset
         dataset = get_dataset(index_geometry)
@@ -172,18 +190,7 @@ def command(index_path, target_dir, buildings, points, where, **kwargs):
                     data_source=points_data_source, attribute='pnt_linear',
                 )
                 xi = np.array([x[index], y[index]]).transpose()
-                nearest = interpolate.griddata(
-                    pts, values, xi, method='nearest',
-                )
-                # do linear where possible
-                if len(values) > 2:
-                    linear = interpolate.griddata(
-                        pts, values, xi, method='linear',
-                    )
-                    interpolated = np.where(np.isnan(linear), nearest, linear)
-                else:
-                    interpolated = nearest
-                array[index] = interpolated
+                array[index] = interpolate_by_idw(pts, values, xi, p=4)
 
             gdal.TermProgress_nocb(building_count / building_total)
 
