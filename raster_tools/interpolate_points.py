@@ -82,18 +82,14 @@ def get_dataset(geometry, cellsize=(0.5, -0.5)):
     return dataset
 
 
-def get_tmp_data_source(feature):
-    """ Return a memory datasource with feature as its only feature. """
+def get_tmp_data_source(feature, sr):
+    """
+    Return a memory datasource with feature as its only feature.
+
+    Ogr < 1.10 does not set the layer sr on the feature.
+    """
     data_source = DRIVER_OGR_MEMORY.CreateDataSource('')
-    layer = data_source.CreateLayer(
-        b'', feature.geometry().GetSpatialReference(),
-    )
-
-    # copy field definitions from feature
-    feature_defn = feature.GetDefnRef()
-    for i in range(feature_defn.GetFieldCount()):
-        layer.CreateField(feature_defn.GetFieldDefn(i))
-
+    layer = data_source.CreateLayer(b'', sr)
     layer.CreateFeature(feature)
     return data_source
 
@@ -178,7 +174,10 @@ def command(index_path, target_dir, buildings, points, where, **kwargs):
             if points_data_source[0].GetFeatureCount():
 
                 # rasterize a temporary data source with current building
-                tmp_data_source = get_tmp_data_source(feature=building_feature)
+                tmp_data_source = get_tmp_data_source(
+                    feature=building_feature,
+                    sr=building_layer.GetSpatialRef(),
+                )
                 gdal.RasterizeLayer(
                     dataset, [1], tmp_data_source[0], burn_values=[0],
                 )
