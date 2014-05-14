@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
+"""
+Extract layers from a raster server using a geometry.
+"""
 
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -1142,12 +1145,7 @@ def command(shape_path, target_dir, **kwargs):
 
 def get_parser():
     """ Return argument parser. """
-    parser = argparse.ArgumentParser(
-        description=(
-            'For 3di, the conversion tables are downloaded from the '
-            'repository by default.'
-        ),
-    )
+    parser = argparse.ArgumentParser(description=__doc__)
     # main
     parser.add_argument('shape_path',
                         metavar='SHAPE')
@@ -1160,7 +1158,8 @@ def get_parser():
                         default='https://raster.lizard.net')
     parser.add_argument('-o', '--operation',
                         default='3di',
-                        help='Type of output to be created. default: 3di')
+                        choices=operations,
+                        help='Type of output to be created. Default: 3di')
     parser.add_argument('-a', '--attribute',
                         default='model',
                         help='Attribute for tif filename. Default: model')
@@ -1184,9 +1183,9 @@ def get_parser():
                         help='Layers for layers operation.')
     parser.add_argument('-dt', '--dtype',
                         default='f4',
-                        help='Layers for layers operation.')
+                        help='Datatype for layers operation')
     parser.add_argument('-fv', '--fillvalue',
-                        help='Layers for layers operation.')
+                        help='Fillvalue for layers operation')
     return parser
 
 
