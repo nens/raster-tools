@@ -147,6 +147,7 @@ def command(index_path, source_path, target_dir, attribute):
     index_layer = index_data_source[0]
     total = index_layer.GetFeatureCount()
     print('Starting rasterize.')
+    gdal.TermProgress_nocb(0)
     for count, index_feature in enumerate(index_layer, 1):
         index_geometry = index_feature.geometry()
 
@@ -302,7 +303,7 @@ class PGLayer(object):
     def as_ogr_layer(self, name, sr):
         sql = """
             select
-                ST_AsBinary(geom),
+                ST_AsBinary(ST_Force2D(geom)),
                 {}
             from
                 {}.{}
@@ -315,11 +316,11 @@ class PGLayer(object):
 
         data_source = DRIVER_OGR_MEMORY.CreateDataSource('')
         layer = data_source.CreateLayer(b'', sr)
-        layer.CreateField(ogr.FieldDefn(name, ogr.OFTInteger))
+        layer.CreateField(ogr.FieldDefn(str(name), ogr.OFTInteger))
         layer_defn = layer.GetLayerDefn()
         for wkb, value in cursor:
             feature = ogr.Feature(layer_defn)
-            feature[name] = value
+            feature[str(name)] = value
             try:
                 feature.SetGeometry(ogr.CreateGeometryFromWkb(str(wkb)))
             except RuntimeError:
