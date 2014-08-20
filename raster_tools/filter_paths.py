@@ -43,7 +43,7 @@ def is_filled(path, factor=0.5):
 def command():
     for line in sys.stdin:
         path = line.strip()
-        if is_filled(path):
+        if not is_filled(path):
             sys.stdout.write(line)
     return 0
 
