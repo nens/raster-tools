@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-""" Filter paths on stdin given some condition. """
+""" Remove paths on stdin given some condition. """
 
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -20,11 +20,12 @@ def get_parser():
     parser = argparse.ArgumentParser(
         description=__doc__
     )
-    # add arguments here
-    #parser.add_argument(
-        #'path',
-        #metavar='FILE',
-    #)
+    parser.add_argument(
+        '-f', '--function',
+        dest='function_name',
+        choices=registered,
+        default='filled',
+    )
     return parser
 
 
@@ -40,10 +41,16 @@ def is_filled(path, factor=0.5):
     return sum(factors) / len(factors) > factor
 
 
-def command():
+def is_epsg_28992(path):
+    dataset = gdal.Open(path)
+    return dataset.GetProjection().endswith('AUTHORITY["EPSG","28992"]]')
+
+
+def command(function_name):
+    function = registered[function_name]
     for line in sys.stdin:
         path = line.strip()
-        if not is_filled(path):
+        if not function(path):
             sys.stdout.write(line)
     return 0
 
@@ -52,3 +59,9 @@ def main():
     """ Call command with args from parser. """
     logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
     return command(**vars(get_parser().parse_args()))
+
+
+registered = {
+    'filled': is_filled,
+    'epsg:28992': is_epsg_28992,
+}
