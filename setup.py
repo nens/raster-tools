@@ -36,6 +36,7 @@ setup(name='raster-tools',
       extras_require={'test': tests_require},
       entry_points={
           'console_scripts': [
+              'juggle = raster_tools.juggle:main',
               'interpolate = raster_tools.interpolate:main',
               'fillnodata = raster_tools.fillnodata:main',
               'ahn2aig2tif = raster_tools.ahn2aig2tif:main',
