@@ -35,7 +35,7 @@ osr.UseExceptions()
 operations = {}
 
 # Version management for outdated warning
-VERSION = 11
+VERSION = 12
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -1155,7 +1155,7 @@ def get_parser():
     parser.add_argument('-v', '--version',
                         action='store_true')
     parser.add_argument('-s', '--server',
-                        default='https://raster.lizard.net')
+                        default='http://p-web-map-d7.external-nens.local:5002')
     parser.add_argument('-o', '--operation',
                         default='3di',
                         choices=operations,
