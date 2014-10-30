@@ -253,10 +253,11 @@ class PGLayerDefn(object):
 
 
 class PGLayer(object):
-    def __init__(self, connection, schema, table):
+    def __init__(self, connection, schema, table, geom_column='geom'):
         self.connection = connection
         self.schema = schema
         self.table = table
+        self.geom_column = geom_column
 
     def GetName(self):
         return self.table
@@ -273,11 +274,11 @@ class PGLayer(object):
             from
                 information_schema.columns
             where
-                table_schema='{}'
-                and table_name='{}'
+                table_schema='{schema}'
+                and table_name='{table}'
             order by
                 ordinal_position
-        """.format(self.schema, self.table)
+        """.format(schema=self.schema, table=self.table)
         cursor = self.connection.cursor()
         cursor.execute(sql)
         fields = [(r[0], typenames.get(r[1])) for r in cursor.fetchall()]
@@ -292,10 +293,11 @@ class PGLayer(object):
             select
                 count(*)
             from
-                {}.{}
+                {schema}.{table}
             where
-                geom && ST_GeometryFromText('{}')
-        """.format(self.schema, self.table, self.box)
+                {geom_column} && ST_GeometryFromText('{box}')
+        """.format(schema=self.schema, table=self.table,
+                   box=self.box, geom_column=self.geom_column)
         cursor = self.connection.cursor()
         cursor.execute(sql)
         return cursor.fetchall()[0][0]
@@ -303,13 +305,15 @@ class PGLayer(object):
     def as_ogr_layer(self, name, sr):
         sql = """
             select
-                ST_AsBinary(ST_Force2D(geom)),
-                {}
+                ST_AsBinary(ST_Force2D({geom_column})),
+                {name}
             from
-                {}.{}
+                {schema}.{table}
             where
-                geom && ST_GeometryFromText('{}')
-            """.format(name, self.schema, self.table, self.box)
+                {geom_column} && ST_GeometryFromText('{box}')
+            """.format(name=name, schema=self.schema,
+                       table=self.table, box=self.box,
+                       geom_column=self.geom_column)
 
         cursor = self.connection.cursor()
         cursor.execute(sql)
@@ -343,6 +347,7 @@ class PGDataSource(object):
         )
         self.schema = info.get('schemas')
         self.tables = info.get('tables').split(',')
+        self.geom_column = info.get('geom_column', 'geom')
 
     """ Dummy driver """
     def GetDriver(self):
@@ -356,6 +361,7 @@ class PGDataSource(object):
             l = PGLayer(
                 connection=self.connection,
                 schema=self.schema,
-                table=t
+                table=t,
+                geom_column=self.geom_column
             )
             yield l
