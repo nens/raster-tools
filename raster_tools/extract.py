@@ -158,10 +158,10 @@ class ThreeDi(Operation):
             self.I_BATHYMETRY: dict(layers=','.join([
                 'ahn2:int',
                 'ahn2:bag!{}'.format(floor),
-                '3di:water',
+                'water:3di',
             ])),
-            self.I_LANDUSE: dict(layers='use:wss'),
-            self.I_SOIL: dict(layers='3di:soil'),
+            self.I_LANDUSE: dict(layers='use:wss-topleft'),
+            self.I_SOIL: dict(layers='soil:3di'),
         }
 
         self.inputs = {k: v
@@ -459,48 +459,34 @@ class Preparation(object):
         """ Prepare a lot. """
         attribute = kwargs.pop('attribute')
         self.server = kwargs.pop('server')
-        self.cellsize = kwargs.pop('cellsize')
-        self.projection = kwargs.pop('projection')
+        self.operation = operations[kwargs.pop('operation')](**kwargs)
+
+        self.information = self._get_information()
+        self.projection = self._get_projection(kwargs.pop('projection'))
+        self.cellsize = self._get_cellsize(kwargs.pop('cellsize'))
+
         self.wkt = osr.GetUserInputAsWKT(str(self.projection))
         self.sr = osr.SpatialReference(self.wkt)
-        self.operation = operations[kwargs.pop('operation')](**kwargs)
         self.paths = self._make_paths(path, layer, feature, attribute)
         self.rpath = self.paths.pop('rpath')
         self.geometry = self._prepare_geometry(feature)
         self.datasets = self._get_or_create_datasets()
-        self.blocks = self._create_blocks()
-        self.area = self._get_area()
-        self.cell = self._get_cell()
-        self.strategies = self._get_strategies()
-        self.chunks = self._create_chunks()
 
-        # Get resume value from dataset
+        # Get resume value
         try:
             with open(self.rpath) as resume_file:
                 self.resume = int(resume_file.read())
         except IOError:
-            self.resume = -1
-        if self.resume + 1 == self.blocks[0].GetFeatureCount():
-            print('Already complete.')
-            raise CompleteError()
-        elif self.resume > -1:
-            print('Resuming from block {}.'.format(self.resume))
+            self.resume = 0
+
+        print(self.resume)
+
+        self.index = self._create_index()
 
         # put inputs properties on operation object
         for name, strategy in self.strategies.items():
             for key in ['no_data_value', 'data_type']:
                 self.operation.inputs[name].update({key: strategy[key]})
-
-        # debugging copy of indexes
-        #blocks_path = os.path.join(path, 'blocks.shp')
-        #if os.path.exists(blocks_path):
-            #DRIVER_OGR_SHAPE.DeleteDataSource(blocks_path)
-        #DRIVER_OGR_SHAPE.CopyDataSource(self.blocks, blocks_path)
-        #for name, chunks in self.chunks.items():
-            #chunks_path = os.path.join(path, name + '.shp')
-            #if os.path.exists(chunks_path):
-                #DRIVER_OGR_SHAPE.DeleteDataSource(chunks_path)
-            #DRIVER_OGR_SHAPE.CopyDataSource(chunks, chunks_path)
 
     def _make_paths(self, path, layer, feature, attribute):
         """ Prepare paths from feature attribute or id. """
@@ -523,6 +509,43 @@ class Preparation(object):
         if sr:
             geometry.Transform(osr.CoordinateTransformation(sr, self.sr))
         return geometry
+
+    def _get_information(self):
+        """
+        Return a dictionary with information about source stores.
+
+        If a source consists of multiple stores, only the first store
+        is considered.
+        """
+        information = {}
+        for name, inp in self.operation.inputs.items():
+            parameters = dict(
+                request='getinfo',
+                layer=inp['layers'].split(',')[0].split('!')[0],
+            )
+            url = '{}?{}'.format(
+                urlparse.urljoin(self.server, 'data'),
+                urllib.urlencode(parameters)
+            )
+            information[name] = json.load(urllib.urlopen(url))
+        return information
+
+    def _get_projection(self, projection):
+        """
+        Take appropriate projection from information or projection parameters.
+        """
+        if projection:
+            return projection
+        return self.information.values()[0]['projection']
+
+    def _get_cellsize(self, cellsize):
+        """
+        Take appropriate cellsize from information or cellsize parameters.
+        """
+        if cellsize:
+            return cellsize
+        p, a, b, q, c, d = self.information.values()[0]['geo_transform']
+        return a, -d
 
     def _create_dataset(self, name, path):
         """ """
@@ -564,76 +587,19 @@ class Preparation(object):
                 datasets[name] = self._create_dataset(name, path)
         return datasets
 
-    def _overlaps(self, polygon):
-        """
-        Return wether polygon is overlapping or contained by geometry.
-
-        Ogr thinks contained polygons are not overlapping.
-        """
-        # clone and transform
-        clone = polygon.Clone()
-        clone.Transform(osr.CoordinateTransformation(
-            clone.GetSpatialReference(),
-            self.geometry.GetSpatialReference(),
-        ))
-        # check
-        overlap = self.geometry.Overlaps(clone)
-        contain = self.geometry.Contains(clone)
-        return overlap or contain
-
-    def _get_geoms(self, x1, y1, x2, y2):
-        """ Return polygon, intersection tuple. """
-
-    def _create_blocks(self):
-        """
-        Create block index datasource.
-        """
-        # create datasource
-        blocks = DRIVER_OGR_MEMORY.CreateDataSource('')
-        layer = blocks.CreateLayer(b'blocks', self.sr)
-        layer.CreateField(ogr.FieldDefn(b'serial', ogr.OFTInteger))
-        layer.CreateField(ogr.FieldDefn(b'p1', ogr.OFTInteger))
-        layer.CreateField(ogr.FieldDefn(b'q1', ogr.OFTInteger))
-        layer.CreateField(ogr.FieldDefn(b'p2', ogr.OFTInteger))
-        layer.CreateField(ogr.FieldDefn(b'q2', ogr.OFTInteger))
-        layer_defn = layer.GetLayerDefn()
-
-        # add the polygons
-        dataset = self.datasets.itervalues().next()
-        p, a, b, q, c, d = dataset.GetGeoTransform()
-        u, v = dataset.GetRasterBand(1).GetBlockSize()
-        U, V = dataset.RasterXSize, dataset.RasterYSize
-
-        # add features
-        serial = itertools.count()
-        for j in range(1 + (V - 1) // v):
-            for i in range(1 + (U - 1) // u):
-                # pixel indices and coordinates
-                p1 = i * u
-                q1 = j * v
-                p2 = min(p1 + u, U)
-                q2 = min(q1 + v, V)
-
-                # geometries
-                x1, y2 = p + a * p1 + b * q1, q + c * p1 + d * q1
-                x2, y1 = p + a * p2 + b * q2, q + c * p2 + d * q2
-                polygon = make_polygon(x1, y1, x2, y2)
-                polygon.AssignSpatialReference(self.sr)
-                if not self._overlaps(polygon):
-                    continue
-                intersection = self.geometry.Intersection(polygon)
-
-                # feature
-                feature = ogr.Feature(layer_defn)
-                feature[b'serial'] = serial.next()
-                feature[b'p1'] = p1
-                feature[b'q1'] = q1
-                feature[b'p2'] = p2
-                feature[b'q2'] = q2
-                feature.SetGeometry(intersection)
-                layer.CreateFeature(feature)
-
-        return blocks
+    def _create_index(self):
+        """ Create index object to take block geometries from. """
+        self.index = Index(
+            dataset=self.datasets.values()[0],
+            geometry=self.geometry,
+            resume=self.resume,
+        )
+        if self.index:
+            if self.resume > 0:
+                print('Resuming from block {}.'.format(self.resume))
+        else:
+            print('Already complete.')
+            raise CompleteError()
 
     def _get_area(self):
         """ Return area envelope as wkt polygon. """
@@ -647,28 +613,6 @@ class Preparation(object):
         x2 = x1 + a + b
         y1 = y2 + c + d
         return POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
-
-    def _get_strategies(self):
-        """
-        Return a dictionary with strategies.
-
-        The strategy is only for the first layer of each input.
-        """
-        strategies = {}
-        for name, inp in self.operation.inputs.items():
-            parameters = dict(
-                area=self.area,
-                cell=self.cell,
-                request='getstrategy',
-                layer=inp['layers'].split(',')[0].split('!')[0],
-                projection=self.projection,
-            )
-            url = '{}?{}'.format(
-                urlparse.urljoin(self.server, 'data'),
-                urllib.urlencode(parameters)
-            )
-            strategies[name] = json.load(urllib.urlopen(url))
-        return strategies
 
     def _create_chunks(self):
         """ Return a dictionary with chunk index objects. """
@@ -733,6 +677,92 @@ class Preparation(object):
                         cellsize=self.cellsize,
                         operation=self.operation)
         return target
+
+
+class Index(object):
+    """ Iterates the indices into the target dataset. """
+    def __init__(self, dataset, geometry, resume):
+        """
+        Rasterize geometry into target dataset extent to find relevant
+        blocks.
+        """
+        # make a dataset
+        w, h = dataset.GetRasterBand(1).GetBlockSize()
+        p, a, b, q, c, d = dataset.GetGeoTransform()
+        index = DRIVER_GDAL_MEM.Create(
+            '',
+            (dataset.RasterXSize - 1) // w + 1,
+            (dataset.RasterYSize - 1) // h + 1,
+            1,
+            gdal.GDT_Byte,
+        )
+
+        geo_transform = p, a * w, b * h, q, c * w, d * h
+        index.SetProjection(dataset.GetProjection())
+        index.SetGeoTransform(geo_transform)
+
+        # rasterize where geometry is
+        datasource = DRIVER_OGR_MEMORY.CreateDataSource('')
+        sr = geometry.GetSpatialReference()
+        layer = datasource.CreateLayer(b'geometry', sr)
+        layer_defn = layer.GetLayerDefn()
+        feature = ogr.Feature(layer_defn)
+        feature.SetGeometry(geometry)
+        layer.CreateFeature(feature)
+        gdal.RasterizeLayer(
+            index,
+            [1],
+            layer,
+            burn_values=[1],
+            options=['all_touched=true'],
+        )
+
+        # remember some of this
+        self.sr = sr
+        self.resume = resume
+        self.block_size = w, h
+        self.dataset_size = dataset.RasterXSize, dataset.RasterYSize
+        self.geo_transform = dataset.GetGeoTransform()
+        self.indices = index.ReadAsArray().nonzero()
+
+    def get_indices(self, serial):
+        """ Return indices into dataset. """
+        w, h = self.block_size
+        W, H = self.dataset_size
+        y, x = self.indices[0][serial], self.indices[1][serial]
+        x1 = w * x
+        y1 = h * y
+        x2 = min(W, (x + 1) * w)
+        y2 = min(H, (y + 1) * h)
+        return x1, y1, x2, y2
+
+    def get_polygon(self, indices):
+        """ Return ogr wkb polygon for a rectangle. """
+        u1, v1, u2, v2 = indices
+        p, a, b, q, c, d = self.geo_transform
+        x1 = p + a * u1 + b * v1
+        y1 = q + c * u1 + d * v1
+        x2 = p + a * u2 + b * v2
+        y2 = q + c * u2 + d * v2
+        polygon = ogr.CreateGeometryFromWkt(
+            POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2), self.sr,
+        )
+        return polygon
+
+    def __len__(self):
+        return len(self.indices[0])
+
+    def __nonzero__(self):
+        return len(self) > self.resume
+
+    def __iter__(self):
+        for serial in range(self.resume, len(self)):
+            indices = self.get_indices(serial)
+            yield {
+                'serial': serial,
+                'indices': indices,
+                'polygon': self.get_polygon(indices),
+            }
 
 
 class Source(object):
@@ -1054,7 +1084,7 @@ def extract(preparation):
                 # remember chunk
                 loading[key] = chunk
 
-        #move chunks from loading to ready
+        # move chunks from loading to ready
         while True:
             try:
                 chunk = loaded.get(block=False)
@@ -1079,7 +1109,7 @@ def extract(preparation):
                     0.0,
                     0.125,
                 )
-                #chunk administration and optional purge
+                # chunk administration and optional purge
                 chunk.refs -= 1
                 if not chunk.refs:
                     del ready[key]
@@ -1155,7 +1185,7 @@ def get_parser():
     parser.add_argument('-v', '--version',
                         action='store_true')
     parser.add_argument('-s', '--server',
-                        default='http://p-web-map-d7.external-nens.local:5002')
+                        default='http://110-raster-d1.external-nens.local:5000')
     parser.add_argument('-o', '--operation',
                         default='3di',
                         choices=operations,
@@ -1168,13 +1198,11 @@ def get_parser():
                         type=float,
                         help='Floor height (3di). Default: 0.15')
     parser.add_argument('-c', '--cellsize',
-                        default=[0.5, 0.5],
                         type=float,
                         nargs=2,
-                        help='Cellsize for output file. Default: 0.5 0.5')
+                        help='Cellsize for output file.')
     parser.add_argument('-p', '--projection',
-                        default='epsg:28992',
-                        help='Output srs. Default: epsg:28992.')
+                        help='Output projection.')
     parser.add_argument('-tl', '--landuse',
                         help='Path to landuse csv.')
     parser.add_argument('-ts', '--soil',
