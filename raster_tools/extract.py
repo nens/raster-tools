@@ -11,17 +11,14 @@ from __future__ import division
 
 import argparse
 import collections
-import copy
 import csv
-import itertools
+import hashlib
 import json
 import logging
 import os
-import Queue
 import sys
 import urllib
 import urlparse
-from multiprocessing import pool
 
 from osgeo import gdal
 from osgeo import gdalnumeric as np
@@ -47,7 +44,11 @@ DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
 
 POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 
-Key = collections.namedtuple('Key', ['name', 'serial'])
+Tile = collections.namedtuple('Tile', ['width',
+                                       'height',
+                                       'origin',
+                                       'serial',
+                                       'polygon'])
 
 
 class CompleteError(Exception):
@@ -461,7 +462,9 @@ class Preparation(object):
         self.server = kwargs.pop('server')
         self.operation = operations[kwargs.pop('operation')](**kwargs)
 
+        print('Getting information')
         self.information = self._get_information()
+        print('Got information')
         self.projection = self._get_projection(kwargs.pop('projection'))
         self.cellsize = self._get_cellsize(kwargs.pop('cellsize'))
 
@@ -479,14 +482,17 @@ class Preparation(object):
         except IOError:
             self.resume = 0
 
-        print(self.resume)
-
         self.index = self._create_index()
 
-        # put inputs properties on operation object
-        for name, strategy in self.strategies.items():
-            for key in ['no_data_value', 'data_type']:
-                self.operation.inputs[name].update({key: strategy[key]})
+        print(bool(self.index))
+        print(len(self.index))
+        print(self.resume)
+        if self.index:
+            if self.resume > 0:
+                print('Resuming from tile {}.'.format(self.resume))
+        else:
+            print('Already complete.')
+            raise CompleteError()
 
     def _make_paths(self, path, layer, feature, attribute):
         """ Prepare paths from feature attribute or id. """
@@ -518,7 +524,8 @@ class Preparation(object):
         is considered.
         """
         information = {}
-        for name, inp in self.operation.inputs.items():
+        for name in self.operation.inputs:
+            inp = self.operation.inputs[name]
             parameters = dict(
                 request='getinfo',
                 layer=inp['layers'].split(',')[0].split('!')[0],
@@ -527,7 +534,14 @@ class Preparation(object):
                 urlparse.urljoin(self.server, 'data'),
                 urllib.urlencode(parameters)
             )
+            print(url)
             information[name] = json.load(urllib.urlopen(url))
+            # set dtype and fillvalue on the input
+
+            inp.update(time=information[name]['time'],
+                       data_type=information[name]['data_type'],
+                       no_data_value=information[name]['no_data_value'])
+
         return information
 
     def _get_projection(self, projection):
@@ -589,92 +603,28 @@ class Preparation(object):
 
     def _create_index(self):
         """ Create index object to take block geometries from. """
-        self.index = Index(
+        return Index(
             dataset=self.datasets.values()[0],
             geometry=self.geometry,
             resume=self.resume,
         )
-        if self.index:
-            if self.resume > 0:
-                print('Resuming from block {}.'.format(self.resume))
-        else:
-            print('Already complete.')
-            raise CompleteError()
-
-    def _get_area(self):
-        """ Return area envelope as wkt polygon. """
-        x1, x2, y1, y2 = self.geometry.GetEnvelope()
-        return POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
-
-    def _get_cell(self):
-        """ Return topleft cell as wkt polygon. """
-        dataset = self.datasets.itervalues().next()
-        x1, a, b, y2, c, d = dataset.GetGeoTransform()
-        x2 = x1 + a + b
-        y1 = y2 + c + d
-        return POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
-
-    def _create_chunks(self):
-        """ Return a dictionary with chunk index objects. """
-        chunks = {}
-        for name, strategy in self.strategies.items():
-
-            # create datasource
-            wkt = osr.GetUserInputAsWKT(str(strategy['projection']))
-            sr = osr.SpatialReference(wkt)
-            chunks[name] = DRIVER_OGR_MEMORY.CreateDataSource('')
-            layer = chunks[name].CreateLayer(b'chunks', sr)
-            layer.CreateField(ogr.FieldDefn(b'serial', ogr.OFTInteger))
-            layer.CreateField(ogr.FieldDefn(b'width', ogr.OFTInteger))
-            layer.CreateField(ogr.FieldDefn(b'height', ogr.OFTInteger))
-            layer_defn = layer.GetLayerDefn()
-
-            # add features
-            p, a, b, q, c, d = strategy['geo_transform']
-            serial = itertools.count()
-            for q1, q2 in strategy['chunks'][0]:
-                for p1, p2 in strategy['chunks'][1]:
-                    # geometries
-                    x1, y2 = p + a * p1 + b * q1, q + c * p1 + d * q1
-                    x2, y1 = p + a * p2 + b * q2, q + c * p2 + d * q2
-                    polygon = make_polygon(x1, y1, x2, y2)
-                    polygon.AssignSpatialReference(sr)
-                    if not self._overlaps(polygon):
-                        continue
-
-                    # feature
-                    feature = ogr.Feature(layer_defn)
-                    feature[b'serial'] = serial.next()
-                    feature[b'width'] = p2 - p1
-                    feature[b'height'] = q2 - q1
-                    feature.SetGeometry(polygon)
-                    layer.CreateFeature(feature)
-        return chunks
 
     def get_source(self):
         """ Return dictionary of source objects. """
-        strategies = self.strategies
         inputs = self.operation.inputs
-        blocks = DRIVER_OGR_MEMORY.CopyDataSource(self.blocks, '')
-        blocks[0].SetAttributeFilter(b'serial>{}'.format(self.resume))
-        source = Source(
-            projection={k: strategies[k]['projection'] for k in strategies},
-            layers={k: inputs[k]['layers'] for k in inputs},
-            blocks=blocks,
-            cellsize=self.cellsize,
-            chunks=self.chunks,
-            server=self.server,
-        )
+        source = Source(index=self.index,
+                        server=self.server,
+                        projection=self.projection,
+                        times={k: inputs[k]['time'] for k in inputs},
+                        layers={k: inputs[k]['layers'] for k in inputs})
         return source
 
     def get_target(self):
         """ Return target object. """
-        self.blocks[0].SetAttributeFilter(b'serial>{}'.format(self.resume))
         target = Target(rpath=self.rpath,
-                        chunks=self.chunks,
-                        blocks=self.blocks,
+                        index=self.index,
                         datasets=self.datasets,
-                        cellsize=self.cellsize,
+                        geometry=self.geometry,
                         operation=self.operation)
         return target
 
@@ -718,7 +668,6 @@ class Index(object):
         )
 
         # remember some of this
-        self.sr = sr
         self.resume = resume
         self.block_size = w, h
         self.dataset_size = dataset.RasterXSize, dataset.RasterYSize
@@ -744,10 +693,7 @@ class Index(object):
         y1 = q + c * u1 + d * v1
         x2 = p + a * u2 + b * v2
         y2 = q + c * u2 + d * v2
-        polygon = ogr.CreateGeometryFromWkt(
-            POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2), self.sr,
-        )
-        return polygon
+        return POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
 
     def __len__(self):
         return len(self.indices[0])
@@ -757,85 +703,66 @@ class Index(object):
 
     def __iter__(self):
         for serial in range(self.resume, len(self)):
-            indices = self.get_indices(serial)
-            yield {
-                'serial': serial,
-                'indices': indices,
-                'polygon': self.get_polygon(indices),
-            }
+            x1, y1, x2, y2 = indices = self.get_indices(serial)
+            width, height, origin = x2 - x1, y2 - y1, (x1, y1)
+            polygon = self.get_polygon(indices)
+            yield Tile(width=width,
+                       height=height,
+                       origin=origin,
+                       serial=serial,
+                       polygon=polygon)
 
 
 class Source(object):
     """
     Factory of source chunks.
     """
-    def __init__(self, projection, cellsize, server, layers, chunks, blocks):
+    def __init__(self, projection, server, layers, times, index):
         """  """
         self.projection = projection
-        self.cellsize = cellsize
-        self.server = server
         self.layers = layers
-        self.chunks = chunks
-        self.blocks = blocks
-        self.url = self._create_url()
+        self.server = server
+        self.times = times
+        self.index = index
 
-    def _create_url(self):
+    def make_url(self, layer, time):
         """ Build the general part of the url. """
-        url = {}
-        for name in self.projection:
-            parameters = dict(
-                layers=self.layers[name],
-                request='getgeotiff',
-                compress='deflate',
-                projection=self.projection[name],
-            )
-            url[name] = '{}?{}'.format(
-                urlparse.urljoin(self.server, 'data'),
-                urllib.urlencode(parameters),
-            )
-        return url
+        parameters = {'time': time,
+                      'layers': layer,
+                      'sr': self.projection,
+                      'compress': 'deflate',
+                      'request': 'getgeotiff'}
+        return '{path}?{pars}'.format(
+            path=urlparse.urljoin(self.server, 'data'),
+            pars=urllib.urlencode(parameters),
+        )
 
-    def __getitem__(self, key):
-        """ Get the chunk referenced by key. """
-        # fetch chunk feature corresponding to key
-        chunks = self.chunks[key.name][0]
-        chunks.SetAttributeFilter(b'serial={}'.format(key.serial))
-        feature = chunks.GetNextFeature()
-        chunks.SetAttributeFilter(None)
-        geometry = feature.geometry()
-
-        # count blocks involved
-        blocks = self.blocks[0]
-        blocks.SetSpatialFilter(geometry.Buffer(-0.01 * min(self.cellsize)))
-        refs = blocks.GetFeatureCount()
-
-        # instantiate
-        chunk = Chunk(key=key,
-                      refs=refs,
-                      url=self.url[key.name],
-                      width=str(feature[b'width']),
-                      height=str(feature[b'height']),
-                      polygon=geometry.ExportToWkt())
-        return chunk
+    def get_chunks(self, tile):
+        """ Return dictionary of chunks for a polygon. """
+        chunks = {}
+        for name in self.layers:
+            url = self.make_url(time=self.times[name],
+                                layer=self.layers[name])
+            chunks[name] = Chunk(url=url, tile=tile)
+        return chunks
 
 
 class Chunk():
     """
     Represents a remote chunk of data.
-
-    Ideally maps exactly to a remote storage chunk...
     """
-    def __init__(self, key, refs, url, width, height, polygon):
+    def __init__(self, url, tile):
         """ Prepare url. """
-        parameters = dict(width=width, height=height, polygon=polygon)
+        parameters = {'geom': tile.polygon,
+                      'width': tile.width,
+                      'height': tile.height}
         self.url = '{}&{}'.format(url, urllib.urlencode(parameters))
-        self.refs = refs
-        self.key = key
+        self.key = hashlib.md5(self.url).hexdigest()
 
     def load(self):
         """ Load url into gdal dataset. """
         # retrieve file into gdal vsimem system
-        vsi_path = '/vsimem/{}_{}'.format(*self.key)
+        vsi_path = '/vsimem/{}'.format(self.key)
         vsi_file = gdal.VSIFOpenL(str(vsi_path), b'w')
         url_file = urllib.urlopen(self.url)
         size = int(url_file.info().get('content-length'))
@@ -853,88 +780,72 @@ class Target(object):
     """
     Factory of target blocks
     """
-    def __init__(self, rpath, blocks, chunks, datasets, cellsize, operation):
+    def __init__(self, rpath, index, datasets, geometry, operation):
         self.rpath = rpath
-        self.blocks = blocks
-        self.chunks = chunks
+        self.index = index
         self.datasets = datasets
-        self.cellsize = cellsize
+        self.geometry = geometry
         self.operation = operation
 
     def __len__(self):
         """ Returns the featurecount. """
-        return self.blocks[0].GetFeatureCount()
+        return len(self.index)
 
     def __iter__(self):
         """ Yields blocks. """
-        blocks = self.blocks[0]
-        blocks.ResetReading()
-        for feature in blocks:
-
-            # add the keys for the chunks
-            geometry = feature.geometry().Buffer(-0.01 * min(self.cellsize))
-            geometry.AssignSpatialReference(self.blocks[0].GetSpatialRef())
-            chunks = []
-            for name in self.chunks:
-                layer = self.chunks[name][0]
-                clone = geometry.Clone()
-                clone.Transform(osr.CoordinateTransformation(
-                    clone.GetSpatialReference(),
-                    layer.GetSpatialRef(),
-                ))
-                layer.SetSpatialFilter(clone)
-                chunks.extend([Key(name=name,
-                                   serial=c[b'serial']) for c in layer])
-                layer.SetSpatialFilter(None)
-
-            # create the block object
-            block = Block(chunks=chunks,
+        for tile in self.index:
+            block = Block(tile=tile,
                           rpath=self.rpath,
-                          attrs=feature.items(),
                           datasets=self.datasets,
-                          operation=self.operation,
-                          geometry=feature.geometry().Clone())
+                          geometry=self.geometry,  # should clip if bottleneck
+                          operation=self.operation)
             yield block
 
 
 class Block(object):
     """ Self saving local chunk of data. """
-    def __init__(self, attrs, datasets, geometry, operation, chunks, rpath):
-        self.serial = attrs.pop('serial')
-        self.chunks = chunks
-        self.pixels = attrs
+    def __init__(self, tile, rpath, datasets, geometry, operation):
+        self.tile = tile
         self.rpath = rpath
         self.datasets = datasets
-        self.geometry = geometry
         self.operation = operation
-        self.inputs = self._create_inputs()
+        self.geometry = self._create_geometry(tile=tile, geometry=geometry)
+        self.inputs = self._create_inputs(tile=tile,
+                                          datasets=datasets,
+                                          operation=operation)
 
-    def __getitem__(self, key):
-        """ Return corresponding value from inputs. """
-        return self.inputs[key]
+    def _create_geometry(self, tile, geometry):
+        """
+        Return ogr geometry that is the part of this block that's masked.
+        """
+        sr = geometry.GetSpatialReference()
+        polygon = ogr.CreateGeometryFromWkt(tile.polygon, sr)
+        difference = polygon.Difference(geometry)
+        difference.AssignSpatialReference(sr)
+        return difference
 
-    def _create_inputs(self):
+    def _create_inputs(self, tile, datasets, operation):
         """ Create datasets for the operation. """
         inputs = {}
-        for name in self.operation.inputs:
+        for name in operation.inputs:
             # fancy sorting
-            p1, p2, q1, q2 = (self.pixels[k] for k in sorted(self.pixels))
+            p1, q1 = tile.origin
 
             # offset geo_transform
-            bigdataset = self.datasets.itervalues().next()
+            bigdataset = datasets.itervalues().next()
             p, a, b, q, c, d = bigdataset.GetGeoTransform()
             p = p + a * p1 + b * q1
             q = q + c * p1 + d * q1
             geo_transform = p, a, b, q, c, d
 
             # create dataset
-            data_type = self.operation.inputs[name]['data_type']
+            data_type = operation.inputs[name]['data_type']
             dataset = DRIVER_GDAL_MEM.Create(
-                '', p2 - p1, q2 - q1, 1, data_type,
+                '', tile.width, tile.height, 1, data_type,
             )
             dataset.SetGeoTransform(geo_transform)
             dataset.SetProjection(bigdataset.GetProjection())
-            no_data_value = self.operation.inputs[name]['no_data_value']
+            no_data_value = operation.inputs[name]['no_data_value']
             band = dataset.GetRasterBand(1)
             band.SetNoDataValue(no_data_value)
             band.Fill(no_data_value)
@@ -942,35 +853,38 @@ class Block(object):
 
         return inputs
 
-    def _polygon(self, dataset):
-        """ Return polygon for dataset outline. """
-        x1, a, b, y2, c, d = dataset.GetGeoTransform()
-        w = dataset.RasterXSize
-        h = dataset.RasterYSize
-        x2 = x1 + w * a + h * b
-        y1 = y2 + w * c + h * d
-        return make_polygon(x1, y1, x2, y2)
+    def fetch(self, source):
+        """ Load corresponding chunks from source into input datasets. """
+        chunks = source.get_chunks(self.tile)
+        for name in chunks:
+            chunks[name].load()
+            gdal.ReprojectImage(
+                chunks[name].dataset,
+                self.inputs[name],
+                None,
+                None,
+                gdal.GRA_NearestNeighbour,
+                0.0,
+                0.125,
+            )
 
     def _mask(self, dataset):
         """ Mask dataset where outside geometry. """
         wkt = dataset.GetProjection()
-        polygon = self._polygon(dataset)
-        difference = polygon.Difference(self.geometry)
         no_data_value = dataset.GetRasterBand(1).GetNoDataValue()
         datasource = DRIVER_OGR_MEMORY.CreateDataSource('')
         layer = datasource.CreateLayer(b'blocks', osr.SpatialReference(wkt))
         layer_defn = layer.GetLayerDefn()
         feature = ogr.Feature(layer_defn)
-        feature.SetGeometry(difference)
+        feature.SetGeometry(self.geometry)
         layer.CreateFeature(feature)
         gdal.RasterizeLayer(dataset, [1], layer, burn_values=[no_data_value])
 
     def _write(self, source, target):
         """ Write dataset into block. """
-        p1 = self.pixels['p1']
-        q1 = self.pixels['q1']
+        p1, q1 = self.tile.origin
         target.WriteRaster(
-            p1, q1, self.pixels['p2'] - p1, self.pixels['q2'] - q1,
+            p1, q1, self.tile.width, self.tile.height,
             source.ReadRaster(0, 0, source.RasterXSize, source.RasterYSize),
         )
 
@@ -985,7 +899,7 @@ class Block(object):
                         target=self.datasets[name])
 
         with open(self.rpath, 'w') as resume_file:
-            resume_file.write(str(self.serial))
+            resume_file.write(str(self.tile.serial))
 
 
 def make_dataset(template, data_type, no_data_value):
@@ -1016,122 +930,19 @@ def make_polygon(x1, y2, x2, y1):
     return polygon
 
 
-def load(toload, loaded):
-    """ Load chunks until None comes out of the queue. """
-    while True:
-        # get
-        chunk = toload.get()
-
-        if chunk is None:
-            break
-
-        # load
-        chunk.load()
-
-        # put
-        loaded.put(chunk)
-
-
 def extract(preparation):
     """
     Extract for a single feature.
     """
-    processes = 8
-    toload = Queue.Queue(maxsize=processes)
-    loaded = Queue.Queue()
-    thread_pool = pool.ThreadPool(
-        processes=processes,
-        initializer=load,
-        initargs=[toload, loaded],
-    )
-
-    loading = {}
-    ready = {}
-    blocks = {}
-
     target = preparation.get_target()
     source = preparation.get_source()
-    iterator = iter(target)
 
-    total = len(target)
-    count = 0
     gdal.TermProgress_nocb(0)
-
-    if total == 0:
-        gdal.TermProgress_nocb(1)
-        return
-
-    while True:
-        # see if any blocks left
-        try:
-            block = iterator.next()
-        except StopIteration:
-            block = None
-            if not blocks:
-                break
-
-        if block:
-            # remember block
-            blocks[block.serial] = block
-
-            # add all related chunks
-            for key in block.chunks:
-                # skip if chunk already around
-                if key in loading or key in ready:
-                    continue
-                chunk = source[key]
-                toload.put(chunk)
-                # remember chunk
-                loading[key] = chunk
-
-        # move chunks from loading to ready
-        while True:
-            try:
-                chunk = loaded.get(block=False)
-            except Queue.Empty:
-                break
-            key = chunk.key
-            ready[key] = chunk
-            del loading[key]
-
-        # warp loaded chunks into blocks
-        for block in blocks.values():
-            for key in copy.copy(block.chunks):
-                chunk = ready.get(key)
-                if not chunk:
-                    continue
-                gdal.ReprojectImage(
-                    chunk.dataset,
-                    block[key.name],
-                    None,
-                    None,
-                    gdal.GRA_NearestNeighbour,
-                    0.0,
-                    0.125,
-                )
-                # chunk administration and optional purge
-                chunk.refs -= 1
-                if not chunk.refs:
-                    del ready[key]
-                # block administration
-                block.chunks.remove(key)
-
-        # save blocks in serial order if possible
-        while blocks:
-            serial = min(blocks)
-            block = blocks[serial]
-            if block.chunks:
-                break
-            block.save()
-            del blocks[serial]
-            count += 1
-            gdal.TermProgress_nocb(count / total)
-
-    # Signal the end for the processes
-    for element in [None] * processes:
-        toload.put(element)
-    thread_pool.close()
-    thread_pool.join()
+    total = len(target)
+    for block in target:
+        block.fetch(source)
+        block.save()
+        gdal.TermProgress_nocb(block.tile.serial / total)
 
 
 def check_version():
@@ -1160,7 +971,7 @@ def command(shape_path, target_dir, **kwargs):
     if kwargs['version']:
         print('Extract script version: {}'.format(VERSION))
         exit()
-    check_version()
+    # check_version()
     datasource = ogr.Open(shape_path)
     for layer in datasource:
         for feature in layer:
