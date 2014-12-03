@@ -9,10 +9,10 @@ from __future__ import unicode_literals
 from __future__ import absolute_import
 from __future__ import division
 
+from multiprocessing import pool
 import argparse
 import collections
 import csv
-import hashlib
 import json
 import logging
 import os
@@ -32,7 +32,7 @@ osr.UseExceptions()
 operations = {}
 
 # Version management for outdated warning
-VERSION = 12
+VERSION = 13
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -462,9 +462,7 @@ class Preparation(object):
         self.server = kwargs.pop('server')
         self.operation = operations[kwargs.pop('operation')](**kwargs)
 
-        print('Getting information')
         self.information = self._get_information()
-        print('Got information')
         self.projection = self._get_projection(kwargs.pop('projection'))
         self.cellsize = self._get_cellsize(kwargs.pop('cellsize'))
 
@@ -484,9 +482,6 @@ class Preparation(object):
 
         self.index = self._create_index()
 
-        print(bool(self.index))
-        print(len(self.index))
-        print(self.resume)
         if self.index:
             if self.resume > 0:
                 print('Resuming from tile {}.'.format(self.resume))
@@ -534,7 +529,6 @@ class Preparation(object):
                 urlparse.urljoin(self.server, 'data'),
                 urllib.urlencode(parameters)
             )
-            print(url)
             information[name] = json.load(urllib.urlopen(url))
             # set dtype and fillvalue on the input
 
@@ -619,9 +613,10 @@ class Preparation(object):
                         layers={k: inputs[k]['layers'] for k in inputs})
         return source
 
-    def get_target(self):
+    def get_target(self, source):
         """ Return target object. """
-        target = Target(rpath=self.rpath,
+        target = Target(source=source,
+                        rpath=self.rpath,
                         index=self.index,
                         datasets=self.datasets,
                         geometry=self.geometry,
@@ -737,13 +732,13 @@ class Source(object):
             pars=urllib.urlencode(parameters),
         )
 
-    def get_chunks(self, tile):
+    def get_chunks(self, block):
         """ Return dictionary of chunks for a polygon. """
         chunks = {}
         for name in self.layers:
             url = self.make_url(time=self.times[name],
                                 layer=self.layers[name])
-            chunks[name] = Chunk(url=url, tile=tile)
+            chunks[name] = Chunk(url=url, name=name, block=block)
         return chunks
 
 
@@ -751,13 +746,15 @@ class Chunk():
     """
     Represents a remote chunk of data.
     """
-    def __init__(self, url, tile):
+    def __init__(self, url, name, block):
         """ Prepare url. """
-        parameters = {'geom': tile.polygon,
-                      'width': tile.width,
-                      'height': tile.height}
+        parameters = {'geom': block.tile.polygon,
+                      'width': block.tile.width,
+                      'height': block.tile.height}
         self.url = '{}&{}'.format(url, urllib.urlencode(parameters))
-        self.key = hashlib.md5(self.url).hexdigest()
+        self.key = '{}_{}'.format(name, block.tile.serial)
+        self.name = name
+        self.block = block
 
     def load(self):
         """ Load url into gdal dataset. """
@@ -771,7 +768,7 @@ class Chunk():
 
         # copy and remove
         dataset = gdal.Open(vsi_path)
-        self.dataset = DRIVER_GDAL_MEM.CreateCopy('', dataset)
+        self.block.inputs[self.name] = DRIVER_GDAL_MEM.CreateCopy('', dataset)
         dataset = None
         gdal.Unlink(vsi_path)
 
@@ -780,9 +777,10 @@ class Target(object):
     """
     Factory of target blocks
     """
-    def __init__(self, rpath, index, datasets, geometry, operation):
+    def __init__(self, rpath, index, source, datasets, geometry, operation):
         self.rpath = rpath
         self.index = index
+        self.source = source
         self.datasets = datasets
         self.geometry = geometry
         self.operation = operation
@@ -796,23 +794,24 @@ class Target(object):
         for tile in self.index:
             block = Block(tile=tile,
                           rpath=self.rpath,
+                          source=self.source,
                           datasets=self.datasets,
-                          geometry=self.geometry,  # should clip if bottleneck
+                          geometry=self.geometry,
                           operation=self.operation)
             yield block
 
 
 class Block(object):
     """ Self saving local chunk of data. """
-    def __init__(self, tile, rpath, datasets, geometry, operation):
+    def __init__(self, tile, rpath, source, datasets, geometry, operation):
         self.tile = tile
         self.rpath = rpath
+        self.source = source
         self.datasets = datasets
         self.operation = operation
         self.geometry = self._create_geometry(tile=tile, geometry=geometry)
-        self.inputs = self._create_inputs(tile=tile,
-                                          datasets=datasets,
-                                          operation=operation)
+        self.chunks = self.source.get_chunks(self)
+        self.inputs = {}
 
     def _create_geometry(self, tile, geometry):
         """
@@ -823,50 +822,6 @@ class Block(object):
         difference = polygon.Difference(geometry)
         difference.AssignSpatialReference(sr)
         return difference
-
-    def _create_inputs(self, tile, datasets, operation):
-        """ Create datasets for the operation. """
-        inputs = {}
-        for name in operation.inputs:
-            # fancy sorting
-            p1, q1 = tile.origin
-
-            # offset geo_transform
-            bigdataset = datasets.itervalues().next()
-            p, a, b, q, c, d = bigdataset.GetGeoTransform()
-            p = p + a * p1 + b * q1
-            q = q + c * p1 + d * q1
-            geo_transform = p, a, b, q, c, d
-
-            # create dataset
-            data_type = operation.inputs[name]['data_type']
-            dataset = DRIVER_GDAL_MEM.Create(
-                '', tile.width, tile.height, 1, data_type,
-            )
-            dataset.SetGeoTransform(geo_transform)
-            dataset.SetProjection(bigdataset.GetProjection())
-            no_data_value = operation.inputs[name]['no_data_value']
-            band = dataset.GetRasterBand(1)
-            band.SetNoDataValue(no_data_value)
-            band.Fill(no_data_value)
-            inputs[name] = dataset
-
-        return inputs
-
-    def fetch(self, source):
-        """ Load corresponding chunks from source into input datasets. """
-        chunks = source.get_chunks(self.tile)
-        for name in chunks:
-            chunks[name].load()
-            gdal.ReprojectImage(
-                chunks[name].dataset,
-                self.inputs[name],
-                None,
-                None,
-                gdal.GRA_NearestNeighbour,
-                0.0,
-                0.125,
-            )
 
     def _mask(self, dataset):
         """ Mask dataset where outside geometry. """
@@ -888,6 +843,11 @@ class Block(object):
             source.ReadRaster(0, 0, source.RasterXSize, source.RasterYSize),
         )
 
+    def __iter__(self):
+        """ Yield chunks. """
+        for chunk in self.chunks.values():
+            yield chunk
+
     def save(self):
         """
         Cut out and save block.
@@ -899,7 +859,7 @@ class Block(object):
                         target=self.datasets[name])
 
         with open(self.rpath, 'w') as resume_file:
-            resume_file.write(str(self.tile.serial))
+            resume_file.write(str(self.tile.serial + 1))
 
 
 def make_dataset(template, data_type, no_data_value):
@@ -930,19 +890,28 @@ def make_polygon(x1, y2, x2, y1):
     return polygon
 
 
+def load(chunk):
+    """ This is for the pool. """
+    chunk.load()
+    return chunk
+
+
 def extract(preparation):
     """
     Extract for a single feature.
     """
-    target = preparation.get_target()
     source = preparation.get_source()
+    target = preparation.get_target(source)
 
-    gdal.TermProgress_nocb(0)
     total = len(target)
-    for block in target:
-        block.fetch(source)
-        block.save()
-        gdal.TermProgress_nocb(block.tile.serial / total)
+    gdal.TermProgress_nocb(0)
+    batch = (c for b in target for c in b)
+
+    thread_pool = pool.ThreadPool(processes=8)
+    for chunk in thread_pool.imap(load, batch):
+        if len(chunk.block.chunks) == len(chunk.block.inputs):
+            chunk.block.save()
+            gdal.TermProgress_nocb((chunk.block.tile.serial + 1) / total)
 
 
 def check_version():
@@ -996,7 +965,7 @@ def get_parser():
     parser.add_argument('-v', '--version',
                         action='store_true')
     parser.add_argument('-s', '--server',
-                        default='http://110-raster-d1.external-nens.local:5000')
+                        default='http://raster.lizard.net')
     parser.add_argument('-o', '--operation',
                         default='3di',
                         choices=operations,
