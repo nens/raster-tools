@@ -2,6 +2,11 @@
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 """
 Extract layers from a raster server using a geometry.
+
+TODO
+- No need to fetch projection and cellsize when resuming
+- No need to fetch datatype and no_data_value at all
+- Rewrite to have a single object that generates single loadable elements
 """
 
 from __future__ import print_function
