@@ -676,7 +676,7 @@ class Index(object):
         """ Return indices into dataset. """
         w, h = self.block_size
         W, H = self.dataset_size
-        y, x = self.indices[0][serial], self.indices[1][serial]
+        y, x = self.indices[0][serial].item(), self.indices[1][serial].item()
         x1 = w * x
         y1 = h * y
         x2 = min(W, (x + 1) * w)
