@@ -537,9 +537,7 @@ class Preparation(object):
             information[name] = json.load(urllib.urlopen(url))
             # set dtype and fillvalue on the input
 
-            inp.update(time=information[name]['time'],
-                       data_type=information[name]['data_type'],
-                       no_data_value=information[name]['no_data_value'])
+            inp.update(time=information[name]['time'])
 
         return information
 
@@ -970,7 +968,7 @@ def get_parser():
     parser.add_argument('-v', '--version',
                         action='store_true')
     parser.add_argument('-s', '--server',
-                        default='http://raster.lizard.net')
+                        default='http://110-raster-d1.external-nens.local:5000')
     parser.add_argument('-o', '--operation',
                         default='3di',
                         choices=operations,
