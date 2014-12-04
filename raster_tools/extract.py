@@ -943,7 +943,7 @@ def command(shape_path, target_dir, **kwargs):
     if kwargs['version']:
         print('Extract script version: {}'.format(VERSION))
         exit()
-    # check_version()
+    check_version()
     datasource = ogr.Open(shape_path)
     for layer in datasource:
         for feature in layer:
