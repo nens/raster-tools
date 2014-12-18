@@ -5,71 +5,95 @@ from __future__ import unicode_literals
 from __future__ import absolute_import
 from __future__ import division
 
+import collections
 import logging
 
 from osgeo import gdal
-from osgeo import gdal_array
 from osgeo import ogr
+from osgeo import osr
+
+gdal.UseExceptions()
+ogr.UseExceptions()
+osr.UseExceptions()
 
 logger = logging.getLogger(__name__)
 
 
-def get_geo_transform(feature):
-    """ 
-    Return a feature's geo_transform.
+def inverse(a, b, c, d):
+    """ Return inverse for a 2 x 2 matrix with elements (a, b), (c, d). """
+    D = 1 / (a * d - b * c)
+    return d * D, -b * D,  -c * D,  a * D
 
-    Specialized function for ahn2 index. The rounding is because the index
-    geometries have small deviations, but at most about a micrometer.
+
+def get_geometry(dataset):
     """
-    x1, x2, y1, y2 = feature.geometry().GetEnvelope()
-    return round(x1), 0.5, 0.0, round(y2), 0.0, -0.5
-
-
-def get_geo_transforms(index_path):
+    Return ogr Geometry instance.
     """
-    Return dictionary mapping leaf number to geotransform.
-    """
+    x1, a, b, y2, c, d = dataset.GetGeoTransform()
+    x2 = x1 + a * dataset.RasterXSize + b * dataset.RasterYSize
+    y1 = y2 + c * dataset.RasterXSize + d * dataset.RasterYSize
 
-    ogr_index_datasource = ogr.Open(index_path)
-    ogr_index_layer = ogr_index_datasource[0]
+    ring = ogr.Geometry(ogr.wkbLinearRing)
+    ring.AddPoint_2D(x1, y1)
+    ring.AddPoint_2D(x2, y1)
+    ring.AddPoint_2D(x2, y2)
+    ring.AddPoint_2D(x1, y2)
+    ring.AddPoint_2D(x1, y1)
+    geometry = ogr.Geometry(ogr.wkbPolygon)
+    geometry.AddGeometry(ring)
+    return geometry
 
-    return {ogr_index_feature[b'BLADNR'][1:]:
-            get_geo_transform(ogr_index_feature)
-            for ogr_index_feature in ogr_index_layer}
 
+class GeoTransform(tuple):
+    def __init__(self, geo_transform_tuple):
+        """First argument must be a 6-tuple defining a geotransform."""
+        super(GeoTransform, self).__init__(geo_transform_tuple)
 
-def array2dataset(array):
-    """
-    Return gdal dataset.
-    """
-    # Prepare dataset name pointing to array
-    datapointer = array.ctypes.data
-    bands, lines, pixels = array.shape
-    datatypecode = gdal_array.NumericTypeCodeToGDALTypeCode(array.dtype.type)
-    datatype = gdal.GetDataTypeName(datatypecode)
-    bandoffset, lineoffset, pixeloffset = array.strides
+    def shifted(self, geometry):
+        """
+        Return shifted geo transform.
 
-    dataset_name_template = (
-        'MEM:::'
-        'DATAPOINTER={datapointer},'
-        'PIXELS={pixels},'
-        'LINES={lines},'
-        'BANDS={bands},'
-        'DATATYPE={datatype},'
-        'PIXELOFFSET={pixeloffset},'
-        'LINEOFFSET={lineoffset},'
-        'BANDOFFSET={bandoffset}'
-    )
-    dataset_name = dataset_name_template.format(
-        datapointer=datapointer,
-        pixels=pixels,
-        lines=lines,
-        bands=bands,
-        datatype=datatype,
-        pixeloffset=pixeloffset,
-        lineoffset=lineoffset,
-        bandoffset=bandoffset,
-    )
-    # Acces the array memory as gdal dataset
-    dataset = gdal.Open(dataset_name, gdal.GA_Update)
-    return dataset
+        :param geometry: geometry to match
+        """
+        values = list(self)
+        values[0], x2, y1, values[3] = geometry.GetEnvelope()
+        return self.__class__(values)
+
+    def get_indices(self, geometry):
+        """
+        Return array slices tuple for geometry.
+
+        :param geometry: geometry to subselect
+        """
+        # spatial coordinates
+        x1, x2, y1, y2 = geometry.GetEnvelope()
+
+        # inverse transformation
+        p, a, b, q, c, d = self
+        e, f, g, h = inverse(a, b, c, d)
+
+        # apply to envelope corners
+        X1 = int(round(e * (x1 - p) + f * (y2 - q)))
+        Y1 = int(round(g * (x1 - p) + h * (y2 - q)))
+        X2 = int(round(e * (x2 - p) + f * (y1 - q)))
+        Y2 = int(round(g * (x2 - p) + h * (y1 - q)))
+
+        return X1, Y1, X2, Y2
+
+    def get_slices(self, geometry):
+        """
+        Return array slices tuple for geometry.
+
+        :param geometry: geometry to subselect
+        """
+        x1, y1, x2, y2 = self.get_indices(geometry)
+        return slice(y1, y2), slice(x1, x2)
+
+    def get_window(self, geometry):
+        """
+        Return window dictionary for a geometry.
+
+        :param geometry: geometry to subselect
+        """
+        x1, y1, x2, y2 = self.get_indices(geometry)
+        return {'xoff': x1, 'yoff': y1, 'xsize': x2 - x1, 'ysize': y2 - y1}
