@@ -50,6 +50,19 @@ def get_parser():
     )
     return parser
 
+class Grower(object):
+    def __init__(self, shape):
+        self.shape = shape
+
+    def _grow(self, _slice, ):
+    zip(self.shape, slices)
+    for s in zip(
+        
+
+    def grow(self, slices):
+        
+        
+
 
 class Interpolator(object):
     def __init__(self, mask_layer, output_path, raster_dataset, margin=200):
@@ -102,6 +115,18 @@ class Interpolator(object):
         label = ndimage.label(np.equal(meta, 0))[0]
         print(meta[75:85, 165:175])
         print(label[75:85, 165:175])
+        import ipdb
+        ipdb.set_trace() 
+        #find_objects give the slices
+        # grow the slices
+        # get view from data, and meta and labels
+        # from labels get nodata indexarray
+        # from labels get edge index array
+        # from meta get index array (where meta is 1)
+        # from data get values
+        # write values 
+        # equate per object to the value of the group
+        #  ndimage.binary_dilation 
         #from pylab import imshow, show
         #imshow(meta)
         #show()
