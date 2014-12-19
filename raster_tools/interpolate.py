@@ -50,18 +50,46 @@ def get_parser():
     )
     return parser
 
+
+class Filler(object):
+    def __init__(self, resolution, parameter):
+        self.p = parameter / resolution
+
+    def flat(self, source, target, source_mask, target_mask):
+        """ Use single property from source. """
+        target[target_mask] = source[source_mask].min()
+
+    def idw(self, source, target, source_mask, target_mask):
+        """ Use idw for interpolation. """
+        source_index = source_mask.nonzero()
+        source_points = np.vstack(source_index).transpose()
+        source_values = source[source_index]
+
+        target_index = target_mask.nonzero()
+        target_points = np.vstack(target_index).transpose()
+
+        sum_of_weights = np.zeros(len(target_points))
+        sum_of_weighted_measurements = np.zeros(len(target_points))
+        for i in range(len(source_points)):
+            distance = np.sqrt((source_points[i] - target_points) ** 2).sum(1)
+            weight = 1.0 / distance ** self.p
+            weighted_measurement = source_values[i] * weight
+            sum_of_weights += weight
+            sum_of_weighted_measurements += weighted_measurement
+        target_values = sum_of_weighted_measurements / sum_of_weights
+        target[target_index] = target_values
+
+
 class Grower(object):
     def __init__(self, shape):
         self.shape = shape
 
-    def _grow(self, _slice, ):
-    zip(self.shape, slices)
-    for s in zip(
-        
-
     def grow(self, slices):
-        
-        
+        """ Grow slices by one, but do not exceed shape dims. """
+        return tuple(slice(
+            max(0, s.start - 1),
+            min(l, s.stop + 1))
+            for s, l in zip(slices, self.shape))
 
 
 class Interpolator(object):
@@ -108,7 +136,10 @@ class Interpolator(object):
 
         inner_geo_transform = self.geo_transform.shifted(inner_geometry)
         outer_geo_transform = self.geo_transform.shifted(outer_geometry)
+
+        inner_geo_transform
         slices = outer_geo_transform.get_slices(inner_geometry)
+        slices
 
         data, meta = self.get_arrays(inner_geometry)
 
@@ -116,20 +147,20 @@ class Interpolator(object):
         print(meta[75:85, 165:175])
         print(label[75:85, 165:175])
         import ipdb
-        ipdb.set_trace() 
-        #find_objects give the slices
+        ipdb.set_trace()
+        # find_objects give the slices
         # grow the slices
         # get view from data, and meta and labels
         # from labels get nodata indexarray
         # from labels get edge index array
         # from meta get index array (where meta is 1)
         # from data get values
-        # write values 
+        # write values
         # equate per object to the value of the group
-        #  ndimage.binary_dilation 
-        #from pylab import imshow, show
-        #imshow(meta)
-        #show()
+        #  ndimage.binary_dilation
+        # from pylab import imshow, show
+        # imshow(meta)
+        # show()
 
 
 def command(index_path, mask_path, raster_path, output_path):
@@ -158,6 +189,27 @@ def command(index_path, mask_path, raster_path, output_path):
 
 
 def main():
+    filler = Filler(parameter=2, resolution=1)
+    source_mask = np.array([[1, 1, 1, 1],
+                            [1, 0, 0, 1],
+                            [1, 0, 0, 1],
+                            [1, 1, 1, 1]])
+    source = np.array([[6, 7, 8, 9],
+                       [5, 0, 0, 8],
+                       [4, 0, 0, 7],
+                       [3, 4, 5, 6]])
+    target_mask = 1 - source_mask
+    target = 8 * source_mask
+    print(source, target, source_mask, target_mask)
+    filler.flat(source, target, source_mask, target_mask)
+    print(source, target, source_mask, target_mask)
+    filler.idw(source, target, source_mask, target_mask)
+    print(source, target, source_mask, target_mask)
+    print(target)
+
+
+    exit()
+
     """ Call command with args from parser. """
     logging.basicConfig(stream=sys.stderr,
                         level=logging.DEBUG,
