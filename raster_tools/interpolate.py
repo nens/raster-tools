@@ -57,7 +57,9 @@ class Filler(object):
 
     def flat(self, source, target, source_mask, target_mask):
         """ Use single property from source. """
-        target[target_mask] = source[source_mask].min()
+        source_index = source_mask.nonzero()
+        target_index = target_mask.nonzero()
+        target[target_index] = source[source_index].min()
 
     def idw(self, source, target, source_mask, target_mask):
         """ Use idw for interpolation. """
@@ -190,25 +192,21 @@ def command(index_path, mask_path, raster_path, output_path):
 
 def main():
     filler = Filler(parameter=2, resolution=1)
-    source_mask = np.array([[1, 1, 1, 1],
-                            [1, 0, 0, 1],
+    source_mask = np.array([[1, 1, 1, 0],
+                            [1, 0, 1, 1],
                             [1, 0, 0, 1],
                             [1, 1, 1, 1]])
-    source = np.array([[6, 7, 8, 9],
-                       [5, 0, 0, 8],
+    source = np.array([[6, 7, 8, 0],
+                       [5, 0, 9, 8],
                        [4, 0, 0, 7],
                        [3, 4, 5, 6]])
     target_mask = 1 - source_mask
     target = 8 * source_mask
-    print(source, target, source_mask, target_mask)
-    filler.flat(source, target, source_mask, target_mask)
-    print(source, target, source_mask, target_mask)
-    filler.idw(source, target, source_mask, target_mask)
-    print(source, target, source_mask, target_mask)
     print(target)
-
-
-    exit()
+    filler.flat(source, target, source_mask, target_mask)
+    print(target)
+    filler.idw(source, target, source_mask, target_mask)
+    print(target)
 
     """ Call command with args from parser. """
     logging.basicConfig(stream=sys.stderr,
