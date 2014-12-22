@@ -8,6 +8,7 @@ from __future__ import division
 
 import argparse
 import logging
+import os
 import sys
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,12 @@ from raster_tools import utils
 gdal.UseExceptions()
 ogr.UseExceptions()
 osr.UseExceptions()
+
+GTIF = gdal.GetDriverByName(b'gtiff')
+
+VOID = 0
+DATA = 1
+ELSE = 2
 
 
 def get_parser():
@@ -58,12 +65,16 @@ class Filler(object):
     def flat(self, source, target, source_mask, target_mask):
         """ Use single property from source. """
         source_index = source_mask.nonzero()
+        if not len(source_index[0]):
+            return
         target_index = target_mask.nonzero()
-        target[target_index] = source[source_index].min()
+        target[target_index] = np.median(source[source_index])
 
     def idw(self, source, target, source_mask, target_mask):
         """ Use idw for interpolation. """
         source_index = source_mask.nonzero()
+        if not (source_index[0]):
+            return
         source_points = np.vstack(source_index).transpose()
         source_values = source[source_index]
 
@@ -101,6 +112,7 @@ class Interpolator(object):
         self.output_path = output_path
         self.raster_dataset = raster_dataset
 
+        self.projection = raster_dataset.GetProjection()
         self.geometry = utils.get_geometry(raster_dataset)
         self.geo_transform = utils.GeoTransform(
             raster_dataset.GetGeoTransform(),
@@ -116,8 +128,10 @@ class Interpolator(object):
         """ Meta is the three class array. """
         # read the data
         window = self.geo_transform.get_window(geometry)
-        data = self.raster_dataset.ReadAsArray(**window)
-        meta = np.where(np.equal(data, self.no_data_value), 0, 1).astype('u1')
+        source = self.raster_dataset.ReadAsArray(**window)
+        target = np.ones(source.shape, dtype=source.dtype) * self.no_data_value
+        meta = np.where(np.equal(source,
+                                 self.no_data_value), VOID, DATA).astype('u1')
 
         # rasterize the water
         kwargs = {'geo_transform': self.geo_transform.shifted(geometry)}
@@ -125,44 +139,59 @@ class Interpolator(object):
             gdal.RasterizeLayer(dataset,
                                 [1],
                                 self.mask_layer,
-                                burn_values=[2])
+                                burn_values=[ELSE])
 
-        return data, meta
+        return source, target, meta
 
     def interpolate(self, index_feature):
-        print(index_feature.items())
+        # geometries
         inner_geometry = index_feature.geometry()
         outer_geometry = (inner_geometry
                           .Buffer(self.margin, 1)
                           .Intersection(self.geometry))
-
         inner_geo_transform = self.geo_transform.shifted(inner_geometry)
         outer_geo_transform = self.geo_transform.shifted(outer_geometry)
 
-        inner_geo_transform
+        # arrays
+        source, target, meta = self.get_arrays(outer_geometry)
+        void_mask = np.equal(meta, VOID)
+        data_mask = np.equal(meta, DATA)
+
+        # action
+        grower = Grower(shape=meta.shape)
+        label, total = ndimage.label(void_mask)
+        objects = (grower.grow(o) for o in ndimage.find_objects(label))
+
+        filler = Filler(resolution=0.5, parameter=2)
+        for count, slices in enumerate(objects, 1):
+            # the masking
+            target_mask = np.equal(label[slices], count)
+            edge = ndimage.binary_dilation(target_mask) - target_mask
+            source_mask = np.logical_and(data_mask[slices], edge)
+            # the filling
+            filler.flat(source=source[slices],
+                        target=target[slices],
+                        source_mask=source_mask,
+                        target_mask=target_mask)
+            gdal.TermProgress_nocb(count / total)
+
+        # target path
+        leaf_number = index_feature[b'BLADNR']
+        path = os.path.join(self.output_path,
+                            leaf_number[1:4],
+                            'f{}.tif'.format(leaf_number[1:]))
+        dirname = os.path.dirname(path)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+
+        # save
         slices = outer_geo_transform.get_slices(inner_geometry)
-        slices
+        kwargs = {'projection': self.projection,
+                  'geo_transform': inner_geo_transform,
+                  'no_data_value': self.no_data_value.item()}
 
-        data, meta = self.get_arrays(inner_geometry)
-
-        label = ndimage.label(np.equal(meta, 0))[0]
-        print(meta[75:85, 165:175])
-        print(label[75:85, 165:175])
-        import ipdb
-        ipdb.set_trace()
-        # find_objects give the slices
-        # grow the slices
-        # get view from data, and meta and labels
-        # from labels get nodata indexarray
-        # from labels get edge index array
-        # from meta get index array (where meta is 1)
-        # from data get values
-        # write values
-        # equate per object to the value of the group
-        #  ndimage.binary_dilation
-        # from pylab import imshow, show
-        # imshow(meta)
-        # show()
+        with datasets.Dataset(target[slices][np.newaxis], **kwargs) as dataset:
+            GTIF.CreateCopy(path, dataset, options=['COMPRESS=DEFLATE'])
 
 
 def command(index_path, mask_path, raster_path, output_path):
@@ -184,30 +213,11 @@ def command(index_path, mask_path, raster_path, output_path):
                                 raster_dataset=raster_dataset)
 
     for index_feature in index_layer:
-        print(index_feature.geometry())
         interpolator.interpolate(index_feature)
-        exit()
     return 0
 
 
 def main():
-    filler = Filler(parameter=2, resolution=1)
-    source_mask = np.array([[1, 1, 1, 0],
-                            [1, 0, 1, 1],
-                            [1, 0, 0, 1],
-                            [1, 1, 1, 1]])
-    source = np.array([[6, 7, 8, 0],
-                       [5, 0, 9, 8],
-                       [4, 0, 0, 7],
-                       [3, 4, 5, 6]])
-    target_mask = 1 - source_mask
-    target = 8 * source_mask
-    print(target)
-    filler.flat(source, target, source_mask, target_mask)
-    print(target)
-    filler.idw(source, target, source_mask, target_mask)
-    print(target)
-
     """ Call command with args from parser. """
     logging.basicConfig(stream=sys.stderr,
                         level=logging.DEBUG,
