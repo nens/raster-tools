@@ -55,6 +55,10 @@ def get_parser():
         'output_path',
         metavar='OUTPUT',
     )
+    parser.add_argument(
+        '-p', '--part',
+        help='Partial processing source, for example "2/3"',
+    )
     return parser
 
 
@@ -149,7 +153,7 @@ class Interpolator(object):
         path = os.path.join(self.output_path,
                             leaf_number[1:4],
                             'f{}.tif'.format(leaf_number[1:]))
-        logger.debug(path)
+        logger.info(path)
         dirname = os.path.dirname(path)
         if os.path.exists(path):
             logger.debug('Target already exists.')
@@ -189,26 +193,28 @@ class Interpolator(object):
                         target=target[slices],
                         source_mask=source_mask,
                         target_mask=target_mask)
-            gdal.TermProgress_nocb(count / total)
 
         # save
         slices = outer_geo_transform.get_slices(inner_geometry)
+        if np.equal(target[slices], self.no_data_value).all():
+            logger.debug('Nothing filled.')
+            return
+
         kwargs = {'projection': self.projection,
                   'geo_transform': inner_geo_transform,
                   'no_data_value': self.no_data_value.item()}
-
         with datasets.Dataset(target[slices][np.newaxis], **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=['COMPRESS=DEFLATE'])
 
 
-def command(index_path, mask_path, raster_path, output_path):
+def command(index_path, mask_path, raster_path, output_path, part):
     """
     - use label to find the edge of islands of nodata
     - interpolate or take the min from the part of the edges that have data
     - write to output according to index
     """
-    index_data_source = ogr.Open(index_path)
-    index_layer = index_data_source[0]
+    # select some or all polygons
+    index = utils.PartialDataSource(index_path, part)
 
     mask_data_source = ogr.Open(mask_path)
     mask_layer = mask_data_source[0]
@@ -219,15 +225,15 @@ def command(index_path, mask_path, raster_path, output_path):
                                 output_path=output_path,
                                 raster_dataset=raster_dataset)
 
-    for index_feature in index_layer:
-        interpolator.interpolate(index_feature)
+    for feature in index:
+        interpolator.interpolate(feature)
     return 0
 
 
 def main():
     """ Call command with args from parser. """
     logging.basicConfig(stream=sys.stderr,
-                        level=logging.DEBUG,
+                        level=logging.INFO,
                         format='%(message)s')
     try:
         return command(**vars(get_parser().parse_args()))

@@ -5,7 +5,6 @@ from __future__ import unicode_literals
 from __future__ import absolute_import
 from __future__ import division
 
-import collections
 import logging
 
 from osgeo import gdal
@@ -97,3 +96,28 @@ class GeoTransform(tuple):
         """
         x1, y1, x2, y2 = self.get_indices(geometry)
         return {'xoff': x1, 'yoff': y1, 'xsize': x2 - x1, 'ysize': y2 - y1}
+
+
+class PartialDataSource(object):
+    """ Wrap a shapefile. """
+    def __init__(self, path, part=None):
+        self.dataset = ogr.Open(path)
+        self.layer = self.dataset[0]
+        if part:
+            self.count, self.total = map(int, part.split('/'))
+        else:
+            self.count, self.total = 1, 1
+
+    def __len__(self):
+        return self.layer.GetFeatureCount()
+
+    def __iter__(self):
+        """ Return generator of features for text, e.g. '2/5' """
+        size = len(self) / self.total
+        start = int((self.count - 1) * size)
+        if self.count == self.total:
+            stop = len(self)
+        else:
+            stop = int(self.count * size)
+        for fid in xrange(start, stop):
+            yield self.layer[fid]
