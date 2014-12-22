@@ -144,6 +144,19 @@ class Interpolator(object):
         return source, target, meta
 
     def interpolate(self, index_feature):
+        # target path
+        leaf_number = index_feature[b'BLADNR']
+        path = os.path.join(self.output_path,
+                            leaf_number[1:4],
+                            'f{}.tif'.format(leaf_number[1:]))
+        logger.debug(path)
+        dirname = os.path.dirname(path)
+        if os.path.exists(path):
+            logger.debug('alrady exists.')
+            return
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+
         # geometries
         inner_geometry = index_feature.geometry()
         outer_geometry = (inner_geometry
@@ -174,15 +187,6 @@ class Interpolator(object):
                         source_mask=source_mask,
                         target_mask=target_mask)
             gdal.TermProgress_nocb(count / total)
-
-        # target path
-        leaf_number = index_feature[b'BLADNR']
-        path = os.path.join(self.output_path,
-                            leaf_number[1:4],
-                            'f{}.tif'.format(leaf_number[1:]))
-        dirname = os.path.dirname(path)
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
 
         # save
         slices = outer_geo_transform.get_slices(inner_geometry)
