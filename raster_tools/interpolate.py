@@ -152,7 +152,7 @@ class Interpolator(object):
         logger.debug(path)
         dirname = os.path.dirname(path)
         if os.path.exists(path):
-            logger.debug('alrady exists.')
+            logger.debug('Target already exists.')
             return
         if not os.path.exists(dirname):
             os.makedirs(dirname)
@@ -174,6 +174,9 @@ class Interpolator(object):
         grower = Grower(shape=meta.shape)
         label, total = ndimage.label(void_mask)
         objects = (grower.grow(o) for o in ndimage.find_objects(label))
+        if not total:
+            logger.debug('No objects found.')
+            return
 
         filler = Filler(resolution=0.5, parameter=2)
         for count, slices in enumerate(objects, 1):
