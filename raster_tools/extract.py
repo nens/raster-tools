@@ -915,6 +915,7 @@ def extract(preparation):
         if len(chunk.block.chunks) == len(chunk.block.inputs):
             chunk.block.save()
             gdal.TermProgress_nocb((chunk.block.tile.serial + 1) / total)
+    preparation.datasets = None
 
 
 def check_version():
