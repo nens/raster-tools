@@ -16,14 +16,15 @@ import zipfile
 
 from osgeo import gdal
 from osgeo import osr
+from scipy import interpolate
 import numpy as np
 
 from raster_tools import datasets
 
 logger = logging.getLogger(__name__)
 
-WIDTH = 0.50
-HEIGHT = 0.50
+WIDTH = 0.25
+HEIGHT = 0.25
 NO_DATA_VALUE = -9999
 DRIVER = gdal.GetDriverByName(b'gtiff')
 PROJECTION = osr.GetUserInputAsWKT(b'epsg:3043')
@@ -58,10 +59,23 @@ def rasterize(points):
     height = int((q - ymin) / HEIGHT) + 1
     geo_transform = p, WIDTH, 0, q, 0, -HEIGHT
 
-    array = -9999 * np.ones((1, height, width), dtype='f4')
-    index0 = np.uint32((q - points[:, 1]) / HEIGHT)
-    index1 = np.uint32((points[:, 0] - p) / WIDTH)
-    array[0, index0, index1] = points[:, 2]
+    # simple filling
+    # array = -9999 * np.ones((1, height, width), dtype='f4')
+    # index0 = np.uint32((q - points[:, 1]) / HEIGHT)
+    # index1 = np.uint32((points[:, 0] - p) / WIDTH)
+    # array[0, index0, index1] = points[:, 2]
+
+    # using interpolation
+    cells = np.indices((height, width)).transpose(1, 2, 0).reshape(-1, 2)
+    rescale = lambda x: (x - (xmin, ymin)) / (xmax - xmin, ymax - ymin)
+    xi = rescale((p, q) + cells[:, ::-1] * (WIDTH, -HEIGHT))
+    pts = rescale(points[:, :2])
+    vals = points[:, 2]
+    array = interpolate.griddata(xi=xi,
+                                 points=pts,
+                                 values=vals,
+                                 fill_value=NO_DATA_VALUE)
+    array.shape = 1, height, width
 
     return {'array': array,
             'projection': PROJECTION,
@@ -81,7 +95,7 @@ def convert(archive, name):
 def command(path):
     with zipfile.ZipFile(path) as archive:
         for name in sorted(archive.namelist()):
-            if name.endswith('txt') and not 'FINAL' in name:
+            if name.endswith('txt') and 'FINAL' not in name:
                 convert(archive=archive, name=name)
 
 
