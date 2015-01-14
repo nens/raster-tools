@@ -60,7 +60,7 @@ class GeoTransform(tuple):
 
     def get_indices(self, geometry):
         """
-        Return array slices tuple for geometry.
+        Return array indices tuple for geometry.
 
         :param geometry: geometry to subselect
         """

@@ -26,7 +26,9 @@ class PostgisSource(object):
         'real': ogr.OFTReal,
         'integer': ogr.OFTInteger,
         'numeric': ogr.OFTReal,
+        'boolean': ogr.OFTBinary,
         'character varying': ogr.OFTString,
+        'timestamp without time zone': ogr.OFTString,
     }
 
     SQL_GEOMETRY_COLUMN = """
