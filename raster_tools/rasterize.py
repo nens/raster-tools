@@ -194,7 +194,6 @@ def command(index_path, source_path, target_dir, attribute):
                 options=['ATTRIBUTE={}'.format(source_field_name)]
             )
             burned = True
-            break
 
         if burned:
             leaf_number = index_feature[b'BLADNR']
