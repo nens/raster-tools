@@ -81,7 +81,10 @@ class Rasterizer(object):
         # retrieve raster data
         geo_transform = self.geo_transform.shifted(feature.geometry())
         window = self.geo_transform.get_window(feature.geometry())
-        data = self.dataset.ReadAsArray(**window)[np.newaxis, :, :]
+        data = self.dataset.ReadAsArray(**window)
+        if not data:
+            return
+        data.shape = (1,) + data.shape
 
         # create ogr source with geometry
         data_source = self.data_source(feature.geometry())
