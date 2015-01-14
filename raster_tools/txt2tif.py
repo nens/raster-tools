@@ -92,10 +92,15 @@ def convert(archive, name):
         DRIVER.CreateCopy(path, dataset, options=['compress=deflate'])
 
 
+def is_new(name):
+    path = '{}.tif'.format(os.path.splitext(os.path.basename(name))[0])
+    return not os.path.exists(path)
+
+
 def command(path):
     with zipfile.ZipFile(path) as archive:
         for name in sorted(archive.namelist()):
-            if name.endswith('txt') and 'FINAL' not in name:
+            if name.endswith('txt') and 'FINAL' not in name and is_new(name):
                 convert(archive=archive, name=name)
 
 
