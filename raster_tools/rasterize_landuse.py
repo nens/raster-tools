@@ -9,9 +9,7 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
-import datetime
 import logging
-import os
 import sys
 
 from raster_tools import rasterize
@@ -71,12 +69,7 @@ def command(index_path, dbname, host, user, password):
                                    user=user, password=password)
     kwargs = {'index_path': index_path, 'source_path': source_path}
     for key, column in COLUMNS.iteritems():
-        target_dir = '{today}_landuse_{key}'.format(
-            today=datetime.date.today(), key=key,
-        )
-        if os.path.exists(target_dir):
-            print('target directory {} already exists.'.format(target_dir))
-            continue
+        target_dir = 'incoming_landuse_{key}'.format(key=key)
         kwargs.update(attribute=column)
         kwargs.update(target_dir=target_dir)
         rasterize.command(**kwargs)

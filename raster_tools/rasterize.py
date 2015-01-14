@@ -20,7 +20,10 @@ import sys
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
+
 import psycopg2
+
+from raster_tools import datasets
 
 DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
 DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
@@ -149,6 +152,14 @@ def command(index_path, source_path, target_dir, attribute):
     print('Starting rasterize.')
     gdal.TermProgress_nocb(0)
     for count, index_feature in enumerate(index_layer, 1):
+        leaf_number = index_feature[b'BLADNR']
+        target_path = os.path.join(
+            target_dir, leaf_number[1:4], leaf_number + '.tif',
+        )
+        if os.path.exists(target_path):
+            gdal.TermProgress_nocb(count / total)
+            continue
+
         index_geometry = index_feature.geometry()
 
         # prepare dataset
@@ -183,13 +194,34 @@ def command(index_path, source_path, target_dir, attribute):
                 options=['ATTRIBUTE={}'.format(source_field_name)]
             )
             burned = True
+            break
 
         if burned:
-            # save
             leaf_number = index_feature[b'BLADNR']
-            target_path = os.path.join(
-                target_dir, leaf_number[1:4], leaf_number + '.tif',
-            )
+            array = (dataset.ReadAsArray() == 255).astype('u1')
+            if array.any():
+                # save no data tif for inspection
+                ndv_target_path = os.path.join(target_dir,
+                                               'no_data',
+                                               leaf_number[1:4],
+                                               leaf_number + '.tif')
+                try:
+                    os.makedirs(os.path.dirname(ndv_target_path))
+                except OSError:
+                    pass
+                array.shape = 1, dataset.RasterYSize, dataset.RasterXSize
+                kwargs = {
+                    'array': array,
+                    'no_data_value': 0,
+                    'geo_transform': get_geotransform(index_geometry),
+                    'projection': osr.GetUserInputAsWKT(b'epsg:28992'),
+                }
+                with datasets.Dataset(**kwargs) as ndv_dataset:
+                    DRIVER_GDAL_GTIFF.CreateCopy(ndv_target_path,
+                                                 ndv_dataset,
+                                                 options=['COMPRESS=DEFLATE'])
+
+            # save
             try:
                 os.makedirs(os.path.dirname(target_path))
             except OSError:
