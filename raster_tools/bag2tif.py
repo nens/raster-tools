@@ -82,7 +82,7 @@ class Rasterizer(object):
         geo_transform = self.geo_transform.shifted(feature.geometry())
         window = self.geo_transform.get_window(feature.geometry())
         data = self.dataset.ReadAsArray(**window)
-        if not data:
+        if data is None:
             return
         data.shape = (1,) + data.shape
 
