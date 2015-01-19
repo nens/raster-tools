@@ -95,7 +95,10 @@ class GeoTransform(tuple):
         :param geometry: geometry to subselect
         """
         x1, y1, x2, y2 = self.get_indices(geometry)
-        return {'xoff': x1, 'yoff': y1, 'xsize': x2 - x1, 'ysize': y2 - y1}
+        return {'xoff': x1,
+                'yoff': y1,
+                'xsize': x2 - x1 + 1,
+                'ysize': y2 - y1 + 1}
 
 
 class PartialDataSource(object):
