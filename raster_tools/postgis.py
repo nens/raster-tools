@@ -24,9 +24,10 @@ class PostgisSource(object):
 
     OGR_TYPES = {
         'real': ogr.OFTReal,
-        'integer': ogr.OFTInteger,
         'numeric': ogr.OFTReal,
         'boolean': ogr.OFTBinary,
+        'bigint': ogr.OFTInteger,
+        'integer': ogr.OFTInteger,
         'character varying': ogr.OFTString,
         'timestamp without time zone': ogr.OFTString,
     }
