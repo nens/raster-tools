@@ -438,12 +438,12 @@ class ThreeDi(Operation):
 
     def calculate(self, datasets):
         """ Return dictionary of output datasets. """
-        # Temporarily change no data into 99 in landuse
+        # Temporarily change no data into 22 in landuse
         use_dataset = datasets[self.I_LANDUSE]
         use_band = use_dataset.GetRasterBand(1)
         use_array = use_band.ReadAsArray()
         use_no_data_value = use_band.GetNoDataValue()
-        use_array[use_array == use_no_data_value] = 99
+        use_array[use_array == use_no_data_value] = 22
         use_band.WriteArray(use_array)
 
         # Temporarily change no data into 14 in soil
