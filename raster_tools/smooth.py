@@ -29,14 +29,14 @@ def get_image(tile_name):
     return tile_path
 
 
-def orfeo_smooth(tile_in, tile_out):
+def orfeo_smooth(tile_in, tile_out, smooth_factor=20):
     logger.info('[*] Starting smoothing..')
     # import ipdb; ipdb.set_trace()
 
     ps = subprocess.Popen(
         ['otbcli_Smoothing', '-in', tile_in,
          '-out', tile_out,
-         'float', '-type', 'gaussian', '-type.gaussian.radius', '20'],
+         'float', '-type', 'gaussian', '-type.gaussian.radius', smooth_factor],
         stdout=subprocess.PIPE
     )
 
@@ -77,7 +77,7 @@ class RasterImage(object):
     def gaussian_blur(self, in_array, size):
         # expand in_array to fit edge of kernel
         # import ipdb; ipdb.set_trace()
-        padded_array = np.pad(in_array, size, mode='symmetric')
+        padded_array = np.pad(in_array, size, mode='symmetric'.encode('ascii'))
         # build kernel
         x, y = np.mgrid[-size:size + 1, -size:size + 1]
         g = np.exp(-(x**2 / float(size) + y**2 / float(size)))
@@ -111,8 +111,8 @@ if __name__ == "__main__":
         with open(tiles_file, 'rb') as f:
             for i,line in enumerate(f):
                 # call function
-                if i > 0:
-                    break
+                # if i > 0:
+                #     break
                 logger.debug("[DB] Line: {0}".format(line))
                 tile_raw = line.strip()
                 tile_path = get_image(tile_raw)
@@ -121,14 +121,14 @@ if __name__ == "__main__":
                                    "exist! Skipping...".format(
                         os.path.basename(tile_path)))
                     continue
-                out_file = unipath.Path(out_dir, '{0:s}_GGsth{1:s}'.format(
+                out_file = unipath.Path(out_dir, '{0:s}_sthnp{1:s}'.format(
                     tile_path.stem, tile_path.ext))
                 logger.debug("tile path {0}, out file {1}".format(tile_path, out_file))
                 # orfeo_smooth(tile_path, out_file)
                 ri = RasterImage(tile_path)
                 my_array = ri.raster2array()
-                blurred = ri.gaussian_blur(blurred, 10)
-                ri.array2raster(my_array, out_file)
+                blurred = ri.gaussian_blur(my_array, 100)
+                ri.array2raster(blurred, out_file)
             logger.info('[+] Smoothing successful!')
             logger.info("[*] Execution time: %s" % (datetime.datetime.now() - t1))
     except IOError, ioerr:

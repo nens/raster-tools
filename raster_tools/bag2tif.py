@@ -77,7 +77,15 @@ class Rasterizer(object):
         layer.CreateFeature(feature)
         return data_source
 
-    def single(self, feature, target):
+    def single(self, feature, target, np_method='median', threshold=None):
+        """
+
+        :param feature:
+        :param target:
+        :param np_method: either median or percentile
+        :param threshold: provide value if np_method is percentile
+        :return:
+        """
         # retrieve raster data
         geo_transform = self.geo_transform.shifted(feature.geometry())
         window = self.geo_transform.get_window(feature.geometry())
@@ -96,9 +104,16 @@ class Rasterizer(object):
         with datasets.Dataset(mask, **kwargs) as dataset:
             gdal.RasterizeLayer(dataset, [1], data_source[0], burn_values=[1])
 
-        # rasterize the median
-        median = np.median(data[mask.nonzero()])
-        gdal.RasterizeLayer(target, [1], data_source[0], burn_values=[median])
+        if np_method == 'median':
+            # rasterize the median
+            burn = np.median(data[mask.nonzero()])
+        elif np_method == 'percentile':
+            # rasterize the percentile
+            burn = np.percentile(data[mask.nonzero()])
+        else:
+            raise ValueError("[ERROR] parameter 'np_method' "
+                             "must be either 'median' or 'percentile'")
+        gdal.RasterizeLayer(target, [1], data_source[0], burn_values=[burn])
 
     def rasterize(self, index_feature):
         # prepare or abort
@@ -121,6 +136,7 @@ class Rasterizer(object):
         # analyze and rasterize
         for bag_feature in data_source[0]:
             self.single(feature=bag_feature, target=target)
+            raise Exception('STO')
 
         # save
         DRIVER_GDAL_GTIFF.CreateCopy(path,
@@ -156,6 +172,7 @@ def get_parser():
 
 def main():
     """ Call command with args from parser. """
+    import ipdb; ipdb.set_trace()
     logging.basicConfig(stream=sys.stderr,
                         level=logging.DEBUG,
                         format='%(message)s')
@@ -165,3 +182,6 @@ def main():
         raise  # argparse does this
     except:
         logger.exception('An exception has occurred.')
+
+if __name__ == "__main__":
+    main()

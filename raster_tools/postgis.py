@@ -30,6 +30,8 @@ class PostgisSource(object):
         'integer': ogr.OFTInteger,
         'character varying': ogr.OFTString,
         'timestamp without time zone': ogr.OFTString,
+        'date': ogr.OFTString,
+        'USER-DEFINED': ogr.OFTString,
     }
 
     SQL_GEOMETRY_COLUMN = """
