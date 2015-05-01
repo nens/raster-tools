@@ -109,7 +109,13 @@ class Rasterizer(object):
             burn = np.median(data[mask.nonzero()])
         elif np_method == 'percentile':
             # rasterize the percentile
-            burn = np.percentile(data[mask.nonzero()])
+            if not threshold:
+                raise ValueError("[ERROR] You need to provide the "
+                                 "threshold value")
+            try:
+                burn = np.percentile(data[mask.nonzero()], threshold)
+            except IndexError, _:
+                return
         else:
             raise ValueError("[ERROR] parameter 'np_method' "
                              "must be either 'median' or 'percentile'")
@@ -132,11 +138,11 @@ class Rasterizer(object):
         data_source = self.postgis_source.get_data_source(
             table=self.table, geometry=index_feature.geometry(),
         )
-
         # analyze and rasterize
         for bag_feature in data_source[0]:
-            self.single(feature=bag_feature, target=target)
-            raise Exception('STO')
+            self.single(feature=bag_feature, target=target,
+                        np_method='percentile', threshold=70)
+            # self.single(feature=bag_feature, target=target)
 
         # save
         DRIVER_GDAL_GTIFF.CreateCopy(path,
@@ -172,7 +178,6 @@ def get_parser():
 
 def main():
     """ Call command with args from parser. """
-    import ipdb; ipdb.set_trace()
     logging.basicConfig(stream=sys.stderr,
                         level=logging.DEBUG,
                         format='%(message)s')
