@@ -112,6 +112,7 @@ class Rasterizer(object):
             try:
                 burn = np.percentile(data[mask.nonzero()], self.q)
             except IndexError, _:
+                import ipdb; ipdb.set_trace()
                 return
         else:
             raise ValueError("[ERROR] parameter 'METHOD' "
