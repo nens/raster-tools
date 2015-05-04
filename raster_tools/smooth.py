@@ -68,7 +68,7 @@ class RasterImage(object):
     def get_nodata_value_mask(non_array, int_array):
         # get a boolean mask
         mask =  non_array == float(NO_DATA_VALUE)
-        buffered_mask = RasterImage.boolean_buffer(mask, 3)
+        buffered_mask = RasterImage.boolean_buffer(mask, 7)
         # index the no data cells, fill the rest with 0
         interpolated_nodata = int_array*buffered_mask
         # # if only 0 return int_array
