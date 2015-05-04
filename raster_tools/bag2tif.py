@@ -37,10 +37,14 @@ logger = logging.getLogger(__name__)
 
 
 class Rasterizer(object):
-    def __init__(self, raster_path, target_dir, table, **kwargs):
+    def __init__(self, raster_path, target_dir, table, stat_method,
+                 q, **kwargs):
+        print('****** {0}'.format(kwargs))
         self.postgis_source = postgis.PostgisSource(**kwargs)
         self.target_dir = target_dir
         self.table = table
+        self.stat_method = stat_method
+        self.q = q
 
         self.dataset = gdal.Open(raster_path)
         self.geo_transform = utils.GeoTransform(
@@ -104,15 +108,20 @@ class Rasterizer(object):
         with datasets.Dataset(mask, **kwargs) as dataset:
             gdal.RasterizeLayer(dataset, [1], data_source[0], burn_values=[1])
 
-        if np_method == 'median':
+        if self.stat_method == 'median':
             # rasterize the median
             burn = np.median(data[mask.nonzero()])
-        elif np_method == 'percentile':
+        elif self.stat_method == 'percentile':
             # rasterize the percentile
-            burn = np.percentile(data[mask.nonzero()])
+            try:
+                burn = np.percentile(data[mask.nonzero()], self.q)
+            except IndexError, _:
+                return
         else:
-            raise ValueError("[ERROR] parameter 'np_method' "
-                             "must be either 'median' or 'percentile'")
+            raise ValueError("[ERROR] parameter 'METHOD' "
+                             "must be either 'median' or "
+                             "'percentile' but "
+                             "is {0}".format(self.stat_method))
         gdal.RasterizeLayer(target, [1], data_source[0], burn_values=[burn])
 
     def rasterize(self, index_feature):
@@ -132,12 +141,9 @@ class Rasterizer(object):
         data_source = self.postgis_source.get_data_source(
             table=self.table, geometry=index_feature.geometry(),
         )
-
         # analyze and rasterize
         for bag_feature in data_source[0]:
             self.single(feature=bag_feature, target=target)
-            raise Exception('STO')
-
         # save
         DRIVER_GDAL_GTIFF.CreateCopy(path,
                                      target,
@@ -159,11 +165,27 @@ def command(index_path, **kwargs):
 def get_parser():
     """ Return argument parser. """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('index_path', metavar='INDEX')
-    parser.add_argument('dbname', metavar='DBNAME')
-    parser.add_argument('table', metavar='TABLE')
-    parser.add_argument('raster_path', metavar='RASTER')
-    parser.add_argument('target_dir', metavar='TARGET')
+    parser.add_argument('index_path', metavar='INDEX',
+                        help='raster index shape file incl full path')
+    parser.add_argument('dbname', metavar='DBNAME',
+                        help='name of the database')
+    parser.add_argument('table', metavar='TABLE',
+                        help='table name incl schema '
+                             '(e.g. <schema_name>.<table_name>')
+    parser.add_argument('raster_path', metavar='RASTER',
+                        help='path to the raster file(s)')
+    parser.add_argument('target_dir', metavar='TARGET',
+                        help='path were the result files should be written to')
+    parser.add_argument('stat_method', metavar='METHOD',
+                        nargs='?', default='median',
+                        help="compute either median or percentile of "
+                             "the pixels "
+                             "within the boundaries of a building")
+    parser.add_argument('q', metavar='Q',
+                        nargs='?', type=float, default=70.0,
+                        help="qth percentile of the pixels "
+                             "within the boundaries of a building. "
+                             "Value must be between 0 and 100 inclusive")
     parser.add_argument('-u', '--user'),
     parser.add_argument('-p', '--password'),
     parser.add_argument('-s', '--host', default='localhost')
@@ -172,7 +194,7 @@ def get_parser():
 
 def main():
     """ Call command with args from parser. """
-    import ipdb; ipdb.set_trace()
+
     logging.basicConfig(stream=sys.stderr,
                         level=logging.DEBUG,
                         format='%(message)s')
