@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 """
-Rasterize zonal statstics (currently only median) into a set of rasters.
+Rasterize zonal statstics (currently median or percentile)
+into a set of rasters.
 """
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -39,7 +40,6 @@ logger = logging.getLogger(__name__)
 class Rasterizer(object):
     def __init__(self, raster_path, target_dir, table, stat_method,
                  q, **kwargs):
-        print('****** {0}'.format(kwargs))
         self.postgis_source = postgis.PostgisSource(**kwargs)
         self.target_dir = target_dir
         self.table = table
@@ -81,14 +81,10 @@ class Rasterizer(object):
         layer.CreateFeature(feature)
         return data_source
 
-    def single(self, feature, target, np_method='median', threshold=None):
+    def single(self, feature, target):
         """
-
-        :param feature:
-        :param target:
-        :param np_method: either median or percentile
-        :param threshold: provide value if np_method is percentile
-        :return:
+        :param feature: vector feature
+        :param target: raster file to write to
         """
         # retrieve raster data
         geo_transform = self.geo_transform.shifted(feature.geometry())
