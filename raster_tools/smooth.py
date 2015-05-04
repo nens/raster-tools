@@ -2,6 +2,12 @@
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 """
 Smooth raster images using a low-pass filter (gaussian blur)
+
+Example usage:
+
+    python raster_tools/smooth.py
+    ahn2_05_int_index.shp /Data_Sources/raster-sources/ahn2 ~/Data/test
+    --use_mask True --blur 30
 """
 
 
@@ -16,7 +22,6 @@ import datetime
 import logging
 import subprocess
 import argparse
-import itertools
 
 import numpy as np
 from scipy.signal import fftconvolve
@@ -167,9 +172,15 @@ class Config(object):
         parser.add_argument('target_dir', metavar='TARGET',
                             help='path were the result files should '
                                  'be written to')
-        parser.add_argument('blur', metavar='BLUR',
-                            nargs='?', default='25',
-                            help="gaussian blur radius to use")
+        parser.add_argument('-b', '--blur',
+                            default='25',
+                            help="gaussian blur radius to "
+                                 "use (default is 25)")
+        parser.add_argument('-m', '--use_mask',
+                            type=bool, default=False,
+                            help="if True won't smooth the whole tile but "
+                                 "only NaN areas (watch out, slow!). "
+                                 "Default is False")
         self.args = parser.parse_args()
 
     def get_project_layout(self):
@@ -199,10 +210,7 @@ if __name__ == "__main__":
     logger.debug("[DB] Counted {0} features".format(total))
 
     t1 = datetime.datetime.now()
-    # readin txt
     for count, feature in enumerate(layer, 1):
-        if count > 600:
-            break
         tile_raw = feature.GetFieldAsString("BLADNR".encode('ascii')).strip()
         logger.debug("[DB] tile_raw: {0}".format(tile_raw))
         int_tile = RasterImage.get_image(tile_raw, base_dir=conf.ahn2_INT)
@@ -219,14 +227,14 @@ if __name__ == "__main__":
             int_tile.stem, int_tile.ext))
         # orfeo_smooth(tile_path, out_file)
         ri_int = RasterImage(int_tile)
-        ri_non = RasterImage(non_tile)
-
         int_array = ri_int.raster2array()
-        non_array = ri_non.raster2array()
-
-        selected = ri_int.get_nodata_value_mask(non_array, int_array)
-
-        blurred = ri_int.gaussian_blur(selected, 25)
+        if conf.args.use_mask:
+            ri_non = RasterImage(non_tile)
+            non_array = ri_non.raster2array()
+            blur_this = ri_int.get_nodata_value_mask(non_array, int_array)
+        else:
+            blur_this = int_array
+        blurred = ri_int.gaussian_blur(blur_this, 25)
         ri_int.array2raster(blurred, out_file_gb)
         ri_int.merge(out_file_gb, non_tile, out_file)
         gdal.TermProgress_nocb(count / total)
