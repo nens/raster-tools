@@ -113,16 +113,8 @@ class Rasterizer(object):
             burn = np.median(data[mask.nonzero()])
         elif self.stat_method == 'percentile':
             # rasterize the percentile
-<<<<<<< HEAD
             try:
                 burn = np.percentile(data[mask.nonzero()], self.q)
-=======
-            if not threshold:
-                raise ValueError("[ERROR] You need to provide the "
-                                 "threshold value")
-            try:
-                burn = np.percentile(data[mask.nonzero()], threshold)
->>>>>>> 0a03ceed66bfbc2d9b2e2c8de3a753bbeea7de3e
             except IndexError, _:
                 return
         else:
@@ -151,14 +143,7 @@ class Rasterizer(object):
         )
         # analyze and rasterize
         for bag_feature in data_source[0]:
-<<<<<<< HEAD
             self.single(feature=bag_feature, target=target)
-=======
-            self.single(feature=bag_feature, target=target,
-                        np_method='percentile', threshold=70)
-            # self.single(feature=bag_feature, target=target)
-
->>>>>>> 0a03ceed66bfbc2d9b2e2c8de3a753bbeea7de3e
         # save
         DRIVER_GDAL_GTIFF.CreateCopy(path,
                                      target,
