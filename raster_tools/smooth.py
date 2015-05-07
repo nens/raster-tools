@@ -7,7 +7,7 @@ Example usage:
 
     python raster_tools/smooth.py
     ahn2_05_int_index.shp /Data_Sources/raster-sources/ahn2 ~/Data/test
-    --use_mask True --blur 30
+    --use_mask True --buffer 5 --gaussian 20
 """
 
 
@@ -24,7 +24,8 @@ import subprocess
 import argparse
 
 import numpy as np
-from scipy.signal import fftconvolve
+from scipy import signal
+from scipy import ndimage
 import unipath
 
 try:
@@ -37,6 +38,7 @@ except ImportError, _:
 logger = logging.getLogger(__name__)
 
 NO_DATA_VALUE = '-3.4028234663852886e+38'
+GDAL_GTIFF_DRIVER = gdal.GetDriverByName(b'gtiff')
 
 
 class RasterImage(object):
@@ -51,8 +53,7 @@ class RasterImage(object):
         return band.ReadAsArray()
 
     def array2raster(self, array, file_name):
-        driver = gdal.GetDriverByName(b'gtiff')
-        target = driver.Create(
+        target = GDAL_GTIFF_DRIVER.Create(
             file_name,
             self.raster.RasterXSize,
             self.raster.RasterYSize,
@@ -61,43 +62,29 @@ class RasterImage(object):
 
         target.SetProjection(self.raster.GetProjection())
         target.SetGeoTransform(self.raster.GetGeoTransform())
-        _ = target.GetRasterBand(1).WriteArray(array)
+        target.GetRasterBand(1).WriteArray(array)
         target.FlushCache()  # Write to disk.
 
     @staticmethod
-    def get_nodata_value_mask(non_array, int_array):
+    def get_nodata_value_mask(non_array, int_array, buffer_size):
         # get a boolean mask
-        mask =  non_array == float(NO_DATA_VALUE)
-        buffered_mask = RasterImage.boolean_buffer(mask, 7)
+        mask = non_array == float(NO_DATA_VALUE)
+        # import ipdb; ipdb.set_trace()
+        buffered_mask = RasterImage.boolean_buffer(mask, buffer_size)
         # index the no data cells, fill the rest with 0
         interpolated_nodata = int_array*buffered_mask
-        # # if only 0 return int_array
-        # if not interpolated_nodata.any():
-        #     return int_array
         return interpolated_nodata
 
     @staticmethod
-    def boolean_buffer(boolean_array, iters):
+    def boolean_buffer(boolean_array, buffer_size):
         """
         Expands the True area in an array 'input'.
 
-        Expansion occurs in the horizontal and vertical directions by one
-        cell, and is repeated 'iters' times.
+        Expansion occurs in the horizontal and vertical directions by
+        ``buffer_size`` cell
         """
-        # TODO: this is very slow, probably there is some native numpy function
-        # TODO: that can buffer an existing mask?
-        y_len,x_len = boolean_array.shape
-        output = boolean_array.copy()
-        for iter in xrange(iters):
-            for y in xrange(y_len):
-                for x in xrange(x_len):
-                    if (y > 0 and boolean_array[y-1,x]) or \
-                            (y < y_len - 1 and boolean_array[y+1,x]) or \
-                            (x > 0 and boolean_array[y,x-1]) or \
-                            (x < x_len - 1 and boolean_array[y,x+1]):
-                        output[y,x] = True
-            boolean_array = output.copy()
-        return output
+        return ndimage.morphology.binary_dilation(boolean_array,
+                                                  iterations=buffer_size)
 
     @staticmethod
     def get_image(tile_name, base_dir):
@@ -118,7 +105,7 @@ class RasterImage(object):
         g = np.exp(-(x**2 / float(size) + y**2 / float(size)))
         g = (g / g.sum()).astype(in_array.dtype)
         # do the Gaussian blur
-        return fftconvolve(padded_array, g, mode='valid')
+        return signal.fftconvolve(padded_array, g, mode='valid')
 
     @staticmethod
     def merge(first, second, out_file):
@@ -145,19 +132,6 @@ class RasterImage(object):
         for line in output.splitlines():
             logger.debug("[*] {0}".format(line))
 
-    @staticmethod
-    def orfeo_smooth(tile_in, tile_out, smooth_factor=20):
-        ps = subprocess.Popen(
-            ['otbcli_Smoothing', '-in', tile_in,
-             '-out', tile_out,
-             'float', '-type', 'gaussian', '-type.gaussian.radius', smooth_factor],
-            stdout=subprocess.PIPE
-        )
-
-        output = ps.communicate()[0]
-        for line in output.splitlines():
-            logger.debug("[*] {0}".format(line))
-
 
 class Config(object):
 
@@ -165,28 +139,38 @@ class Config(object):
         parser = argparse.ArgumentParser(description=__doc__)
         parser.add_argument('index_path', metavar='INDEX',
                             help='raster index shape file incl full path')
-        parser.add_argument('ahn2_root', metavar='AHN2_MAP',
+        parser.add_argument('ahn2_root', metavar='AHN2_ROOT',
                             help='path to the dir where the AHN2 rasters '
                                  'are stored. Should contain folder '
                                  '"int", "non" etc')
         parser.add_argument('target_dir', metavar='TARGET',
                             help='path were the result files should '
                                  'be written to')
-        parser.add_argument('-b', '--blur',
-                            default='25',
+        parser.add_argument('-g', '--gaussian',
+                            default=25,
+                            type=int,
                             help="gaussian blur radius to "
                                  "use (default is 25)")
         parser.add_argument('-m', '--use_mask',
                             type=bool, default=False,
                             help="if True won't smooth the whole tile but "
-                                 "only NaN areas (watch out, slow!). "
+                                 "only NaN areas. "
                                  "Default is False")
+        parser.add_argument('-b', '--buffer',
+                            type=int, default=10,
+                            help="if a mask is used for the smoothing"
+                                 " the buffer option can be used to "
+                                 "enlarge the mask by <buffer> cells. "
+                                 "This will result in "
+                                 "softer transitions between the area of "
+                                 "the mask and its surroundings")
         self.args = parser.parse_args()
 
-    def get_project_layout(self):
+    def project_layout(self):
         """
         """
-        self.project_dir = unipath.Path(os.path.abspath(__file__)).parent.ancestor(1)
+        self.project_dir = unipath.Path(
+            os.path.abspath(__file__)).parent.ancestor(1)
         self.tools_dir = self.project_dir.child('raster_tools')
         self.ahn2_root = unipath.Path(self.args.ahn2_root)
         self.ahn2_INT = self.ahn2_root.child('int')
@@ -194,15 +178,15 @@ class Config(object):
         self.out_dir = unipath.Path(self.args.target_dir)
 
 
-if __name__ == "__main__":
+def main():
     logging.basicConfig(stream=sys.stderr,
-                        level=logging.DEBUG,
+                        level=logging.INFO,
                         format='%(message)s')
 
-    logger.info("[*] Kick off!")
+    logger.info("[*] Starting smoothing...")
 
     conf = Config()
-    conf.get_project_layout()
+    conf.project_layout()
 
     data_source = ogr.Open(conf.args.index_path)
     layer = data_source[0]
@@ -211,37 +195,44 @@ if __name__ == "__main__":
 
     t1 = datetime.datetime.now()
     for count, feature in enumerate(layer, 1):
-        tile_raw = feature.GetFieldAsString("BLADNR".encode('ascii')).strip()
+        # get tile name from index.shp
+        tile_raw = feature[b'bladnr']
         logger.debug("[DB] tile_raw: {0}".format(tile_raw))
+
+        # interpolated and not-interpolated AHN2 tiles
         int_tile = RasterImage.get_image(tile_raw, base_dir=conf.ahn2_INT)
         non_tile = RasterImage.get_image(tile_raw, base_dir=conf.ahn2_NON)
+        # we need them both, so skip this iteration if one of
+        # them is missing
         if not os.path.exists(int_tile) or not os.path.exists(non_tile):
-            logger.warning("[!] File {0:s} does not "
-                           "exist! Skipping...".format(
-                os.path.basename(int_tile)))
+            logger.debug("[!] File {0:s} does not exist! "
+                         "Skipping...".format(os.path.basename(int_tile)))
             continue
+
+        # result file naming...
         out_file_gb = unipath.Path(conf.out_dir, '{0:s}_gb{1:s}'.format(
             int_tile.stem, int_tile.ext))
-        logger.debug("tile path {0}, out file {1}".format(int_tile, out_file_gb))
+        logger.debug("tile path {0}, out file {1}".format(
+            int_tile, out_file_gb))
         out_file = unipath.Path(conf.out_dir, '{0:s}_mrg{1:s}'.format(
             int_tile.stem, int_tile.ext))
-        # orfeo_smooth(tile_path, out_file)
+
         ri_int = RasterImage(int_tile)
         int_array = ri_int.raster2array()
+
         if conf.args.use_mask:
             ri_non = RasterImage(non_tile)
             non_array = ri_non.raster2array()
-            blur_this = ri_int.get_nodata_value_mask(non_array, int_array)
+            blur_this = ri_int.get_nodata_value_mask(
+                non_array, int_array, buffer_size=conf.args.buffer)
         else:
             blur_this = int_array
-        blurred = ri_int.gaussian_blur(blur_this, 25)
+
+        blurred = ri_int.gaussian_blur(blur_this, size=conf.args.gaussian)
+        # TODO do this in memory (maybe with gdalwarp?), clean up
         ri_int.array2raster(blurred, out_file_gb)
         ri_int.merge(out_file_gb, non_tile, out_file)
         gdal.TermProgress_nocb(count / total)
 
     logger.info('[+] Smoothing successful!')
     logger.info("[*] Execution time: %s" % (datetime.datetime.now() - t1))
-
-
-
-

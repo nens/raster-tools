@@ -111,8 +111,7 @@ class Rasterizer(object):
             # rasterize the percentile
             try:
                 burn = np.percentile(data[mask.nonzero()], self.q)
-            except IndexError, _:
-                import ipdb; ipdb.set_trace()
+            except IndexError:
                 return
         else:
             raise ValueError("[ERROR] parameter 'METHOD' "
