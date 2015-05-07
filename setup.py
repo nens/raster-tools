@@ -10,6 +10,7 @@ long_description = '\n\n'.join([
 
 install_requires = [
     'setuptools',
+    'unipath',
     ],
 
 tests_require = [
