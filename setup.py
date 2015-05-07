@@ -10,6 +10,7 @@ long_description = '\n\n'.join([
 
 install_requires = [
     'setuptools',
+    'unipath',
     ],
 
 tests_require = [
@@ -50,5 +51,6 @@ setup(name='raster-tools',
               'rasterize = raster_tools.rasterize:main',
               # pointclouds
               'txt2tif = raster_tools.txt2tif:main',
+              'smooth = raster_tools.smooth:main',
           ]},
       )
