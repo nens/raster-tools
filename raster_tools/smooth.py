@@ -28,12 +28,10 @@ from scipy import signal
 from scipy import ndimage
 import unipath
 
-try:
-    from osgeo import ogr
-    from osgeo import gdal
-except ImportError, _:
-    import ogr
-    import gdal
+from osgeo import ogr
+from osgeo import gdal
+
+gdal.UseExceptions()
 
 logger = logging.getLogger(__name__)
 
