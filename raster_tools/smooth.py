@@ -20,7 +20,6 @@ import os
 import sys
 import datetime
 import logging
-import subprocess
 import argparse
 
 import numpy as np
@@ -54,7 +53,6 @@ class RasterImage(object):
     def __init__(self, image_name):
         self.image = image_name
         self.raster = None
-        self.lookup_dir = None
 
     def raster2array(self):
         self.raster = gdal.Open(self.image)
@@ -201,10 +199,10 @@ def main():
         out_sub = conf.out_dir.child(sub_dir)
         out_sub.mkdir()
         out_file_gb = unipath.Path(out_sub,
-                                   '{0:s}_sth{1:s}'.format(int_tile.stem,
-                                                          int_tile.ext))
-        logger.debug("tile path {0}, out file {1}".format(int_tile,
-                                                          out_file_gb))
+                                   '{0:s}_sth{1:s}'.format(
+                                       int_tile.stem, int_tile.ext))
+        logger.debug("tile path {0}, out file {1}".format(
+            int_tile, out_file_gb))
 
         if conf.args.use_mask:
             blur_this = ri_int.get_nodata_value_mask(
