@@ -41,8 +41,9 @@ setup(name='raster-tools',
               # organization
               'ahn2aig2tif        = raster_tools.ahn2aig2tif:main',
               'ahn2zip2tif        = raster_tools.ahn2zip2tif:main',
-              'srtm_make_index    = raster_tools.srtm_make_index:main',
-              'srtm_fix_nodata    = raster_tools.srtm_fix_nodata:main',
+              'srtm-make-index    = raster_tools.srtm_make_index:main',
+              'srtm-fix-nodata    = raster_tools.srtm_fix_nodata:main',
+              'srtm-organize      = raster_tools.srtm_organize:main',
               # modification
               'fillnodata         = raster_tools.fillnodata:main',
               'smooth             = raster_tools.smooth:main',
