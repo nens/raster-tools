@@ -106,6 +106,8 @@ class Rasterizer(object):
 
         if self.stat_method == 'median':
             # rasterize the median
+            if not mask.any():
+                return
             burn = np.median(data[mask.nonzero()])
         elif self.stat_method == 'percentile':
             # rasterize the percentile
