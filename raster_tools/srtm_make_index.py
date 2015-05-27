@@ -23,7 +23,24 @@ osr.UseExceptions()
 logger = logging.getLogger(__name__)
 
 
-def make_index(index_path):
+def create_filter_geometry(filter_path):
+    multi_polygons = {ogr.wkbMultiPolygon, ogr.wkbMultiPolygon25D}
+    multi_polygon = ogr.Geometry(ogr.wkbMultiPolygon)
+    datasource = ogr.Open(filter_path)
+    layer = datasource[0]
+    for feature in layer:
+        geometry = feature.geometry()
+        geometry_type = geometry.GetGeometryType()
+        if geometry_type in multi_polygons:
+            polygons = geometry
+        else:
+            polygons = geometry,
+        for polygon in polygons:
+            multi_polygon.AddGeometry(polygon)
+    return multi_polygon.UnionCascaded()
+
+
+def make_index(index_path, filter_path):
     driver = ogr.GetDriverByName(b'esri shapefile')
     data_source = driver.CreateDataSource(index_path)
     layer_name = os.path.basename(index_path)
@@ -32,7 +49,15 @@ def make_index(index_path):
     layer.CreateField(ogr.FieldDefn(b'BLADNR', ogr.OFTString))
     layer_defn = layer.GetLayerDefn()
 
-    for y in range(-56, 60):
+    if filter_path is None:
+        filter_geometry = None
+    else:
+        filter_geometry = create_filter_geometry(filter_path)
+
+    yrange = xrange(-56, 60)
+    total = len(yrange)
+    ogr.TermProgress_nocb(0)
+    for count, y in enumerate(yrange, 1):
         for x in range(-180, 180):
             x1, y1, x2, y2 = x, y, x + 1, y + 1
             lat = 'S{:02}'.format(-y) if y < 0 else 'N{:02}'.format(y)
@@ -47,9 +72,13 @@ def make_index(index_path):
             ring.AddPoint_2D(x1, y1)
             geometry = ogr.Geometry(ogr.wkbPolygon)
             geometry.AddGeometry(ring)
+            if filter_geometry is not None:
+                if not geometry.Intersects(filter_geometry):
+                    continue
             geometry.AssignSpatialReference(sr)
             feature.SetGeometry(geometry)
             layer.CreateFeature(feature)
+        ogr.TermProgress_nocb(count / total)
 
     data_source.ExecuteSQL(b'CREATE SPATIAL INDEX ON {}'.format(layer_name))
 
@@ -58,6 +87,7 @@ def get_parser():
     """ Return argument parser. """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('index_path', metavar='INDEX')
+    parser.add_argument('-f', '--filter', dest='filter_path')
     return parser
 
 
