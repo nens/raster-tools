@@ -23,21 +23,17 @@ osr.UseExceptions()
 logger = logging.getLogger(__name__)
 
 
-def create_filter_geometry(filter_path):
-    multi_polygons = {ogr.wkbMultiPolygon, ogr.wkbMultiPolygon25D}
-    multi_polygon = ogr.Geometry(ogr.wkbMultiPolygon)
-    datasource = ogr.Open(filter_path)
-    layer = datasource[0]
-    for feature in layer:
-        geometry = feature.geometry()
-        geometry_type = geometry.GetGeometryType()
-        if geometry_type in multi_polygons:
-            polygons = geometry
-        else:
-            polygons = geometry,
-        for polygon in polygons:
-            multi_polygon.AddGeometry(polygon)
-    return multi_polygon.UnionCascaded()
+class Checker(object):
+    def __init__(self, filter_path):
+        self.datasource = ogr.Open(filter_path)
+        self.layer = self.datasource[0]
+
+    def intersects(self, geometry):
+        self.layer.SetSpatialFilter(geometry)
+        for feature in self.layer:
+            if geometry.Intersects(feature.geometry()):
+                return True
+        return False
 
 
 def make_index(index_path, filter_path):
@@ -50,9 +46,9 @@ def make_index(index_path, filter_path):
     layer_defn = layer.GetLayerDefn()
 
     if filter_path is None:
-        filter_geometry = None
+        checker = None
     else:
-        filter_geometry = create_filter_geometry(filter_path)
+        checker = Checker(filter_path)
 
     yrange = xrange(-56, 60)
     total = len(yrange)
@@ -72,8 +68,8 @@ def make_index(index_path, filter_path):
             ring.AddPoint_2D(x1, y1)
             geometry = ogr.Geometry(ogr.wkbPolygon)
             geometry.AddGeometry(ring)
-            if filter_geometry is not None:
-                if not geometry.Intersects(filter_geometry):
+            if checker is not None:
+                if not checker.intersects(geometry):
                     continue
             geometry.AssignSpatialReference(sr)
             feature.SetGeometry(geometry)
