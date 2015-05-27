@@ -31,7 +31,7 @@ def fix_nodata():
         source = gdal.Open(source_path)
 
         array = source.ReadAsArray()[np.newaxis, ...]
-        index = np.where(array == -32676)
+        index = np.where(array == -32767)
         no_data_value = source.GetRasterBand(1).GetNoDataValue()
 
         if no_data_value == 0 and not index[0]:
