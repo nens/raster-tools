@@ -38,7 +38,7 @@ def make_index(index_path):
             lat = 'S{:02}'.format(-y) if y < 0 else 'N{:02}'.format(y)
             lon = 'W{:03}'.format(-x) if x < 0 else 'E{:03}'.format(x)
             feature = ogr.Feature(layer_defn)
-            feature[b'BLADNR'] = 'SRTM1{}{}V3'.format(lat, lon)
+            feature[b'BLADNR'] = '{}{}'.format(lat, lon)
             ring = ogr.Geometry(ogr.wkbLinearRing)
             ring.AddPoint_2D(x1, y1)
             ring.AddPoint_2D(x2, y1)
