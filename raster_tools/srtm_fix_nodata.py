@@ -24,10 +24,9 @@ gdal.UseExceptions()
 logger = logging.getLogger(__name__)
 
 
-def fix_nodata():
-    for line in sys.stdin:
+def fix_nodata(source_paths):
+    for source_path in source_paths:
         # analyze source
-        source_path = line.strip()
         source = gdal.Open(source_path)
 
         array = source.ReadAsArray()[np.newaxis, ...]
@@ -66,6 +65,7 @@ def fix_nodata():
 def get_parser():
     """ Return argument parser. """
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('source_paths', metavar='SOURCE', nargs='*')
     return parser
 
 
