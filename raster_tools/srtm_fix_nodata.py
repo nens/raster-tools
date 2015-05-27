@@ -34,13 +34,13 @@ def fix_nodata():
         index = np.where(array == -32767)
         no_data_value = source.GetRasterBand(1).GetNoDataValue()
 
-        if no_data_value == 0 and not index[0]:
+        if no_data_value == 0 and index[0].size == 0:
             logger.debug('Skip {}'.format(source_path))
             continue
 
         # save modified tif
         logger.debug('Convert {}'.format(source_path))
-        array[index] == 0
+        array[index] = 0
 
         kwargs = {'no_data_value': 0,
                   'projection': source.GetProjection(),
