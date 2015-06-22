@@ -1,12 +1,6 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
-"""
-Extract layers from a raster server using a geometry.
-
-TODO
-- No need to fetch datatype and no_data_value at all
-- Rewrite to have a single object that generates single loadable elements
-"""
+""" Extract layers from a raster server using a geometry. """
 
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -46,6 +40,15 @@ DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
 DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
 
 POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
+
+# argument defaults
+ATTRIBUTE = 'model'
+CELLSIZE = 0.5, 0.5
+DTYPE = 'f4'
+FLOOR = 0.15
+OPERATION = '3di'
+PROJECTION = 'EPSG:28992'
+SERVER = 'https://raster.lizard.net'
 
 Tile = collections.namedtuple('Tile', ['width',
                                        'height',
@@ -929,26 +932,28 @@ def get_parser():
     parser.add_argument('-v', '--version',
                         action='store_true')
     parser.add_argument('-s', '--server',
-                        default='https://raster.lizard.net')
+                        default=SERVER,
+                        help='Raster server. Default: "{}"'.format(SERVER))
     parser.add_argument('-o', '--operation',
-                        default='3di',
+                        default=OPERATION,
                         choices=operations,
-                        help='Type of output to be created. Default: 3di')
+                        help='Output mode. Default: "{}"'.format(OPERATION))
     parser.add_argument('-a', '--attribute',
-                        default='model',
-                        help='Attribute for tif filename. Default: model')
+                        default=ATTRIBUTE,
+                        help=('Name of attribute that is used to name the '
+                              'output files. Default: "{}"').format(ATTRIBUTE))
     parser.add_argument('-f', '--floor',
                         type=float,
-                        default=0.15,
-                        help='Floor height (3di). Default: 0.15')
+                        default=FLOOR,
+                        help='Floor height (3di). Default: {}'.format(FLOOR))
     parser.add_argument('-c', '--cellsize',
                         nargs=2,
                         type=float,
-                        default=[0.5, 0.5],
-                        help='Cellsize for output file.')
+                        default=CELLSIZE,
+                        help='Cellsize. Default: {} {}'.format(*CELLSIZE))
     parser.add_argument('-p', '--projection',
-                        default='EPSG:28992',
-                        help='Output projection.')
+                        default=PROJECTION,
+                        help='Projection. Default: "{}"'.format(PROJECTION))
     parser.add_argument('-tl', '--landuse',
                         help='Path to landuse csv.')
     parser.add_argument('-ts', '--soil',
@@ -956,10 +961,13 @@ def get_parser():
     parser.add_argument('-l', '--layers',
                         help='Layers for layers operation.')
     parser.add_argument('-dt', '--dtype',
-                        default='f4',
-                        help='Datatype for layers operation')
+                        default=DTYPE,
+                        help=('Numpy datatype for layers operation. '
+                              'Default: "{}"').format(DTYPE))
     parser.add_argument('-fv', '--fillvalue',
-                        help='Fillvalue for layers operation')
+                        help=('Fillvalue for layers operation. '
+                              'If not given, the maximum possible '
+                              'number of the output dtype will be used.'))
     return parser
 
 
