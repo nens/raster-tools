@@ -57,7 +57,7 @@ def fix_nodata(source_paths):
 
         # swap files
         source = None
-        backup_path = '{}.bak'.format(source_path)
+        backup_path = '{}.org'.format(source_path)
         os.rename(source_path, backup_path)
         os.rename(target_path, source_path)
 
