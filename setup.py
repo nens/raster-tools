@@ -14,6 +14,7 @@ install_requires = [
     'scipy',
     'setuptools',
     'unipath',
+    'numpy',
     ],
 
 tests_require = [
