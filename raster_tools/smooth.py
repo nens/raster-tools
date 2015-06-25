@@ -3,11 +3,9 @@
 """
 Smooth raster images using a low-pass filter (gaussian blur)
 
-Example usage:
+Example usage from /Data_Sources/raster-sources/ahn2:
 
-    python raster_tools/smooth.py
-    ahn2_05_int_index.shp /Data_Sources/raster-sources/ahn2 ~/Data/test
-    --use_mask True --buffer 5 --gaussian 20
+    smooth index ahn2 ahn2/sth --use_mask True --buffer 5 --gaussian 20
 """
 
 
@@ -117,7 +115,10 @@ class RasterImage(object):
 class Config(object):
 
     def __init__(self):
-        parser = argparse.ArgumentParser(description=__doc__)
+        parser = argparse.ArgumentParser(
+            description=__doc__,
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
         parser.add_argument('index_path', metavar='INDEX',
                             help='raster index shape file incl full path')
         parser.add_argument('ahn2_root', metavar='AHN2_ROOT',
@@ -201,7 +202,7 @@ def main():
         out_sub = conf.out_dir.child(sub_dir)
         out_sub.mkdir()
         out_file_gb = unipath.Path(out_sub,
-                                   '{0:s}_sth{1:s}'.format(
+                                   '{0:s}{1:s}'.format(
                                        int_tile.stem, int_tile.ext))
         logger.debug("tile path {0}, out file {1}".format(
             int_tile, out_file_gb))
