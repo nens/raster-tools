@@ -30,6 +30,8 @@ import unipath
 from osgeo import ogr
 from osgeo import gdal
 
+gdal.UseExceptions()
+
 logger = logging.getLogger(__name__)
 
 NO_DATA_VALUE = -3.4028234663852886e+38

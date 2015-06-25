@@ -2,6 +2,9 @@
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 """
 Interpolate a points source to a tif, clipped by a polygon source.
+
+This is an experimental procedure to rasterize a shapefile containing
+point elevation data.
 """
 
 from __future__ import print_function
@@ -145,9 +148,9 @@ def command(index_path, target_dir, buildings, points, where, **kwargs):
         building_data_source = postgis_source.get_data_source(
             table=buildings, geometry=index_geometry, where=where,
         )
-        #DRIVER_OGR_GEOJSON.CopyDataSource(
-            #building_data_source, 'buildings_{}.geojson'.format(leaf),
-        #)
+        # DRIVER_OGR_GEOJSON.CopyDataSource(
+        #     building_data_source, 'buildings_{}.geojson'.format(leaf),
+        # )
 
         # retrieve points from database
         logger.debug('Retrieving points.')
@@ -155,9 +158,9 @@ def command(index_path, target_dir, buildings, points, where, **kwargs):
         points_data_source = postgis_source.get_data_source(
             table=points, geometry=building_geometry,
         )
-        #DRIVER_OGR_GEOJSON.CopyDataSource(
-            #points_data_source, 'points_{}.geojson'.format(leaf),
-        #)
+        # DRIVER_OGR_GEOJSON.CopyDataSource(
+        #     points_data_source, 'points_{}.geojson'.format(leaf),
+        # )
 
         # prepare dataset
         dataset = get_dataset(index_geometry)

@@ -9,8 +9,12 @@ long_description = '\n\n'.join([
     ])
 
 install_requires = [
+    'gdal',
+    'psycopg2',
+    'scipy',
     'setuptools',
     'unipath',
+    'numpy',
     ],
 
 tests_require = [
@@ -36,21 +40,27 @@ setup(name='raster-tools',
       extras_require={'test': tests_require},
       entry_points={
           'console_scripts': [
-              'ahn2aig2tif = raster_tools.ahn2aig2tif:main',
-              'ahn2zip2tif = raster_tools.ahn2zip2tif:main',
-              'extract = raster_tools.extract:main',
-              'fillnodata = raster_tools.fillnodata:main',
-              'filter_paths = raster_tools.filter_paths:main',
-              'interpolate_points = raster_tools.interpolate_points:main',
-              'juggle = raster_tools.juggle:main',
-              'watershed = raster_tools.watershed:main',
+              # organization
+              'ahn2aig2tif        = raster_tools.ahn2aig2tif:main',
+              'ahn2zip2tif        = raster_tools.ahn2zip2tif:main',
+              'srtm-make-index    = raster_tools.srtm_make_index:main',
+              'srtm-fix-nodata    = raster_tools.srtm_fix_nodata:main',
+              'srtm-organize      = raster_tools.srtm_organize:main',
+              # modification
+              'fillnodata         = raster_tools.fillnodata:main',
+              'smooth             = raster_tools.smooth:main',
               # rasterization
-              'bag2tif = raster_tools.bag2tif:main',
-              'interpolate = raster_tools.interpolate:main',
-              'rasterize-landuse = raster_tools.rasterize_landuse:main',
-              'rasterize = raster_tools.rasterize:main',
+              'bag2tif            = raster_tools.bag2tif:main',
+              'interpolate        = raster_tools.interpolate:main',
+              'rasterize-landuse  = raster_tools.rasterize_landuse:main',
+              'rasterize          = raster_tools.rasterize:main',
+              # model generation
+              'extract            = raster_tools.extract:main',
               # pointclouds
-              'txt2tif = raster_tools.txt2tif:main',
-              'smooth = raster_tools.smooth:main',
+              'txt2tif            = raster_tools.txt2tif:main',
+              # experimental
+              'interpolate_points = raster_tools.interpolate_points:main',
+              'watershed          = raster_tools.watershed:main',
+              'juggle             = raster_tools.juggle:main',
           ]},
       )

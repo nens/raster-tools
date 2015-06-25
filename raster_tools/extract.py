@@ -1,13 +1,6 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
-"""
-Extract layers from a raster server using a geometry.
-
-TODO
-- No need to fetch projection and cellsize when resuming
-- No need to fetch datatype and no_data_value at all
-- Rewrite to have a single object that generates single loadable elements
-"""
+""" Extract layers from a raster server using a geometry. """
 
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -18,7 +11,6 @@ from multiprocessing import pool
 import argparse
 import collections
 import csv
-import json
 import logging
 import os
 import sys
@@ -37,7 +29,7 @@ osr.UseExceptions()
 operations = {}
 
 # Version management for outdated warning
-VERSION = 17
+VERSION = 18
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -48,6 +40,15 @@ DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
 DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
 
 POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
+
+# argument defaults
+ATTRIBUTE = 'model'
+CELLSIZE = 0.5, 0.5
+DTYPE = 'f4'
+FLOOR = 0.15
+OPERATION = '3di'
+PROJECTION = 'EPSG:28992'
+SERVER = 'https://raster.lizard.net'
 
 Tile = collections.namedtuple('Tile', ['width',
                                        'height',
@@ -72,9 +73,10 @@ class Layers(Operation):
 
     def __init__(self, layers, dtype, fillvalue, **kwargs):
         """ Initialize the operation. """
-        self.layers = layers
+        # self.layers = layers
         self.outputs = [self.name]
-        self.inputs = {self.name: dict(layers=layers)}
+        self.inputs = {self.name: {'layers': layers,
+                                   'time': '1970-01-01T00:00:00Z'}}
 
         self.data_type = {
             self.name: dict(f4=gdal.GDT_Float32)[dtype],
@@ -156,7 +158,7 @@ class ThreeDi(Operation):
         O_HYDRAULIC_CONDUCTIVITY: [I_SOIL],
     }
 
-    required = [y for x in outputs.values() for y in x]
+    required = set([y for x in outputs.values() for y in x])
 
     def __init__(self, floor, landuse, soil, **kwargs):
         """ Initialize the operation. """
@@ -170,8 +172,12 @@ class ThreeDi(Operation):
             self.I_SOIL: dict(layers='soil:3di'),
         }
 
-        self.inputs = {k: v
-                       for k, v in self.layers.items() if k in self.required}
+        # create the inputs that will be loaded from the server
+        self.inputs = {}
+        for k in self.layers:
+            if k in self.required:
+                self.inputs[k] = {'time': '1970-01-01T00:00:00Z'}
+                self.inputs[k].update(self.layers[k])
 
         self.calculators = {
             self.O_SOIL: self._calculate_soil,
@@ -467,9 +473,8 @@ class Preparation(object):
         self.server = kwargs.pop('server')
         self.operation = operations[kwargs.pop('operation')](**kwargs)
 
-        self.information = self._get_information()
-        self.projection = self._get_projection(kwargs.pop('projection'))
-        self.cellsize = self._get_cellsize(kwargs.pop('cellsize'))
+        self.projection = kwargs.pop('projection')
+        self.cellsize = kwargs.pop('cellsize')
 
         self.wkt = osr.GetUserInputAsWKT(str(self.projection))
         self.sr = osr.SpatialReference(self.wkt)
@@ -515,48 +520,6 @@ class Preparation(object):
         if sr:
             geometry.Transform(osr.CoordinateTransformation(sr, self.sr))
         return geometry
-
-    def _get_information(self):
-        """
-        Return a dictionary with information about source stores.
-
-        If a source consists of multiple stores, only the first store
-        is considered.
-        """
-        information = {}
-        for name in self.operation.inputs:
-            inp = self.operation.inputs[name]
-            parameters = dict(
-                request='getinfo',
-                layer=inp['layers'].split(',')[0].split('!')[0],
-            )
-            url = '{}?{}'.format(
-                urlparse.urljoin(self.server, 'data'),
-                urllib.urlencode(parameters)
-            )
-            information[name] = json.load(urllib.urlopen(url))
-            # set dtype and fillvalue on the input
-
-            inp.update(time=information[name]['time'])
-
-        return information
-
-    def _get_projection(self, projection):
-        """
-        Take appropriate projection from information or projection parameters.
-        """
-        if projection:
-            return projection
-        return self.information.values()[0]['projection']
-
-    def _get_cellsize(self, cellsize):
-        """
-        Take appropriate cellsize from information or cellsize parameters.
-        """
-        if cellsize:
-            return cellsize
-        p, a, b, q, c, d = self.information.values()[0]['geo_transform']
-        return a, -d
 
     def _create_dataset(self, name, path):
         """ """
@@ -969,24 +932,28 @@ def get_parser():
     parser.add_argument('-v', '--version',
                         action='store_true')
     parser.add_argument('-s', '--server',
-                        default='https://raster.lizard.net')
+                        default=SERVER,
+                        help='Raster server. Default: "{}"'.format(SERVER))
     parser.add_argument('-o', '--operation',
-                        default='3di',
+                        default=OPERATION,
                         choices=operations,
-                        help='Type of output to be created. Default: 3di')
+                        help='Output mode. Default: "{}"'.format(OPERATION))
     parser.add_argument('-a', '--attribute',
-                        default='model',
-                        help='Attribute for tif filename. Default: model')
+                        default=ATTRIBUTE,
+                        help=('Name of attribute that is used to name the '
+                              'output files. Default: "{}"').format(ATTRIBUTE))
     parser.add_argument('-f', '--floor',
-                        default=0.15,
                         type=float,
-                        help='Floor height (3di). Default: 0.15')
+                        default=FLOOR,
+                        help='Floor height (3di). Default: {}'.format(FLOOR))
     parser.add_argument('-c', '--cellsize',
-                        type=float,
                         nargs=2,
-                        help='Cellsize for output file.')
+                        type=float,
+                        default=CELLSIZE,
+                        help='Cellsize. Default: {} {}'.format(*CELLSIZE))
     parser.add_argument('-p', '--projection',
-                        help='Output projection.')
+                        default=PROJECTION,
+                        help='Projection. Default: "{}"'.format(PROJECTION))
     parser.add_argument('-tl', '--landuse',
                         help='Path to landuse csv.')
     parser.add_argument('-ts', '--soil',
@@ -994,10 +961,13 @@ def get_parser():
     parser.add_argument('-l', '--layers',
                         help='Layers for layers operation.')
     parser.add_argument('-dt', '--dtype',
-                        default='f4',
-                        help='Datatype for layers operation')
+                        default=DTYPE,
+                        help=('Numpy datatype for layers operation. '
+                              'Default: "{}"').format(DTYPE))
     parser.add_argument('-fv', '--fillvalue',
-                        help='Fillvalue for layers operation')
+                        help=('Fillvalue for layers operation. '
+                              'If not given, the maximum possible '
+                              'number of the output dtype will be used.'))
     return parser
 
 
