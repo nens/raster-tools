@@ -20,7 +20,6 @@ import os
 import sys
 import datetime
 import logging
-import subprocess
 import argparse
 
 import numpy as np
@@ -35,8 +34,20 @@ gdal.UseExceptions()
 
 logger = logging.getLogger(__name__)
 
-NO_DATA_VALUE = '-3.4028234663852886e+38'
+NO_DATA_VALUE = -3.4028234663852886e+38
 GDAL_GTIFF_DRIVER = gdal.GetDriverByName(b'gtiff')
+
+
+def get_image(tile_name, base_dir, return_lookup_dir=False):
+    """get AHN2 raster"""
+
+    tile_name_to_match = tile_name[1:]
+    lookup_dir = tile_name_to_match[:3]
+    tile_path = unipath.Path(base_dir, lookup_dir,
+                             'n{0:s}.tif'.format(tile_name_to_match))
+    if return_lookup_dir:
+        return tile_path, lookup_dir
+    return tile_path
 
 
 class RasterImage(object):
@@ -66,7 +77,7 @@ class RasterImage(object):
     @staticmethod
     def get_nodata_value_mask(non_array, int_array, buffer_size):
         # get a boolean mask
-        mask = non_array == float(NO_DATA_VALUE)
+        mask = non_array == NO_DATA_VALUE
         # import ipdb; ipdb.set_trace()
         buffered_mask = RasterImage.boolean_buffer(mask, buffer_size)
         # index the no data cells, fill the rest with 0
@@ -85,16 +96,6 @@ class RasterImage(object):
                                                   iterations=buffer_size)
 
     @staticmethod
-    def get_image(tile_name, base_dir):
-        """get AHN2 raster"""
-
-        tile_name_to_match = tile_name[1:]
-        lookup_dir = tile_name_to_match[:3]
-        tile_path = unipath.Path(base_dir, lookup_dir,
-                                 'n{0:s}.tif'.format(tile_name_to_match))
-        return tile_path
-
-    @staticmethod
     def gaussian_blur(in_array, size):
         # expand in_array to fit edge of kernel
         padded_array = np.pad(in_array, size, mode='symmetric'.encode('ascii'))
@@ -106,29 +107,11 @@ class RasterImage(object):
         return signal.fftconvolve(padded_array, g, mode='valid')
 
     @staticmethod
-    def merge(first, second, out_file):
+    def merge_arrays(first, second):
         """
-        This utility will automatically mosaic a set of images.
-        All the images must be in the same coordinate system and
-        have a matching number of bands, but they may be overlapping,
-        and at different resolutions. In areas of overlap,
-        the last image will be copied over earlier ones.
-
-        :param first:
-        :param second:
-        :param out_file:
-        :return:
+        TODO: make where clause variable
         """
-        ps = subprocess.Popen(
-            ['gdal_merge.py', '-o', out_file,
-             '-of', 'GTiff',
-             '-n', NO_DATA_VALUE,
-             first, second],
-            stdout=subprocess.PIPE
-        )
-        output = ps.communicate()[0]
-        for line in output.splitlines():
-            logger.debug("[*] {0}".format(line))
+        return np.where(second == NO_DATA_VALUE, first, second)
 
 
 class Config(object):
@@ -174,6 +157,7 @@ class Config(object):
         self.ahn2_INT = self.ahn2_root.child('int')
         self.ahn2_NON = self.ahn2_root.child('non')
         self.out_dir = unipath.Path(self.args.target_dir)
+        self.out_dir.mkdir()
 
 
 def main():
@@ -198,8 +182,9 @@ def main():
         logger.debug("[DB] tile_raw: {0}".format(tile_raw))
 
         # interpolated and not-interpolated AHN2 tiles
-        int_tile = RasterImage.get_image(tile_raw, base_dir=conf.ahn2_INT)
-        non_tile = RasterImage.get_image(tile_raw, base_dir=conf.ahn2_NON)
+        int_tile, sub_dir = get_image(tile_raw, base_dir=conf.ahn2_INT,
+                                      return_lookup_dir=True)
+        non_tile = get_image(tile_raw, base_dir=conf.ahn2_NON)
         # we need them both, so skip this iteration if one of
         # them is missing
         if not os.path.exists(int_tile) or not os.path.exists(non_tile):
@@ -207,29 +192,29 @@ def main():
                          "Skipping...".format(os.path.basename(int_tile)))
             continue
 
-        # result file naming...
-        out_file_gb = unipath.Path(conf.out_dir, '{0:s}_gb{1:s}'.format(
-            int_tile.stem, int_tile.ext))
-        logger.debug("tile path {0}, out file {1}".format(
-            int_tile, out_file_gb))
-        out_file = unipath.Path(conf.out_dir, '{0:s}_mrg{1:s}'.format(
-            int_tile.stem, int_tile.ext))
-
         ri_int = RasterImage(int_tile)
         int_array = ri_int.raster2array()
+        ri_non = RasterImage(non_tile)
+        non_array = ri_non.raster2array()
+
+        # result file naming...
+        out_sub = conf.out_dir.child(sub_dir)
+        out_sub.mkdir()
+        out_file_gb = unipath.Path(out_sub,
+                                   '{0:s}_sth{1:s}'.format(
+                                       int_tile.stem, int_tile.ext))
+        logger.debug("tile path {0}, out file {1}".format(
+            int_tile, out_file_gb))
 
         if conf.args.use_mask:
-            ri_non = RasterImage(non_tile)
-            non_array = ri_non.raster2array()
             blur_this = ri_int.get_nodata_value_mask(
                 non_array, int_array, buffer_size=conf.args.buffer)
         else:
             blur_this = int_array
 
         blurred = ri_int.gaussian_blur(blur_this, size=conf.args.gaussian)
-        # TODO do this in memory (maybe with gdalwarp?), clean up
-        ri_int.array2raster(blurred, out_file_gb)
-        ri_int.merge(out_file_gb, non_tile, out_file)
+        result_array = ri_int.merge_arrays(blurred, non_array)
+        ri_int.array2raster(result_array, out_file_gb)
         gdal.TermProgress_nocb(count / total)
 
     logger.info('[+] Smoothing successful!')
