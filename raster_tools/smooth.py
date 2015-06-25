@@ -65,7 +65,8 @@ class RasterImage(object):
             self.raster.RasterXSize,
             self.raster.RasterYSize,
             1,
-            gdal.GDT_Float32)
+            gdal.GDT_Float32,
+            options=['compress=deflate'])
 
         target.SetProjection(self.raster.GetProjection())
         target.SetGeoTransform(self.raster.GetGeoTransform())
