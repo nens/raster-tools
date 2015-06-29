@@ -30,7 +30,7 @@ DRIVER_OGR_MEM = ogr.GetDriverByName(b'memory')
 
 NO_DATA_VALUE = -3.4028234663852886e+38
 
-DEFAULT_Q = 70
+DEFAULT_Q = 75
 
 gdal.UseExceptions()
 ogr.UseExceptions()
