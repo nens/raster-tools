@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 """
-Rasterize zonal statstics (currently median or percentile)
-into a set of rasters.
+Rasterize zonal statstics (currently percentile or median) into a set
+of rasters.
 """
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -29,6 +29,8 @@ DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
 DRIVER_OGR_MEM = ogr.GetDriverByName(b'memory')
 
 NO_DATA_VALUE = -3.4028234663852886e+38
+
+DEFAULT_Q = 70
 
 gdal.UseExceptions()
 ogr.UseExceptions()
@@ -162,28 +164,28 @@ def command(index_path, **kwargs):
 
 def get_parser():
     """ Return argument parser. """
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
     parser.add_argument('index_path', metavar='INDEX',
-                        help='raster index shape file incl full path')
+                        help='Path to raster index shapefile')
     parser.add_argument('dbname', metavar='DBNAME',
-                        help='name of the database')
+                        help='Name of the database')
     parser.add_argument('table', metavar='TABLE',
-                        help='table name incl schema '
-                             '(e.g. <schema_name>.<table_name>')
+                        help='Table name, including schema (e.g. public.bag)')
     parser.add_argument('raster_path', metavar='RASTER',
-                        help='path to the raster file(s)')
+                        help='Path to the raster file')
     parser.add_argument('target_dir', metavar='TARGET',
-                        help='path were the result files should be written to')
-    parser.add_argument('stat_method', metavar='METHOD',
-                        nargs='?', default='median',
-                        help="compute either median or percentile of "
-                             "the pixels "
-                             "within the boundaries of a building")
-    parser.add_argument('q', metavar='Q',
-                        nargs='?', type=float, default=70.0,
-                        help="qth percentile of the pixels "
-                             "within the boundaries of a building. "
-                             "Value must be between 0 and 100 inclusive")
+                        help='Target folder for result files')
+    parser.add_argument('-m', '--method',
+                        choices=('median', 'percentile'),
+                        default='percentile', dest='stat_method',
+                        help='Aggregation method for building pixels')
+    parser.add_argument('-q', '--q-percentile',
+                        dest='q', type=float, default=DEFAULT_Q,
+                        help='Percentile if method is percentile')
     parser.add_argument('-u', '--user'),
     parser.add_argument('-p', '--password'),
     parser.add_argument('-s', '--host', default='localhost')
