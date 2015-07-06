@@ -58,9 +58,5 @@ setup(name='raster-tools',
               'extract            = raster_tools.extract:main',
               # pointclouds
               'txt2tif            = raster_tools.txt2tif:main',
-              # experimental
-              'interpolate_points = raster_tools.interpolate_points:main',
-              'watershed          = raster_tools.watershed:main',
-              'juggle             = raster_tools.juggle:main',
           ]},
       )
