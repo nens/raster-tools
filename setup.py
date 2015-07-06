@@ -48,6 +48,7 @@ setup(name='raster-tools',
               'srtm-organize      = raster_tools.srtm_organize:main',
               # modification
               'fillnodata         = raster_tools.fillnodata:main',
+              'rebase             = raster_tools.rebase:main',
               'smooth             = raster_tools.smooth:main',
               # rasterization
               'bag2tif            = raster_tools.bag2tif:main',
