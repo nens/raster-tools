@@ -93,7 +93,7 @@ def rebase(base_path, source_path, target_path, tolerance=None):
         save(dataset=dataset, path=target_path)
 
 
-class PathMaker ():
+class PathMaker():
     """ Makes paths. """
     def __init__(self, leaf):
         """ Store common things. """
@@ -113,13 +113,14 @@ def command(index_path, base_root, source_root, target_root, **kwargs):
     layer = index[0]
     total = layer.GetFeatureCount()
 
+    base_prefix = kwargs.pop('base_prefix')
+    source_prefix = kwargs.pop('source_prefix')
+
     for count, feature in enumerate(layer, 1):
         path_maker = PathMaker(leaf=feature[b'bladnr'])
 
-        base_path = path_maker.make(root=base_root,
-                                    prefix=kwargs.pop('base_prefix'))
-        source_path = path_maker.make(root=source_root,
-                                      prefix=kwargs.pop('source_prefix'))
+        base_path = path_maker.make(root=base_root, prefix=base_prefix)
+        source_path = path_maker.make(root=source_root, prefix=source_prefix)
         target_path = path_maker.make(root=target_root)
 
         rebase(base_path=base_path,
