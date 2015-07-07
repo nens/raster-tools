@@ -13,11 +13,12 @@ import os
 import sys
 import tempfile
 
-from osgeo import gdal
-from osgeo import gdal_array
 import numpy as np
 
-from raster_tools import utils
+from raster_tools import gdal
+from raster_tools import gdal_array
+
+from raster_tools import datasets
 
 GDAL_DRIVER_GTIFF = gdal.GetDriverByName(b'gtiff')
 
@@ -78,11 +79,10 @@ def interpolate(source_path, target_dir):
         )
         return 1
 
-    target = utils.array2dataset(target_array)
-    target.SetProjection(source.GetProjection())
-    target.SetGeoTransform(source.GetGeoTransform())
-    target_band = target.GetRasterBand(1)
-    target_band.SetNoDataValue(no_data_value)
+    target = datasets.create(array=target_array,
+                             no_data_value=no_data_value,
+                             projection=source.GetProjection(),
+                             geo_transform=source.GetGeoTransform())
 
     # switch dir
     curdir = os.getcwd()
@@ -94,10 +94,10 @@ def interpolate(source_path, target_dir):
     while no_data_value in target_array:
         logger.debug('Fill')
         mask_array = np.not_equal(target_array, no_data_value).view('u1')
-        mask = utils.array2dataset(mask_array)
+        mask = datasets.create(mask_array)
         mask_band = mask.GetRasterBand(1)
         gdal.FillNodata(
-            target_band,
+            target.GetRasterBand(1),
             mask_band,
             100,  # search distance
             0,    # smoothing iterations
