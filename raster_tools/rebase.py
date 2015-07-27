@@ -61,6 +61,11 @@ def rebase(base_path, source_path, target_path, tolerance=None):
         return
     base_band = base.GetRasterBand(1)
     base_data = base_band.ReadAsArray()
+    if base_data.shape != source_data.shape:
+        logger.debug('Shape mismatch, copy source.'.format(base_path))
+        save(dataset=source, path=target_path)
+        return
+
     base_mask = ~base_band.GetMaskBand().ReadAsArray().astype('b1')
 
     # calculation
@@ -123,9 +128,12 @@ def command(index_path, base_root, source_root, target_root, **kwargs):
         source_path = path_maker.make(root=source_root, prefix=source_prefix)
         target_path = path_maker.make(root=target_root)
 
-        rebase(base_path=base_path,
-               source_path=source_path,
-               target_path=target_path, **kwargs)
+        if os.path.exists(target_path):
+            logger.debug('Skip target: {}'.format(target_path))
+        else:
+            rebase(base_path=base_path,
+                   source_path=source_path,
+                   target_path=target_path, **kwargs)
 
         gdal.TermProgress_nocb(count / total)
 
