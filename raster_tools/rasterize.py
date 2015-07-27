@@ -216,9 +216,10 @@ def command(index_path, source_path, target_dir, attribute):
                     'projection': osr.GetUserInputAsWKT(b'epsg:28992'),
                 }
                 with datasets.Dataset(**kwargs) as ndv_dataset:
+                    options = ['compress=deflate', 'tiled=yes']
                     DRIVER_GDAL_GTIFF.CreateCopy(ndv_target_path,
                                                  ndv_dataset,
-                                                 options=['COMPRESS=DEFLATE'])
+                                                 options=options)
 
             # save
             try:
