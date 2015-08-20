@@ -14,9 +14,9 @@ import logging
 import os
 import sys
 
-from osgeo import gdal
-from osgeo import ogr
-from osgeo import osr
+from raster_tools import gdal
+from raster_tools import ogr
+from raster_tools import osr
 
 import numpy as np
 
@@ -30,23 +30,14 @@ DRIVER_OGR_MEM = ogr.GetDriverByName(b'memory')
 
 NO_DATA_VALUE = -3.4028234663852886e+38
 
-DEFAULT_Q = 75
-
-gdal.UseExceptions()
-ogr.UseExceptions()
-osr.UseExceptions()
-
 logger = logging.getLogger(__name__)
 
 
 class Rasterizer(object):
-    def __init__(self, raster_path, target_dir, table, stat_method,
-                 q, **kwargs):
+    def __init__(self, raster_path, target_dir, table, **kwargs):
         self.postgis_source = postgis.PostgisSource(**kwargs)
         self.target_dir = target_dir
         self.table = table
-        self.stat_method = stat_method
-        self.q = q
 
         self.dataset = gdal.Open(raster_path)
         self.geo_transform = utils.GeoTransform(
@@ -60,7 +51,7 @@ class Rasterizer(object):
 
     def path(self, feature):
         leaf = feature[b'bladnr']
-        return os.path.join(self.target_dir, leaf[1:4], leaf + '.tif')
+        return os.path.join(self.target_dir, leaf[0:3], leaf + '.tif')
 
     def target(self, feature):
         """ Return empty gdal dataset. """
@@ -106,22 +97,11 @@ class Rasterizer(object):
         with datasets.Dataset(mask, **kwargs) as dataset:
             gdal.RasterizeLayer(dataset, [1], data_source[0], burn_values=[1])
 
-        if self.stat_method == 'median':
-            # rasterize the median
-            if not mask.any():
-                return
-            burn = np.median(data[mask.nonzero()])
-        elif self.stat_method == 'percentile':
-            # rasterize the percentile
-            try:
-                burn = np.percentile(data[mask.nonzero()], self.q)
-            except IndexError:
-                return
-        else:
-            raise ValueError("[ERROR] parameter 'METHOD' "
-                             "must be either 'median' or "
-                             "'percentile' but "
-                             "is {0}".format(self.stat_method))
+        # rasterize the percentile
+        try:
+            burn = np.percentile(data[mask.nonzero()], 75)
+        except IndexError:
+            return
         gdal.RasterizeLayer(target, [1], data_source[0], burn_values=[burn])
 
     def rasterize(self, index_feature):
@@ -150,16 +130,17 @@ class Rasterizer(object):
                                      options=['compress=deflate'])
 
 
-def command(index_path, **kwargs):
+def command(index_path, part, **kwargs):
     """ Rasterize some postgis tables. """
+    index = utils.PartialDataSource(index_path)
     rasterizer = Rasterizer(**kwargs)
 
-    data_source = ogr.Open(index_path)
-    layer = data_source[0]
-    total = layer.GetFeatureCount()
-    for count, feature in enumerate(layer, 1):
+    if part is not None:
+        index = index.select(part)
+
+    for count, feature in enumerate(index, 1):
         rasterizer.rasterize(feature)
-        gdal.TermProgress_nocb(count / total)
+        print(feature[b'bladnr'])
 
 
 def get_parser():
@@ -179,16 +160,11 @@ def get_parser():
                         help='Path to the raster file')
     parser.add_argument('target_dir', metavar='TARGET',
                         help='Target folder for result files')
-    parser.add_argument('-m', '--method',
-                        choices=('median', 'percentile'),
-                        default='percentile', dest='stat_method',
-                        help='Aggregation method for building pixels')
-    parser.add_argument('-q', '--q-percentile',
-                        dest='q', type=float, default=DEFAULT_Q,
-                        help='Percentile if method is percentile')
+    parser.add_argument('-s', '--host', default='localhost')
     parser.add_argument('-u', '--user'),
     parser.add_argument('-p', '--password'),
-    parser.add_argument('-s', '--host', default='localhost')
+    parser.add_argument('--part',
+                        help='Partial processing source, for example "2/3"')
     return parser
 
 

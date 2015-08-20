@@ -7,13 +7,8 @@ from __future__ import division
 
 import logging
 
-from osgeo import gdal
-from osgeo import ogr
-from osgeo import osr
-
-gdal.UseExceptions()
-ogr.UseExceptions()
-osr.UseExceptions()
+from raster_tools import gdal
+from raster_tools import ogr
 
 logger = logging.getLogger(__name__)
 
@@ -103,24 +98,28 @@ class GeoTransform(tuple):
 
 class PartialDataSource(object):
     """ Wrap a shapefile. """
-    def __init__(self, path, part=None):
+    def __init__(self, path):
         self.dataset = ogr.Open(path)
         self.layer = self.dataset[0]
-        if part:
-            self.count, self.total = map(int, part.split('/'))
-        else:
-            self.count, self.total = 1, 1
+
+    def __iter__(self):
+        total = len(self)
+        gdal.TermProgress_nocb(0)
+        for count, feature in enumerate(self.layer, 1):
+            yield feature
+            gdal.TermProgress_nocb(count / total)
 
     def __len__(self):
         return self.layer.GetFeatureCount()
 
-    def __iter__(self):
+    def select(self, text):
         """ Return generator of features for text, e.g. '2/5' """
-        size = len(self) / self.total
-        start = int((self.count - 1) * size)
-        if self.count == self.total:
-            stop = len(self)
-        else:
-            stop = int(self.count * size)
-        for fid in xrange(start, stop):
+        selected, parts = map(int, text.split('/'))
+        size = len(self) / parts
+        start = int((selected - 1) * size)
+        stop = len(self) if selected == parts else int(selected * size)
+        total = stop - start
+        gdal.TermProgress_nocb(0)
+        for count, fid in enumerate(xrange(start, stop), 1):
             yield self.layer[fid]
+            gdal.TermProgress_nocb(count / total)
