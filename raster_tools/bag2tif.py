@@ -64,8 +64,8 @@ class Rasterizer(object):
         band.Fill(self.no_data_value)
         return dataset
 
-    def data_source(self, geometry):
-        """ Return geometry wrapped as data source. """
+    def get_ogr_data_source(self, geometry):
+        """ Return geometry wrapped as ogr data source. """
         data_source = DRIVER_OGR_MEM.CreateDataSource('')
         layer = data_source.CreateLayer(b'', self.sr)
         layer_defn = layer.GetLayerDefn()
@@ -79,23 +79,29 @@ class Rasterizer(object):
         :param feature: vector feature
         :param target: raster file to write to
         """
+        # determine geometry and 1m buffer
+        geometry = feature.geometry()
+        geometry_buffer = geometry.Buffer(1).Difference(geometry)
+
         # retrieve raster data
-        geo_transform = self.geo_transform.shifted(feature.geometry())
-        window = self.geo_transform.get_window(feature.geometry())
+        geo_transform = self.geo_transform.shifted(geometry_buffer)
+        window = self.geo_transform.get_window(geometry_buffer)
         data = self.dataset.ReadAsArray(**window)
         if data is None:
             return
         data.shape = (1,) + data.shape
 
-        # create ogr source with geometry
-        data_source = self.data_source(feature.geometry())
+        # create ogr data sources with geometry and buffer
+        data_source = self.get_ogr_data_source(geometry)
+        data_source_buffer = self.get_ogr_data_source(geometry_buffer)
 
         # determine mask
         mask = np.zeros(data.shape, 'u1')
-        kwargs = {'geo_transform': geo_transform}
-        kwargs.update(self.kwargs)
-        with datasets.Dataset(mask, **kwargs) as dataset:
-            gdal.RasterizeLayer(dataset, [1], data_source[0], burn_values=[1])
+        dataset_kwargs = {'geo_transform': geo_transform}
+        dataset_kwargs.update(self.kwargs)
+        with datasets.Dataset(mask, **dataset_kwargs) as dataset:
+            gdal.RasterizeLayer(dataset,
+                                [1], data_source_buffer[0], burn_values=[1])
 
         # rasterize the percentile
         try:
