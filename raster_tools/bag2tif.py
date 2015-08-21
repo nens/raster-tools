@@ -146,7 +146,6 @@ def command(index_path, part, **kwargs):
 
     for count, feature in enumerate(index, 1):
         rasterizer.rasterize(feature)
-        print(feature[b'bladnr'])
 
 
 def get_parser():
