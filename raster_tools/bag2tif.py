@@ -81,7 +81,11 @@ class Rasterizer(object):
         """
         # determine geometry and 1m buffer
         geometry = feature.geometry()
-        geometry_buffer = geometry.Buffer(1).Difference(geometry)
+        try:
+            geometry_buffer = geometry.Buffer(1).Difference(geometry)
+        except RuntimeError:
+            # garbage geometry
+            return
 
         # retrieve raster data
         geo_transform = self.geo_transform.shifted(geometry_buffer)
@@ -107,6 +111,7 @@ class Rasterizer(object):
         try:
             burn = np.percentile(data[mask.nonzero()], 75)
         except IndexError:
+            # no data points at all
             return
         gdal.RasterizeLayer(target, [1], data_source[0], burn_values=[burn])
 
