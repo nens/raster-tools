@@ -156,12 +156,15 @@ class Interpolator(object):
         path = os.path.join(self.output_path,
                             leaf_number[:3],
                             '{}.tif'.format(leaf_number))
-        dirname = os.path.dirname(path)
         if os.path.exists(path):
             logger.debug('Target already exists.')
             return
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
+
+        # create directory
+        try:
+            os.makedirs(os.path.dirname(path))
+        except OSError:
+            pass  # no problem
 
         # geometries
         inner_geometry = index_feature.geometry()
