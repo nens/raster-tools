@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-""" TODO Docstring. """
+"""
+Interpolate nodata regions in a raster using IDW.
+"""
 
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -42,59 +44,54 @@ def get_parser():
     parser.add_argument(
         'index_path',
         metavar='INDEX',
-    )
-    parser.add_argument(
-        'mask_path',
-        metavar='MASK',
+        help='shapefile with geometries and names of output tiles',
     )
     parser.add_argument(
         'raster_path',
         metavar='RASTER',
+        help='source GDAL raster dataset with voids'
     )
     parser.add_argument(
         'output_path',
         metavar='OUTPUT',
+        help='target folder',
+    )
+    parser.add_argument(
+        '-m', '--mask',
+        metavar='MASK',
+        dest='mask_path',
+        help='shapefile with regions to ignore',
     )
     parser.add_argument(
         '-p', '--part',
-        help='Partial processing source, for example "2/3"',
+        help='partial processing source, for example "2/3"',
     )
     return parser
 
 
-class Filler(object):
-    def __init__(self, resolution, parameter):
-        self.p = parameter / resolution
+def perform_idw(source, target, source_mask, target_mask):
+    """ Use idw for interpolation. """
+    source_index = source_mask.nonzero()
+    if len(source_index[0]) == 0:
+        return  # no source points for this no data region
+    source_points = np.vstack(source_index).transpose()
+    source_values = source[source_index]
 
-    def flat(self, source, target, source_mask, target_mask):
-        """ Use single property from source. """
-        source_index = source_mask.nonzero()
-        if not len(source_index[0]):
-            return
-        target_index = target_mask.nonzero()
-        target[target_index] = np.median(source[source_index])
+    target_index = target_mask.nonzero()
+    target_points = np.vstack(target_index).transpose()
 
-    def idw(self, source, target, source_mask, target_mask):
-        """ Use idw for interpolation. """
-        source_index = source_mask.nonzero()
-        if not (source_index[0]):
-            return
-        source_points = np.vstack(source_index).transpose()
-        source_values = source[source_index]
-
-        target_index = target_mask.nonzero()
-        target_points = np.vstack(target_index).transpose()
-
-        sum_of_weights = np.zeros(len(target_points))
-        sum_of_weighted_measurements = np.zeros(len(target_points))
-        for i in range(len(source_points)):
-            distance = np.sqrt((source_points[i] - target_points) ** 2).sum(1)
-            weight = 1.0 / distance ** self.p
-            weighted_measurement = source_values[i] * weight
-            sum_of_weights += weight
-            sum_of_weighted_measurements += weighted_measurement
-        target_values = sum_of_weighted_measurements / sum_of_weights
-        target[target_index] = target_values
+    sum_of_weights = np.zeros(len(target_points))
+    sum_of_weighted_measurements = np.zeros(len(target_points))
+    for i in range(len(source_points)):
+        distance = np.sqrt(
+            np.square(source_points[i] - target_points).sum(1)
+        )
+        weight = 1 / distance ** 4
+        weighted_measurement = source_values[i] * weight
+        sum_of_weights += weight
+        sum_of_weighted_measurements += weighted_measurement
+    target_values = sum_of_weighted_measurements / sum_of_weights
+    target[target_index] = target_values
 
 
 class Grower(object):
@@ -110,9 +107,8 @@ class Grower(object):
 
 
 class Interpolator(object):
-    def __init__(self, mask_layer, output_path, raster_dataset, margin=200):
+    def __init__(self, mask_path, output_path, raster_dataset, margin=100):
         self.margin = margin
-        self.mask_layer = mask_layer
         self.output_path = output_path
         self.raster_dataset = raster_dataset
 
@@ -121,6 +117,12 @@ class Interpolator(object):
         self.geo_transform = utils.GeoTransform(
             raster_dataset.GetGeoTransform(),
         )
+
+        if mask_path is None:
+            self.mask_layer = None
+        else:
+            self.mask_data_source = ogr.Open(mask_path)
+            self.mask_layer = self.mask_data_source[0]
 
         # no data value
         band = raster_dataset.GetRasterBand(1)
@@ -137,13 +139,14 @@ class Interpolator(object):
         meta = np.where(np.equal(source,
                                  self.no_data_value), VOID, DATA).astype('u1')
 
-        # rasterize the water
-        kwargs = {'geo_transform': self.geo_transform.shifted(geometry)}
-        with datasets.Dataset(meta[np.newaxis], **kwargs) as dataset:
-            gdal.RasterizeLayer(dataset,
-                                [1],
-                                self.mask_layer,
-                                burn_values=[ELSE])
+        # rasterize the water if mask is available
+        if self.mask_layer is not None:
+            kwargs = {'geo_transform': self.geo_transform.shifted(geometry)}
+            with datasets.Dataset(meta[np.newaxis], **kwargs) as dataset:
+                gdal.RasterizeLayer(dataset,
+                                    [1],
+                                    self.mask_layer,
+                                    burn_values=[ELSE])
 
         return source, target, meta
 
@@ -151,9 +154,8 @@ class Interpolator(object):
         # target path
         leaf_number = index_feature[b'BLADNR']
         path = os.path.join(self.output_path,
-                            leaf_number[1:4],
-                            'f{}.tif'.format(leaf_number[1:]))
-        logger.info(path)
+                            leaf_number[:3],
+                            '{}.tif'.format(leaf_number))
         dirname = os.path.dirname(path)
         if os.path.exists(path):
             logger.debug('Target already exists.')
@@ -182,14 +184,13 @@ class Interpolator(object):
             logger.debug('No objects found.')
             return
 
-        filler = Filler(resolution=0.5, parameter=2)
         for count, slices in enumerate(objects, 1):
             # the masking
             target_mask = np.equal(label[slices], count)
             edge = ndimage.binary_dilation(target_mask) - target_mask
             source_mask = np.logical_and(data_mask[slices], edge)
             # the filling
-            filler.flat(source=source[slices],
+            perform_idw(source=source[slices],
                         target=target[slices],
                         source_mask=source_mask,
                         target_mask=target_mask)
@@ -214,14 +215,13 @@ def command(index_path, mask_path, raster_path, output_path, part):
     - write to output according to index
     """
     # select some or all polygons
-    index = utils.PartialDataSource(index_path, part)
-
-    mask_data_source = ogr.Open(mask_path)
-    mask_layer = mask_data_source[0]
+    index = utils.PartialDataSource(index_path)
+    if part is not None:
+        index = index.select(part)
 
     raster_dataset = gdal.Open(raster_path)
 
-    interpolator = Interpolator(mask_layer=mask_layer,
+    interpolator = Interpolator(mask_path=mask_path,
                                 output_path=output_path,
                                 raster_dataset=raster_dataset)
 
