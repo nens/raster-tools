@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
+"""
+Convert aig to tif. Sources may come from stdin, too.
+"""
 
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -38,9 +41,7 @@ def func(kwargs):
 
 def get_parser():
     """ Return argument parser. """
-    parser = argparse.ArgumentParser(
-        description="Convert aig to tif. Sources may come from stdin, too."
-    )
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('-p', '--processes',
                         default=multiprocessing.cpu_count(),
                         type=int,

@@ -4,7 +4,6 @@
 Tool to split and convert downloaded AHN2 zipfiles.
 """
 
-
 from __future__ import print_function
 from __future__ import unicode_literals
 from __future__ import absolute_import

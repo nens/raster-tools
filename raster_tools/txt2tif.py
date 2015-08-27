@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-""" TODO Docstring. """
+""" 
+Create tif rasters from ZVP points by linear interpolation using griddata.
+"""
 
 from __future__ import print_function
 from __future__ import unicode_literals
