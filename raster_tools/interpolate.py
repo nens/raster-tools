@@ -10,6 +10,7 @@ from __future__ import division
 
 import argparse
 import logging
+import math
 import os
 import sys
 
@@ -69,29 +70,57 @@ def get_parser():
     return parser
 
 
+def thin(mask, factor):
+    result = np.zeros_like(mask)
+    factor *= 2                       # both horizontal and vertical lines
+
+    sy, sx = mask.shape               # total sizes
+    nx = int(math.ceil(sx / factor))  # number of selected x lines
+    ny = int(math.ceil(sy / factor))  # number of selected y lines
+    mx = sx // (nx * 2)               # x margin
+    my = sy // (ny * 2)               # y margin
+
+    ix = np.linspace(mx, sx - mx - 1, nx).astype('u8')
+    iy = np.linspace(my, sy - my - 1, ny).astype('u8')
+
+    result[:, ix] = mask[:, ix]
+    result[iy] = mask[iy]
+
+    return result
+
+
 def perform_idw(source, target, source_mask, target_mask):
-    """ Use idw for interpolation. """
+    """
+    Use idw for interpolation of:
+    - up to 6400 source points:
+    """
     source_index = source_mask.nonzero()
-    if len(source_index[0]) == 0:
+    source_points_count = len(source_index[0])
+    print(len(source_index[0]))
+    if source_points_count == 0:
         return  # no source points for this no data region
+    if source_points_count > 1000:
+        source_mask = thin(mask=source_mask,
+                           factor=source_points_count / 1000)
+        source_index = source_mask.nonzero()
+    print(len(source_index[0]))
+
     source_points = np.vstack(source_index).transpose()
-    source_values = source[source_index]
 
     target_index = target_mask.nonzero()
-    target_points = np.vstack(target_index).transpose()
+    target_points_count = len(target_index[0])
+    slices = (slice(b, b + 1000) for b in range(0, target_points_count, 1000))
 
-    sum_of_weights = np.zeros(len(target_points))
-    sum_of_weighted_measurements = np.zeros(len(target_points))
-    for i in range(len(source_points)):
-        distance = np.sqrt(
-            np.square(source_points[i] - target_points).sum(1)
-        )
+    for batch in slices:
+        target_index_batch = target_index[0][batch], target_index[1][batch]
+        target_points_batch = np.vstack(target_index_batch).transpose()
+        distance = np.sqrt(np.square(
+            source_points.reshape(1, -1, 2) -
+            target_points_batch.reshape(-1, 1, 2),
+        ).sum(2))
         weight = 1 / distance ** 4
-        weighted_measurement = source_values[i] * weight
-        sum_of_weights += weight
-        sum_of_weighted_measurements += weighted_measurement
-    target_values = sum_of_weighted_measurements / sum_of_weights
-    target[target_index] = target_values
+        value = source[source_index]
+        target[target_index_batch] = (weight * value).sum(1) / weight.sum(1)
 
 
 class Grower(object):
