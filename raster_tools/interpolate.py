@@ -70,57 +70,127 @@ def get_parser():
     return parser
 
 
-def thin(mask, factor):
-    result = np.zeros_like(mask)
-    factor *= 2                       # both horizontal and vertical lines
+def find_radius(array):
+    """
+    s = 7, 9
+    i = np.identity(3, 'u1')
+    # == and ||
+    np.tile(np.array([[0], [1]], 'u1'), (s[0] // 2 + 1, s[1]))[:s[0], :]
+    np.tile(np.array([0, 1], 'u1'), (s[0], s[1] // 2 + 1))[:, :s[1]]
+    # \\ and //:
+    np.tile(i, (s[0] // 3 + 1, s[1] // 3 + 1))[:s[0], :s[1]]
+    np.tile(i, (s[0] // 3 + 1, s[1] // 3 + 1))[:s[0], s[1] -1::-1]
+    """
 
-    sy, sx = mask.shape               # total sizes
-    nx = int(math.ceil(sx / factor))  # number of selected x lines
-    ny = int(math.ceil(sy / factor))  # number of selected y lines
-    mx = sx // (nx * 2)               # x margin
-    my = sy // (ny * 2)               # y margin
 
-    ix = np.linspace(mx, sx - mx - 1, nx).astype('u8')
-    iy = np.linspace(my, sy - my - 1, ny).astype('u8')
+def select_sparse(mask, spacer):
+    """ Return index. """
+    sparse = np.zeros_like(mask)
+    sparse[::spacer, ::spacer] = True
+    return np.logical_and(mask, sparse).nonzero()
 
-    result[:, ix] = mask[:, ix]
-    result[iy] = mask[iy]
+
+def interpolate_points(points, values, target, radius):
+    """
+    Return target values as array. The radius parameter selects points
+    in a circle to use.
+
+    - take into account radius # done that.
+    - take into account direction  # now what, it iterates per weight over all points in the collection! Thats n^2 computation per 
+    - take into account slope
+
+    - Think about algorthm for finding all points in a search radius:
+        - ckdtree?
+        - or 'manual'?i
+
+    - Need to set this up with 2d arrays, relating the points to each
+      other for eacht resulting target point. It will be slow for the
+      large voids, but the two-phasing makes up for that.
+    """
+    result = np.empty(len(target))
+
+    for index, point in enumerate(target):
+        distance = np.sqrt(np.square(point - points).sum(1))
+
+        # define pieces for weighting function
+        piece1 = np.less_equal(distance, radius / 3)
+        piece2 = np.logical_and(np.less(radius / 3, distance),
+                                np.less_equal(distance, radius))
+        pieces = np.logical_or(piece1, piece2)
+
+        # evaluate weighting function
+        weight = np.empty_like(distance)
+        weight[piece1] = 1 / distance[piece1]
+        weight[piece2] = (27 / (4 * radius) *
+                          np.square(distance[piece2] / radius - 1))
+
+        # evaluate interpolation function
+        weight = np.square(weight[pieces])
+        result[index] = (weight * values[pieces]).sum() / weight.sum()
 
     return result
 
 
-def perform_idw(source, target, source_mask, target_mask):
+def interpolate_void(source_data, target_data, source_mask, target_mask):
     """
-    Use idw for interpolation of:
-    - up to 6400 source points:
+    Does two phase interpolation if voids are too large for immediate
+    interpolation.
+
+    Note that the masks are copies, but the datas are views.
     """
     source_index = source_mask.nonzero()
     source_points_count = len(source_index[0])
-    print(len(source_index[0]))
     if source_points_count == 0:
-        return  # no source points for this no data region
-    if source_points_count > 1000:
-        source_mask = thin(mask=source_mask,
-                           factor=source_points_count / 1000)
-        source_index = source_mask.nonzero()
-    print(len(source_index[0]))
+        return
 
-    source_points = np.vstack(source_index).transpose()
-
+    # radius that would even cross a circular void
     target_index = target_mask.nonzero()
     target_points_count = len(target_index[0])
-    slices = (slice(b, b + 1000) for b in range(0, target_points_count, 1000))
+    worst_radius = math.sqrt(target_points_count / math.pi)
 
-    for batch in slices:
-        target_index_batch = target_index[0][batch], target_index[1][batch]
-        target_points_batch = np.vstack(target_index_batch).transpose()
-        distance = np.sqrt(np.square(
-            source_points.reshape(1, -1, 2) -
-            target_points_batch.reshape(-1, 1, 2),
-        ).sum(2))
-        weight = 1 / distance ** 4
-        value = source[source_index]
-        target[target_index_batch] = (weight * value).sum(1) / weight.sum(1)
+    spacer = 9                                # for extra source points
+    radius = spacer * math.sqrt(7 / math.pi)  # when sufficient
+
+    if worst_radius > radius:
+        # add sources add regularly spaced pixels
+        helper_index = select_sparse(mask=target_mask, spacer=spacer)
+
+        points = np.vstack(source_index).transpose()
+        values = source_data[source_index]
+        target = np.vstack(helper_index).transpose()
+
+        result = interpolate_points(points=points, values=values,
+                                    target=target, radius=worst_radius)
+
+        # the result takes the role of source instead of target
+        source_data[helper_index] = result
+        source_mask[helper_index] = True
+        target_data[helper_index] = result
+        target_mask[helper_index] = False
+
+        ma = np.ma.masked_values(target_data, target_data.min())
+        imshow(ma, interpolation='none')
+        savefig('idw1.png')
+        clf()
+    else:
+        return
+
+    source_index = source_mask.nonzero()
+    target_index = target_mask.nonzero()
+
+    points = np.vstack(source_index).transpose()
+    values = source_data[source_index]
+    target = np.vstack(target_index).transpose()
+
+    target_data[target_index] = interpolate_points(
+        points=points, values=values, target=target, radius=radius,
+    )
+
+    ma = np.ma.masked_values(target_data, target_data.min())
+    imshow(ma, interpolation='none')
+    savefig('idw2.png')
+    clf()
+    exit()
 
 
 class Grower(object):
@@ -164,7 +234,8 @@ class Interpolator(object):
         # read the data
         window = self.geo_transform.get_window(geometry)
         source = self.raster_dataset.ReadAsArray(**window)
-        target = np.ones(source.shape, dtype=source.dtype) * self.no_data_value
+        target = np.empty_like(source)
+        target.fill(self.no_data_value)
         meta = np.where(np.equal(source,
                                  self.no_data_value), VOID, DATA).astype('u1')
 
@@ -222,10 +293,10 @@ class Interpolator(object):
             edge = ndimage.binary_dilation(target_mask) - target_mask
             source_mask = np.logical_and(data_mask[slices], edge)
             # the filling
-            perform_idw(source=source[slices],
-                        target=target[slices],
-                        source_mask=source_mask,
-                        target_mask=target_mask)
+            interpolate_void(source_data=source[slices].copy(),
+                             target_data=target[slices],
+                             source_mask=source_mask,
+                             target_mask=target_mask)
 
         # save
         slices = outer_geo_transform.get_slices(inner_geometry)
@@ -273,3 +344,6 @@ def main():
         raise  # argparse does this
     except:
         logger.exception('An exception has occurred.')
+
+
+from pylab import *
