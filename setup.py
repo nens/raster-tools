@@ -10,6 +10,7 @@ long_description = '\n\n'.join([
 
 install_requires = [
     'gdal',
+    'pypotrace',
     'psycopg2',
     'scipy',
     'setuptools',

@@ -6,6 +6,12 @@ Rasterizing landuse tables
 For rasterization of landuse tables from a postgres datasource a special
 wrapper command is available at bin/rasterize-landuse, use --help for args.
 
+Dependencies
+------------
+cython
+libagg-dev
+libpotrace-dev
+
 Post-nensskel setup TODO
 ------------------------
 

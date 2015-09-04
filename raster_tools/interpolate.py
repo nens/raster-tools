@@ -90,7 +90,7 @@ def select_sparse(mask, spacer):
     return np.logical_and(mask, sparse).nonzero()
 
 
-def interpolate_points(points, values, target, radius):
+def interpolate_points():
     """
     Return target values as array. The radius parameter selects points
     in a circle to use.
@@ -137,6 +137,8 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
     interpolation.
 
     Note that the masks are copies, but the datas are views.
+    
+    We are going to do the calculation in square groups of points, using the manhattan distance to select the sources.
     """
     source_index = source_mask.nonzero()
     source_points_count = len(source_index[0])
@@ -293,7 +295,7 @@ class Interpolator(object):
             edge = ndimage.binary_dilation(target_mask) - target_mask
             source_mask = np.logical_and(data_mask[slices], edge)
             # the filling
-            interpolate_void(source_data=source[slices].copy(),
+            interpolate_void(source_data=source[slices],
                              target_data=target[slices],
                              source_mask=source_mask,
                              target_mask=target_mask)
