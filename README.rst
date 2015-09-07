@@ -8,9 +8,9 @@ wrapper command is available at bin/rasterize-landuse, use --help for args.
 
 Dependencies
 ------------
-cython
-libagg-dev
-libpotrace-dev
+python-gdal
+python-psycopg2
+python-scipy
 
 Post-nensskel setup TODO
 ------------------------

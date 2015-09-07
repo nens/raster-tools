@@ -10,25 +10,21 @@ from __future__ import division
 
 import argparse
 import logging
-import math
 import os
 import sys
 
 logger = logging.getLogger(__name__)
 
 import numpy as np
-from osgeo import gdal
-from osgeo import gdal_array
-from osgeo import ogr
-from osgeo import osr
 from scipy import ndimage
 
 from raster_tools import datasets
+from raster_tools import shepard
 from raster_tools import utils
 
-gdal.UseExceptions()
-ogr.UseExceptions()
-osr.UseExceptions()
+from raster_tools import ogr
+from raster_tools import gdal
+from raster_tools import gdal_array
 
 GTIF = gdal.GetDriverByName(b'gtiff')
 
@@ -81,117 +77,37 @@ def find_radius(array):
     np.tile(i, (s[0] // 3 + 1, s[1] // 3 + 1))[:s[0], :s[1]]
     np.tile(i, (s[0] // 3 + 1, s[1] // 3 + 1))[:s[0], s[1] -1::-1]
     """
-
-
-def select_sparse(mask, spacer):
-    """ Return index. """
-    sparse = np.zeros_like(mask)
-    sparse[::spacer, ::spacer] = True
-    return np.logical_and(mask, sparse).nonzero()
-
-
-def interpolate_points():
-    """
-    Return target values as array. The radius parameter selects points
-    in a circle to use.
-
-    - take into account radius # done that.
-    - take into account direction  # now what, it iterates per weight over all points in the collection! Thats n^2 computation per 
-    - take into account slope
-
-    - Think about algorthm for finding all points in a search radius:
-        - ckdtree?
-        - or 'manual'?i
-
-    - Need to set this up with 2d arrays, relating the points to each
-      other for eacht resulting target point. It will be slow for the
-      large voids, but the two-phasing makes up for that.
-    """
-    result = np.empty(len(target))
-
-    for index, point in enumerate(target):
-        distance = np.sqrt(np.square(point - points).sum(1))
-
-        # define pieces for weighting function
-        piece1 = np.less_equal(distance, radius / 3)
-        piece2 = np.logical_and(np.less(radius / 3, distance),
-                                np.less_equal(distance, radius))
-        pieces = np.logical_or(piece1, piece2)
-
-        # evaluate weighting function
-        weight = np.empty_like(distance)
-        weight[piece1] = 1 / distance[piece1]
-        weight[piece2] = (27 / (4 * radius) *
-                          np.square(distance[piece2] / radius - 1))
-
-        # evaluate interpolation function
-        weight = np.square(weight[pieces])
-        result[index] = (weight * values[pieces]).sum() / weight.sum()
-
-    return result
+    # these could be used to determine how large a void is.
 
 
 def interpolate_void(source_data, target_data, source_mask, target_mask):
     """
-    Does two phase interpolation if voids are too large for immediate
-    interpolation.
-
-    Note that the masks are copies, but the datas are views.
-    
-    We are going to do the calculation in square groups of points, using the manhattan distance to select the sources.
+    Call interpolation function
     """
+    # how big is the work?
     source_index = source_mask.nonzero()
-    source_points_count = len(source_index[0])
-    if source_points_count == 0:
+    source_count = len(source_index[0])
+    # if source_points_count == 0:
+    if source_count < 1000:
         return
 
-    # radius that would even cross a circular void
+    source_points = np.vstack(source_index).transpose()
+    source_values = source_data[source_index]
+
     target_index = target_mask.nonzero()
-    target_points_count = len(target_index[0])
-    worst_radius = math.sqrt(target_points_count / math.pi)
+    target_points = np.vstack(target_index).transpose()
 
-    spacer = 9                                # for extra source points
-    radius = spacer * math.sqrt(7 / math.pi)  # when sufficient
+    target_values = shepard.interpolate(target_points=target_points,
+                                        source_points=source_points,
+                                        source_values=source_values)
 
-    if worst_radius > radius:
-        # add sources add regularly spaced pixels
-        helper_index = select_sparse(mask=target_mask, spacer=spacer)
-
-        points = np.vstack(source_index).transpose()
-        values = source_data[source_index]
-        target = np.vstack(helper_index).transpose()
-
-        result = interpolate_points(points=points, values=values,
-                                    target=target, radius=worst_radius)
-
-        # the result takes the role of source instead of target
-        source_data[helper_index] = result
-        source_mask[helper_index] = True
-        target_data[helper_index] = result
-        target_mask[helper_index] = False
-
-        ma = np.ma.masked_values(target_data, target_data.min())
-        imshow(ma, interpolation='none')
-        savefig('idw1.png')
-        clf()
-    else:
-        return
-
-    source_index = source_mask.nonzero()
-    target_index = target_mask.nonzero()
-
-    points = np.vstack(source_index).transpose()
-    values = source_data[source_index]
-    target = np.vstack(target_index).transpose()
-
-    target_data[target_index] = interpolate_points(
-        points=points, values=values, target=target, radius=radius,
-    )
+    target_data[target_index] = target_values
 
     ma = np.ma.masked_values(target_data, target_data.min())
     imshow(ma, interpolation='none')
-    savefig('idw2.png')
+    savefig('idw.png')
     clf()
+    print('done')
     exit()
 
 
@@ -295,10 +211,10 @@ class Interpolator(object):
             edge = ndimage.binary_dilation(target_mask) - target_mask
             source_mask = np.logical_and(data_mask[slices], edge)
             # the filling
-            interpolate_void(source_data=source[slices],
-                             target_data=target[slices],
-                             source_mask=source_mask,
-                             target_mask=target_mask)
+            interpolate_void(source_mask=source_mask,
+                             target_mask=target_mask,
+                             source_data=source[slices],
+                             target_data=target[slices])
 
         # save
         slices = outer_geo_transform.get_slices(inner_geometry)
@@ -348,4 +264,5 @@ def main():
         logger.exception('An exception has occurred.')
 
 
-from pylab import *
+from pylab import imshow, savefig, clf
+np.set_printoptions(linewidth=130, threshold=14400)
