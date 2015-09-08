@@ -5,6 +5,16 @@ Donald Shepard, Proceedings of the 1968 ACM National Conference.
 
 We skip the selection of nearby points, the data is already assumed to
 be preselected.
+
+options:
+- pick a random number
+- pick educated kdtree query based on maximum free path
+- use linear rbf
+
+
+Select targets within a radius
+Select Sources within a radius
+
 """
 
 from __future__ import print_function

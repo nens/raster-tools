@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 from scipy import ndimage
+from scipy import spatial
 
 from raster_tools import datasets
 from raster_tools import shepard
@@ -66,18 +67,38 @@ def get_parser():
     return parser
 
 
-def find_radius(array):
+def find_width(mask):
     """
-    s = 7, 9
-    i = np.identity(3, 'u1')
-    # == and ||
-    np.tile(np.array([[0], [1]], 'u1'), (s[0] // 2 + 1, s[1]))[:s[0], :]
-    np.tile(np.array([0, 1], 'u1'), (s[0], s[1] // 2 + 1))[:, :s[1]]
-    # \\ and //:
-    np.tile(i, (s[0] // 3 + 1, s[1] // 3 + 1))[:s[0], :s[1]]
-    np.tile(i, (s[0] // 3 + 1, s[1] // 3 + 1))[:s[0], s[1] -1::-1]
+    Determine an approximation for the width of the wides section in the mask.
     """
-    # these could be used to determine how large a void is.
+    h, w = mask.shape
+    i = np.identity(3, 'b1')
+
+    # create patterns
+    backward = np.tile(i, (h // 3 + 1, w // 3 + 1))[:h, :w]
+    forward = np.tile(i, (h // 3 + 1, w // 3 + 1))[:h, w - 1::-1]
+    vertical = np.tile(np.array([0, 1], 'b1'), (h, w // 2 + 1))[:, :w]
+    horizontal = np.tile(np.array([[0], [1]], 'b1'), (h // 2 + 1, w))[:h, :]
+
+    # intersect with mask and find longest line
+    maxima = []
+    structure = np.ones((3, 3), 'b1')
+    for pattern in forward, backward, vertical, horizontal:
+        merge = np.logical_and(mask, pattern)
+        label, count = ndimage.label(merge, structure=structure)
+        maxima.append(ndimage.sum(merge, label, np.arange(count) + 1).max())
+
+    return min(maxima)
+
+
+def generate_batches(shape):
+    h, w = shape
+    s = 7
+    for i in xrange(0, h, s):
+        for j in xrange(0, w, s):
+            slices = slice(i, i + s), slice(j, j + s)
+            offset = (i,), (j,)
+            yield slices, offset
 
 
 def interpolate_void(source_data, target_data, source_mask, target_mask):
@@ -88,27 +109,39 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
     source_index = source_mask.nonzero()
     source_count = len(source_index[0])
     # if source_points_count == 0:
-    if source_count < 1000:
+    # if source_count < 2475:
+    if source_count < 400:
         return
 
     source_points = np.vstack(source_index).transpose()
     source_values = source_data[source_index]
+    source_tree = spatial.cKDTree(source_points)
+    source_range = find_width(target_mask) + 5
 
-    target_index = target_mask.nonzero()
-    target_points = np.vstack(target_index).transpose()
+    for slices, offset in generate_batches(target_data.shape):
+        target_index = target_mask[slices].nonzero()
+        target_points = np.vstack(target_index) + offset
+        target_center = np.median(target_points, 0)
 
-    target_values = shepard.interpolate(target_points=target_points,
-                                        source_points=source_points,
-                                        source_values=source_values)
+        select_index = source_tree.query(target_center,
+                                         k=source_count,
+                                         distance_upper_bound=source_range)
+        # TODO select the source points that are within the safe range
 
-    target_data[target_index] = target_values
+        select_points = source_points[select_index]
+        select_values = source_values[select_index]
 
-    ma = np.ma.masked_values(target_data, target_data.min())
-    imshow(ma, interpolation='none')
-    savefig('idw.png')
-    clf()
-    print('done')
-    exit()
+        # shepard makes a weight matrix of t * s * s! So, limit amount of
+        # sources even more by random selection, when there are still to much
+        # sources. This shuld only occur for really large voids, such as lakes,
+        # in which case omitting sources should not be too big a deal.
+        # return
+
+        target_values = shepard.interpolate(target_points=target_points,
+                                            select_points=select_points,
+                                            select_values=select_values)
+
+        target_data[target_index] = target_values
 
 
 class Grower(object):
@@ -264,5 +297,6 @@ def main():
         logger.exception('An exception has occurred.')
 
 
-from pylab import imshow, savefig, clf
+from pylab import imshow, show, savefig, clf
+imshow, show, savefig, clf
 np.set_printoptions(linewidth=130, threshold=14400)
