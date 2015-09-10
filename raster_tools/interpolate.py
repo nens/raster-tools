@@ -33,6 +33,8 @@ VOID = 0
 DATA = 1
 ELSE = 2
 
+SQRT2 = np.sqrt(2)
+
 
 def get_parser():
     """ Return argument parser. """
@@ -86,7 +88,10 @@ def find_width(mask):
     for pattern in forward, backward, vertical, horizontal:
         merge = np.logical_and(mask, pattern)
         label, count = ndimage.label(merge, structure=structure)
-        maxima.append(ndimage.sum(merge, label, np.arange(count) + 1).max())
+        maximum = ndimage.sum(merge, label, np.arange(count) + 1).max()
+        if pattern is backward or pattern is forward:
+            maximum *= SQRT2  # the diagonals are longer
+        maxima.append(maximum)
 
     return min(maxima)
 
@@ -97,7 +102,7 @@ def generate_batches(shape):
     for i in xrange(0, h, s):
         for j in xrange(0, w, s):
             slices = slice(i, i + s), slice(j, j + s)
-            offset = (i,), (j,)
+            offset = i, j
             yield slices, offset
 
 
@@ -110,38 +115,47 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
     source_count = len(source_index[0])
     # if source_points_count == 0:
     # if source_count < 2475:
-    if source_count < 400:
+    if source_count != 222:
         return
 
     source_points = np.vstack(source_index).transpose()
     source_values = source_data[source_index]
     source_tree = spatial.cKDTree(source_points)
-    source_range = find_width(target_mask) + 5
+    source_range = find_width(target_mask) + 3  # 3 for over width
 
     for slices, offset in generate_batches(target_data.shape):
         target_index = target_mask[slices].nonzero()
-        target_points = np.vstack(target_index) + offset
+        target_count = len(target_index[0])
+        if not target_count:
+            continue
+        target_points = np.vstack(target_index).transpose() + offset
         target_center = np.median(target_points, 0)
 
-        select_index = source_tree.query(target_center,
-                                         k=source_count,
-                                         distance_upper_bound=source_range)
-        # TODO select the source points that are within the safe range
+        result = source_tree.query(
+            target_center, k=source_count, p=2,
+            distance_upper_bound=source_range + 3 * SQRT2,  # 3 for batch size
+        )[1]
+        select_index = result[result != source_count]
 
         select_points = source_points[select_index]
         select_values = source_values[select_index]
-
-        # shepard makes a weight matrix of t * s * s! So, limit amount of
-        # sources even more by random selection, when there are still to much
-        # sources. This shuld only occur for really large voids, such as lakes,
-        # in which case omitting sources should not be too big a deal.
-        # return
-
         target_values = shepard.interpolate(target_points=target_points,
-                                            select_points=select_points,
-                                            select_values=select_values)
+                                            source_points=select_points,
+                                            source_values=select_values,
+                                            radius=source_range)
 
-        target_data[target_index] = target_values
+        target_data[slices][target_index] = target_values
+    print(source_count)
+    ma = np.ma.masked_values(target_data, target_data.min())
+    imshow(ma, interpolation='none', cmap=spectral)
+    savefig('target.png')
+    clf()
+    ma = np.ma.masked_values(source_data, target_data.min())
+    imshow(ma, interpolation='none', cmap=spectral)
+    savefig('source.png')
+    clf()
+    exit()
+    
 
 
 class Grower(object):
@@ -297,6 +311,7 @@ def main():
         logger.exception('An exception has occurred.')
 
 
-from pylab import imshow, show, savefig, clf
+from pylab import imshow, show, savefig, clf, get_cmap
+spectral = get_cmap('spectral')
 imshow, show, savefig, clf
 np.set_printoptions(linewidth=130, threshold=14400)

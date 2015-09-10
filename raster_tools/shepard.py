@@ -6,6 +6,8 @@ Donald Shepard, Proceedings of the 1968 ACM National Conference.
 We skip the selection of nearby points, the data is already assumed to
 be preselected.
 
+Furthermore
+
 options:
 - pick a random number
 - pick educated kdtree query based on maximum free path
@@ -14,7 +16,6 @@ options:
 
 Select targets within a radius
 Select Sources within a radius
-
 """
 
 from __future__ import print_function
@@ -25,24 +26,25 @@ from __future__ import division
 import numpy as np
 
 
-def weigh_s(square_of_distance):
-    """
-    Here we deviate from shepard by taking just distance to the power of 4.
-    """
-    return square_of_distance.astype('f8') ** -2
+def weigh_s(distance, radius):
+    """ Called s in the paper. """
+    # define pieces for weighting function
+    piece1 = np.less_equal(distance, radius / 3)
+    piece3 = np.greater(distance, radius)
+    piece2 = np.logical_xor(piece1, piece3)
+
+    # evaluate weighting function
+    weight = np.empty_like(distance)
+    weight[piece1] = 1 / distance[piece1]
+    weight[piece2] = (27 / (4 * radius) *
+                      np.square(distance[piece2] / radius - 1))
+    weight[piece3] = 0
+
+    return weight
 
 
-def interpolate_f2(target_points, source_points, source_values):
-    """
-    Return a numpy array of shape (M,)
-
-    :param target_points: a numpy array of shape (M, 2)
-    :param source_points: a numpy array of shape (N, 2)
-    :param source_values: a numpy array of shape (N,)
-
-    Determines the values of the interpolation function with data as inputs
-    at the coordinates points.
-    """
+def interpolate_f2(target_points, source_points, source_values, radius):
+    """ Called f2 in the paper. """
     source_count = len(source_points)
     source_indices = np.arange(len(source_points))
 
@@ -61,8 +63,8 @@ def interpolate_f2(target_points, source_points, source_values):
         # the weights
         source_points_batch = source_points[batch][:, np.newaxis, :]
         vector_batch = source_points_batch - target_points[np.newaxis, :]
-        square_of_distance_batch = np.square(vector_batch).sum(2)
-        weights_batch = weigh_s(square_of_distance_batch)
+        distance_batch = np.sqrt(np.square(vector_batch).sum(2))
+        weights_batch = weigh_s(distance=distance_batch, radius=radius)
 
         # add to the sums
         source_values_batch = source_values[batch][:, np.newaxis]
@@ -71,24 +73,18 @@ def interpolate_f2(target_points, source_points, source_values):
 
     return sum_of_weighted_values / sum_of_weights
 
-    # define pieces for weighting function
-    # piece1 = np.less_equal(distance, radius / 3)
-    # piece2 = np.logical_and(np.less(radius / 3, distance),
-    #                       # np.less_equal(distance, radius))
-    # pieces = np.logical_or(piece1, piece2)
 
-    # evaluate weighting function
-    # weight = np.empty_like(distance)
-    # weight[piece1] = 1 / distance[piece1]
-    # weight[piece2] = (27 / (4 * radius) *
-    #                 # np.square(distance[piece2] / radius - 1))
+def interpolate(target_points, source_points, source_values, radius):
+    """
+    Return a numpy array of shape (M,)
 
-    # evaluate interpolation function
-    # weight = np.square(weight[pieces])
-    # result[index] = (weight * values[pieces]).sum() / weight.sum()
+    :param target_points: a numpy array of shape (M, 2)
+    :param source_points: a numpy array of shape (N, 2)
+    :param source_values: a numpy array of shape (N,)
 
-
-def interpolate(target_points, source_points, source_values):
+    Determines the values of the interpolation function with data as inputs
+    at the coordinates points.
+    """
     return interpolate_f2(target_points=target_points,
                           source_points=source_points,
-                          source_values=source_values)
+                          source_values=source_values, radius=radius)
