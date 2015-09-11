@@ -10,6 +10,7 @@ from __future__ import division
 
 import argparse
 import logging
+import math
 import os
 import sys
 
@@ -33,7 +34,8 @@ VOID = 0
 DATA = 1
 ELSE = 2
 
-SQRT2 = np.sqrt(2)
+MARGIN = 3     # to be sure points from all sides are included
+BATCHSIZE = 3  # the patches are (1 + 2 * BATCHSIZE) wide
 
 
 def get_parser():
@@ -90,15 +92,14 @@ def find_width(mask):
         label, count = ndimage.label(merge, structure=structure)
         maximum = ndimage.sum(merge, label, np.arange(count) + 1).max()
         if pattern is backward or pattern is forward:
-            maximum *= SQRT2  # the diagonals are longer
+            maximum *= math.sqrt(2)  # the diagonals are longer
         maxima.append(maximum)
-
     return min(maxima)
 
 
 def generate_batches(shape):
     h, w = shape
-    s = 7
+    s = 1 + 2 * BATCHSIZE
     for i in xrange(0, h, s):
         for j in xrange(0, w, s):
             slices = slice(i, i + s), slice(j, j + s)
@@ -113,15 +114,21 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
     # how big is the work?
     source_index = source_mask.nonzero()
     source_count = len(source_index[0])
-    # if source_points_count == 0:
-    # if source_count < 2475:
-    if source_count != 222:
+    if source_count == 0:
         return
 
+    # need to estimate the maximum width?
+    target_index = target_mask.nonzero()
+    target_count = len(target_index[0])
+    if target_count < 100:
+        source_range = 2 * math.sqrt(100 / math.pi) + MARGIN
+    else:
+        source_range = find_width(target_mask) + MARGIN
+
+    # construct a KDtree for the source points
     source_points = np.vstack(source_index).transpose()
     source_values = source_data[source_index]
     source_tree = spatial.cKDTree(source_points)
-    source_range = find_width(target_mask) + 3  # 3 for over width
 
     for slices, offset in generate_batches(target_data.shape):
         target_index = target_mask[slices].nonzero()
@@ -133,7 +140,7 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
 
         result = source_tree.query(
             target_center, k=source_count, p=2,
-            distance_upper_bound=source_range + 3 * SQRT2,  # 3 for batch size
+            distance_upper_bound=source_range + math.sqrt(2) * BATCHSIZE
         )[1]
         select_index = result[result != source_count]
 
@@ -145,17 +152,21 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
                                             radius=source_range)
 
         target_data[slices][target_index] = target_values
-    print(source_count)
-    ma = np.ma.masked_values(target_data, target_data.min())
-    imshow(ma, interpolation='none', cmap=spectral)
-    savefig('target.png')
-    clf()
-    ma = np.ma.masked_values(source_data, target_data.min())
-    imshow(ma, interpolation='none', cmap=spectral)
-    savefig('source.png')
-    clf()
-    exit()
-    
+
+    # ma = np.ma.masked_values(target_data, target_data.min())
+    # imshow(ma, interpolation='none', cmap=spectral)
+    # savefig('target.png')
+    # clf()
+    # ma = np.ma.masked_values(source_data, source_data.min())
+    # imshow(ma, interpolation='none', cmap=spectral)
+    # savefig('source.png')
+    # clf()
+    # combined = source_data.copy()
+    # combined[target_mask] = target_data[target_mask]
+    # ma = np.ma.masked_values(combined, combined.min())
+    # imshow(ma, interpolation='none', cmap=spectral)
+    # savefig('combined.png')
+    # clf()
 
 
 class Grower(object):
@@ -262,6 +273,7 @@ class Interpolator(object):
                              target_mask=target_mask,
                              source_data=source[slices],
                              target_data=target[slices])
+            print('{:2.0f}%'.format(100 * count / total))
 
         # save
         slices = outer_geo_transform.get_slices(inner_geometry)

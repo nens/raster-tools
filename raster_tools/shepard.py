@@ -6,16 +6,8 @@ Donald Shepard, Proceedings of the 1968 ACM National Conference.
 We skip the selection of nearby points, the data is already assumed to
 be preselected.
 
-Furthermore
-
-options:
-- pick a random number
-- pick educated kdtree query based on maximum free path
-- use linear rbf
-
-
-Select targets within a radius
-Select Sources within a radius
+After direction and sloping have been incorporated, let's revisit the
+weighting function.
 """
 
 from __future__ import print_function
@@ -26,12 +18,17 @@ from __future__ import division
 import numpy as np
 
 
+def weigh_4(distance, radius):
+    """ Debugging purposes. """
+    return 1 / distance
+
+
 def weigh_s(distance, radius):
     """ Called s in the paper. """
     # define pieces for weighting function
     piece1 = np.less_equal(distance, radius / 3)
     piece3 = np.greater(distance, radius)
-    piece2 = np.logical_xor(piece1, piece3)
+    piece2 = ~np.logical_or(piece1, piece3)
 
     # evaluate weighting function
     weight = np.empty_like(distance)
@@ -45,31 +42,29 @@ def weigh_s(distance, radius):
 
 def interpolate_f2(target_points, source_points, source_values, radius):
     """ Called f2 in the paper. """
-    source_count = len(source_points)
-    source_indices = np.arange(len(source_points))
 
-    # np.random.seed(0)
-    np.random.shuffle(source_indices)
+    # the weights
+    vectors = source_points[:, np.newaxis] - target_points[np.newaxis]
+    distance = np.sqrt(np.square(vectors).sum(2))
+    weights = weigh_s(distance=distance, radius=radius)
 
-    target_count = len(target_points)
-    batch_size = 5000000 // target_count
+    # from pylab import plot, show
+    # x1 = distance.ravel()
+    # y1 = weights.ravel()
+    # plot(x1, y1, '.')
+    # show()
 
-    sum_of_weights = np.zeros(target_count)
-    sum_of_weighted_values = np.zeros(target_count)
+    # from pylab import plot, show, axis
+    # x1, y1 = source_points.transpose()[::-1]
+    # x2, y2 = target_points.transpose()[::-1]
+    # plot(x1, -y1, 'o', x2, -y2, 'o')
+    # axis('equal')
+    # show()
+    # import ipdb; ipdb.set_trace()
 
-    for i in xrange(0, source_count, batch_size):
-        batch = slice(i * batch_size, i * batch_size + batch_size)
-
-        # the weights
-        source_points_batch = source_points[batch][:, np.newaxis, :]
-        vector_batch = source_points_batch - target_points[np.newaxis, :]
-        distance_batch = np.sqrt(np.square(vector_batch).sum(2))
-        weights_batch = weigh_s(distance=distance_batch, radius=radius)
-
-        # add to the sums
-        source_values_batch = source_values[batch][:, np.newaxis]
-        sum_of_weighted_values += (weights_batch * source_values_batch).sum(0)
-        sum_of_weights += weights_batch.sum(0)
+    # add to the sums
+    sum_of_weighted_values = (weights * source_values[:, np.newaxis]).sum(0)
+    sum_of_weights = weights.sum(0)
 
     return sum_of_weighted_values / sum_of_weights
 
