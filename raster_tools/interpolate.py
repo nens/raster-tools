@@ -34,8 +34,9 @@ VOID = 0
 DATA = 1
 ELSE = 2
 
-MARGIN = 3     # to be sure points from all sides are included
-BATCHSIZE = 3  # the patches are (1 + 2 * BATCHSIZE) wide
+MARGIN = 3       # to be sure points from all sides are included
+BATCHSIZE = 3    # the interpolation patches are (1 + 2 * BATCHSIZE) wide
+THRESHOLD = 100  # approximate amount of sources into interpolation batch
 
 
 def get_parser():
@@ -114,7 +115,7 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
     # how big is the work?
     source_index = source_mask.nonzero()
     source_count = len(source_index[0])
-    if source_count == 0:
+    if not source_count:
         return
 
     # need to estimate the maximum width?
@@ -125,12 +126,27 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
     else:
         source_range = find_width(target_mask) + MARGIN
 
-    # construct a KDtree for the source points
+    # determine sources
     source_points = np.vstack(source_index).transpose()
     source_values = source_data[source_index]
+
+    # investigate and reduce if there are too many sources
+    batch_estimate = 4 * math.pi * source_range / (1 + math.sqrt(2))
+    if batch_estimate > THRESHOLD:
+        # select a random amount according to the threshold ratio
+        select_index = np.arange(source_count, dtype='u8')
+        np.random.shuffle(select_index)
+
+        # reassign counts, points, values
+        source_count = int(source_count * THRESHOLD / batch_estimate)
+        source_points = source_points[select_index[:source_count]]
+        source_values = source_values[select_index[:source_count]]
+
+    # construct a KDtree for the source points
     source_tree = spatial.cKDTree(source_points)
 
     for slices, offset in generate_batches(target_data.shape):
+        # determine target patch
         target_index = target_mask[slices].nonzero()
         target_count = len(target_index[0])
         if not target_count:
@@ -138,14 +154,18 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
         target_points = np.vstack(target_index).transpose() + offset
         target_center = np.median(target_points, 0)
 
+        # query closest points for batch patch
         result = source_tree.query(
             target_center, k=source_count, p=2,
             distance_upper_bound=source_range + math.sqrt(2) * BATCHSIZE
         )[1]
-        select_index = result[result != source_count]
 
+        # select sources that were in range
+        select_index = result[result != source_count]
         select_points = source_points[select_index]
         select_values = source_values[select_index]
+
+        # interpolate
         target_values = shepard.interpolate(target_points=target_points,
                                             source_points=select_points,
                                             source_values=select_values,
