@@ -53,6 +53,15 @@ class GeoTransform(tuple):
         values[0], x2, y1, values[3] = geometry.GetEnvelope()
         return self.__class__(values)
 
+    def scaled(self, f):
+        """
+        Return shifted geo transform.
+
+        :param f: scale the cellsize by this factor
+        """
+        p, a, b, q, c, d = self
+        return self.__class__([p, a * f, b * f, q, c * f, d * f])
+
     def get_indices(self, geometry):
         """
         Return array indices tuple for geometry.
