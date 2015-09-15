@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
+# (c) Nelen & Schuurmans, see LICENSE.rst.
 """ Extract layers from a raster server using a geometry. """
 
 from __future__ import print_function

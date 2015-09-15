@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
+# (c) Nelen & Schuurmans, see LICENSE.rst.
 """
 Convert aig to tif. Sources may come from stdin, too.
 """

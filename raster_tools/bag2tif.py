@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
+# (c) Nelen & Schuurmans, see LICENSE.rst.
 """
 Rasterize zonal statstics (currently percentile or median) into a set
 of rasters.
