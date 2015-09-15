@@ -47,6 +47,7 @@ setup(name='raster-tools',
               'srtm-fix-nodata    = raster_tools.srtm_fix_nodata:main',
               'srtm-organize      = raster_tools.srtm_organize:main',
               # modification
+              'aggregate          = raster_tools.aggregate:main',
               'fillnodata         = raster_tools.fillnodata:main',
               'rebase             = raster_tools.rebase:main',
               'smooth             = raster_tools.smooth:main',
