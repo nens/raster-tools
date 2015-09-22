@@ -9,6 +9,7 @@ long_description = '\n\n'.join([
     ])
 
 install_requires = [
+    'flask',
     'gdal',
     'psycopg2',
     'scipy',
@@ -56,6 +57,10 @@ setup(name='raster-tools',
               'interpolate        = raster_tools.interpolate:main',
               'rasterize-landuse  = raster_tools.rasterize_landuse:main',
               'rasterize          = raster_tools.rasterize:main',
+              # tile maps
+              'tile-table         = raster_tools.tile.table:main',
+              'tile-server        = raster_tools.tile.server:main',
+              'tile-creator       = raster_tools.tile.creator:main',
               # model generation
               'extract            = raster_tools.extract:main',
               # pointclouds
