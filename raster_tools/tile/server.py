@@ -19,19 +19,22 @@ app = flask.Flask(__name__)
 
 @app.route('/<path:path>')
 def tile(path):
-    logger.info(path)
-    if '..' in path:
-        logger.info('attempt to go backwards')
+    """ Return image. """
+    # restrict
+    if not path.endswith('png'):
         flask.abort(403)
-    if not path.endswith('png') and not path.endswith('jpg'):
-        logger.info('wrong extension')
-        flask.abort(403)
-    content = open(path).read()
+
+    # read
     try:
         content = open(path).read()
-    except OSError:
+    except IOError:
         flask.abort(403)
-    content_type = 'image/png' if content[1:4] == str('PNG') else 'image/jpeg'
+
+    # mime
+    if content[1:4] == str('PNG'):
+        content_type = 'image/png'
+    else:
+        content_type = 'image/jpeg'
 
     return content, 200, {'content-type': content_type,
                           'Access-Control-Allow-Origin': '*',

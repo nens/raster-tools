@@ -137,7 +137,7 @@ class Tile(object):
                 gdal.ReprojectImage(source, target, None, None, GRA, 0, 0.125)
 
         # determine type of result
-        mask = array[0:1] == 256
+        mask = (array == 256).any(0)[np.newaxis]
 
         # nothing
         if mask.all():
@@ -257,7 +257,7 @@ def get_parser():
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('source_path', metavar='SOURCE')
     parser.add_argument('target_path', metavar='TARGET')
-    parser.add_argument('zoom', type=int)
+    parser.add_argument('zoom', metavar='ZOOM', type=int)
     return parser
 
 
