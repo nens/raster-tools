@@ -13,16 +13,18 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
+import io
 import itertools
 import logging
 import math
 import multiprocessing
-import os
 import sys
 
 from raster_tools import datasets
 from raster_tools import gdal
 from raster_tools import osr
+
+from raster_tools.tile import storages
 
 from PIL import Image
 from osgeo import gdal_array
@@ -44,11 +46,10 @@ def initializer(path):
     master = gdal.Open(path)
 
 
-def func(job):
+def func(tile):
     """ Make tile and return count. """
-    tile, count = job
     tile.make()
-    return count
+    return tile
 
 
 class BBox(object):
@@ -77,18 +78,25 @@ class DummyPool(object):
 
 
 class Tile(object):
-    def __init__(self, x, y, z, target_path,
-                 quality=None, method=None, base=None):
-        self.target_path = target_path
-        self.quality = quality
-        self.method = method
-        self.base = base
-
+    """
+    Base tile class that allows loading from storage and conversion to
+    a gdal dataset.
+    """
+    def __init__(self, x, y, z, storage):
         self.x = x
         self.y = y
         self.z = z
+        self.storage = storage
 
-        self.path = os.path.join(target_path, str(z), str(x), str(y) + '.png')
+    def __nonzero__(self):
+        return self.data is not None
+
+    def load(self):
+        try:
+            self.data = self.storage[self.x, self.y, self.z]
+        except KeyError:
+            self.data = None
+        return self
 
     def get_geo_transform(self):
         """ Return GeoTransform """
@@ -99,39 +107,32 @@ class Tile(object):
         d = -a
         return p, a, 0, q, 0, d
 
-    def get_subtiles(self):
-        """ Return source generator of at most 4 subtiles. """
-        z = 1 + self.z
-        for dy, dx in itertools.product([0, 1], [0, 1]):
-            x = dx + 2 * self.x
-            y = dy + 2 * self.y
-            yield self.__class__(x=x, y=y, z=z, target_path=self.target_path)
-
     def as_dataset(self):
-        try:
-            image = Image.open(self.path)
-        except IOError:
-            return
-
-        array = np.array(image).transpose(2, 0, 1)
-
+        """ Return image as gdal dataset. """
+        # convert to rgba array
+        array = np.array(Image.open(io.BytesIO(self.data))).transpose(2, 0, 1)
         if len(array) == 3:
             # add alpha
             array = np.vstack([array, np.full_like(array[:1], 255)])
 
+        # return as dataset
         dataset = gdal_array.OpenArray(array)
         dataset.SetProjection(WKT)
         dataset.SetGeoTransform(self.get_geo_transform())
         return dataset
 
-    def make(self):
-        """ Make tile. """
-        # sources
-        if self.base:
-            sources = [self.as_dataset(), master]
-        else:
-            sources = [s.as_dataset() for s in self.get_subtiles()]
 
+class TargetTile(Tile):
+    """
+    A tile that can build from sources and save to storage.
+    """
+    def __init__(self, quality, method,  **kwargs):
+        super(TargetTile, self).__init__(**kwargs)
+        self.quality = quality
+        self.method = method
+
+    def make(self):
+        """ Make tile and store data on data attribute. """
         # target
         array = np.zeros((4, 256, 256), dtype='u1')
         kwargs = {'projection': WKT,
@@ -139,27 +140,66 @@ class Tile(object):
 
         with datasets.Dataset(array, **kwargs) as target:
             gra = GRA[self.method]
-            for source in filter(None, sources):
+            for source in self.get_sources():
                 gdal.ReprojectImage(source, target, None, None, gra, 0, 0.125)
 
         # nothing
-        if (array[3] == 0).all():
+        if (array[-1] == 0).all():
+            self.data = None
             return
 
-        # directories
-        try:
-            os.makedirs(os.path.dirname(self.path))
-        except OSError:
-            pass  # not necessary
-
-        if (array[3] < 255).any():
-            # png
+        buf = io.BytesIO()
+        if (array[-1] < 255).any():
             image = Image.fromarray(array.transpose(1, 2, 0))
-            return image.save(self.path, format='PNG')
+            image.save(buf, format='PNG')
+        else:
+            image = Image.fromarray(array[:3].transpose(1, 2, 0))
+            image.save(buf, format='JPEG', quality=self.quality)
+        self.data = buf.getvalue()
 
-        # jpeg
-        image = Image.fromarray(array[:3].transpose(1, 2, 0))
-        return image.save(self.path, format='JPEG', quality=self.quality)
+    def save(self):
+        """ Write data to storage. """
+        if self:
+            self.storage[self.x, self.y, self.z] = self.data
+
+
+class BaseTile(TargetTile):
+    """
+    A tile that has itself and a master as sources.
+    """
+    def __init__(self, **kwargs):
+        """ Same as target tile, but preload. """
+        super(BaseTile, self).__init__(**kwargs)
+
+    def get_sources(self):
+        yield master
+        if self:
+            yield self.as_dataset()
+
+
+class OverviewTile(TargetTile):
+    """
+    A tile that has its subtiles as sources.
+    """
+    def __init__(self, **kwargs):
+        """ Same as target tile, but store preloaded subtiles. """
+        super(OverviewTile, self).__init__(**kwargs)
+
+    def load(self):
+        self.subtiles = [s.load() for s in self.get_subtiles()]
+        return self
+
+    def get_subtiles(self):
+        z = 1 + self.z
+        for dy, dx in itertools.product([0, 1], [0, 1]):
+            x = dx + 2 * self.x
+            y = dy + 2 * self.y
+            yield Tile(x=x, y=y, z=z, storage=self.storage)
+
+    def get_sources(self):
+        for subtile in self.subtiles:
+            if subtile:
+                yield subtile.as_dataset()
 
 
 class Level(object):
@@ -177,8 +217,9 @@ class Level(object):
         kwargs.pop('bbox')
 
         z = kwargs.pop('zoom')
+        t = kwargs.pop('tile')
         for y, x in itertools.product(*self.get_xranges()):
-            yield Tile(x=x, y=y, z=z, **kwargs)
+            yield t(x=x, y=y, z=z, **kwargs).load()
 
     def get_xranges(self):
         s = LIM / 2 ** self.kwargs['zoom']  # edge length
@@ -204,38 +245,48 @@ class Pyramid(object):
     def __iter__(self):
         """ Return level generator. """
         kwargs = self.kwargs.copy()
-        method1 = kwargs.pop('method1')
-        method2 = kwargs.pop('method2')
+        gra1 = kwargs.pop('gra1')
+        gra2 = kwargs.pop('gra2')
+
         # yield baselevel
         zoom = kwargs.pop('zoom')
-        yield Level(base=True, zoom=zoom, method=method1, **kwargs)
+        yield Level(tile=BaseTile, zoom=zoom, method=gra1, **kwargs)
 
         # yield other levels
         for zoom in reversed(range(zoom)):
-            yield Level(base=False, zoom=zoom, method=method2, **kwargs)
+            yield Level(tile=OverviewTile, zoom=zoom, method=gra2, **kwargs)
 
 
 def tiles(source_path, target_path, single, **kwargs):
     """ Create tiles. """
+    storage = storages.ZipFileStorage(path=target_path)
+    # storage = storages.FileStorage(path=target_path)
     dataset = gdal.Open(source_path)
     bbox = BBox(dataset)
-    pyramid = Pyramid(target_path=target_path, bbox=bbox, **kwargs)
+    pyramid = Pyramid(storage=storage, bbox=bbox, **kwargs)
 
     # separate counts for baselevel and the remaining levels
+    count = 0
     total1 = len(iter(pyramid).next())
     total2 = len(pyramid)
-    counter = itertools.count(1)
 
     # create worker pool
     Pool = DummyPool if single else multiprocessing.Pool
     pool = Pool(initializer=initializer, initargs=[source_path])
 
+    count = 0
     for level_count, level in enumerate(pyramid):
+
+        # progress information
         if level_count == 0:
             logger.info('Generating Base Tiles:')
         elif level_count == 1:
             logger.info('Generating Overview Tiles:')
-        for count in pool.imap(func, itertools.izip(level, counter)):
+
+        for count, tile in enumerate(pool.imap(func, level), count + 1):
+            tile.save()
+
+            # progress bar
             if count > total1:
                 progress = (count - total1) / (total2 - total1)
             else:
@@ -260,9 +311,9 @@ def get_parser():
                         help='disable multiprocessing')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='print debug-level log messages')
-    parser.add_argument('-m1', '--method1', default='cubic',
+    parser.add_argument('-b', '--base', dest='gra1', default='cubic',
                         help='resampling for base tiles.')
-    parser.add_argument('-m2', '--method2', default='cubic',
+    parser.add_argument('-o', '--overview', dest='gra2', default='cubic',
                         help='resampling for overview tiles.')
     parser.add_argument('-q', '--quality', default=95,
                         type=int, help='JPEG quality for non-edge tiles')

@@ -13,22 +13,21 @@ import sys
 
 import flask
 
+from raster_tools.tile import storages
+
 logger = logging.getLogger(__name__)
 app = flask.Flask(__name__)
 
 
-@app.route('/<path:path>')
-def tile(path):
+@app.route('/<path:path>/<int:z>/<int:x>/<int:y>')
+def tile(path, x, y, z):
     """ Return image. """
-    # restrict
-    if not path.endswith('png'):
-        flask.abort(403)
-
     # read
+    storage = storages.ZipFileStorage(path=path)
     try:
-        content = open(path).read()
-    except IOError:
-        flask.abort(403)
+        content = storage[x, y, z]
+    except KeyError:
+        flask.abort(404)
 
     # mime
     if content[1:4] == str('PNG'):
