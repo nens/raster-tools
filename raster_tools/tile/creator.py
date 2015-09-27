@@ -259,8 +259,7 @@ class Pyramid(object):
 
 def tiles(source_path, target_path, single, **kwargs):
     """ Create tiles. """
-    storage = storages.ZipFileStorage(path=target_path)
-    # storage = storages.FileStorage(path=target_path)
+    storage = storages.ZipFileStorage(path=target_path, mode='a')
     dataset = gdal.Open(source_path)
     bbox = BBox(dataset)
     pyramid = Pyramid(storage=storage, bbox=bbox, **kwargs)
