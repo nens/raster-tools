@@ -2,7 +2,8 @@
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 """
 Rasterize zonal statstics (currently percentile or median) into a set
-of rasters.
+of rasters. The input raster is usually the interpolated dem, to prevent
+enclosed geometries having no value.
 """
 from __future__ import print_function
 from __future__ import unicode_literals
