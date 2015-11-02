@@ -49,11 +49,12 @@ setup(name='raster-tools',
               # modification
               'aggregate          = raster_tools.aggregate:main',
               'fillnodata         = raster_tools.fillnodata:main',
+              'interpolate        = raster_tools.interpolate:main',
               'rebase             = raster_tools.rebase:main',
+              'shadow             = raster_tools.shadow:main',
               'smooth             = raster_tools.smooth:main',
               # rasterization
               'bag2tif            = raster_tools.bag2tif:main',
-              'interpolate        = raster_tools.interpolate:main',
               'rasterize-landuse  = raster_tools.rasterize_landuse:main',
               'rasterize          = raster_tools.rasterize:main',
               # model generation
