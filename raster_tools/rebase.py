@@ -71,9 +71,9 @@ def rebase(base_path, source_path, target_path, tolerance=None):
     # calculation
     logger.debug('Determine difference.')
     try:
-        no_data_value = np.finfo(source_data.dtype).max
+        no_data_value = np.finfo(source_data.dtype).min
     except ValueError:
-        no_data_value = np.iinfo(source_data.dtype).max
+        no_data_value = np.iinfo(source_data.dtype).min
 
     # give all data the same no_data_value
     base_data[base_mask] = no_data_value
