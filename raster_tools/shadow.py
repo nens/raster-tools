@@ -22,6 +22,7 @@ from scipy import ndimage
 from raster_tools import gdal
 from raster_tools import datasets
 from raster_tools import utils
+from raster_tools import groups
 
 logger = logging.getLogger(__name__)
 driver = gdal.GetDriverByName(str('gtiff'))
@@ -33,21 +34,21 @@ class Shadower(object):
        shifted > original. And take out of index.
     3. Stop when nothing changes anymore.
     """
-    def __init__(self, raster_dataset, output_path):
-        self.output_path = output_path
+    def __init__(self, raster_path, output_path):
 
-        self.raster_dataset = raster_dataset
-        self.width = raster_dataset.RasterXSize
-        self.height = raster_dataset.RasterYSize
-        geo_transform = raster_dataset.GetGeoTransform()
-        self.projection = raster_dataset.GetProjection()
-        self.geo_transform = utils.GeoTransform(geo_transform)
+        # put the input raster(s) in a group
+        if os.path.isdir(raster_path):
+            datasets = [gdal.Open(os.path.join(raster_path, path))
+                        for path in sorted(os.listdir(raster_path))]
+        else:
+            datasets = [gdal.Open(raster_path)]
+        self.group = groups.Group(*datasets)
 
         # TODO Check this is june 12, 15:00
         azimuth = 236
         elevation = 50
         slope = math.tan(math.radians(elevation))
-        pixel = geo_transform[1]
+        pixel = self.group.geo_transform[1]
 
         dx = -math.sin(math.radians(azimuth))
         dy = math.cos(math.radians(azimuth))
@@ -64,34 +65,35 @@ class Shadower(object):
         self.mx = int(math.copysign(math.ceil(abs(dx * ms)), -dx))  # pixels
         self.my = int(math.copysign(math.ceil(abs(dy * ms)), -dy))  # pixels
 
-    def get_window_and_slices(self, geometry):
+        self.output_path = output_path
+
+    def get_bounds_and_slices(self, geometry):
         """
         Return the window into the source raster that includes the
         required margin, and the slices that return from that window
         the part corresponding to geometry.
         """
-        # slices
-        x1, y1, x2, y2 = self.geo_transform.get_indices(geometry)
-        width, height = x2 - x1, y2 - y1
-        slices = (
-            slice(None, height) if self.my > 0 else slice(-height, None),
-            slice(None, width) if self.mx > 0 else slice(-width, None),
-        )
+        x1, y1, x2, y2 = self.group.geo_transform.get_indices(geometry)
 
-        # window
-        x1 = max(min(x1, x1 + self.mx), 0)
-        x2 = min(max(x2, x2 + self.mx), self.width)
-        y1 = max(min(y1, y1 + self.my), 0)
-        y2 = min(max(y2, y2 + self.my), self.height)
-        window = {'xoff': x1, 'yoff': y1, 'xsize': x2 - x1, 'ysize': y2 - y1}
-        return window, slices
+        # bounds
+        bounds = (min(x1, x1 + self.mx),
+                  min(y1, y1 + self.my),
+                  max(x2, x2 + self.mx),
+                  max(y2, y2 + self.my))
+
+        # slices
+        w, h = x2 - x1, y2 - y1
+        slices = (slice(None, h) if self.my > 0 else slice(-h, None),
+                  slice(None, w) if self.mx > 0 else slice(-w, None))
+
+        return bounds, slices
 
     def shadow(self, feature):
         geometry = feature.geometry()
-        window, slices = self.get_window_and_slices(geometry)
+        bounds, slices = self.get_bounds_and_slices(geometry)
 
         # prepare
-        array1 = self.raster_dataset.ReadAsArray(**window)
+        array1 = self.group.read(bounds)
         array2 = np.empty_like(array1)
         view1 = array1[slices]
         view2 = array2[slices]
@@ -102,7 +104,8 @@ class Shadower(object):
             shift = iteration * self.dy, iteration * self.dx
             ndimage.shift(array1, shift, array2, order=0)
             view2 -= iteration * self.dz
-            index = np.logical_and(view2 > view1, ~target)
+            index = np.logical_and(~target, view2 > view1)
+            print(index.sum())
             if not index.any():
                 break
             target[index] = True
@@ -124,9 +127,9 @@ class Shadower(object):
             pass  # no problem
 
         kwargs = {
-            'no_data_value': 255,
-            'projection': self.projection,
-            'geo_transform': self.geo_transform.shifted(geometry),
+            'no_data_value': 0,
+            'projection': self.group.projection,
+            'geo_transform': self.group.geo_transform.shifted(geometry),
         }
         options = [
             'tiled=yes',
@@ -143,10 +146,8 @@ def shadow(index_path, raster_path, output_path, part):
     if part is not None:
         index = index.select(part)
 
-    raster_dataset = gdal.Open(raster_path)
-
     shadower = Shadower(output_path=output_path,
-                        raster_dataset=raster_dataset)
+                        raster_path=raster_path)
 
     for feature in index:
         shadower.shadow(feature)
