@@ -1,3 +1,4 @@
+# (c) Nelen & Schuurmans, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
