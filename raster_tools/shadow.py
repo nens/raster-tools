@@ -17,7 +17,6 @@ import os
 import sys
 
 import numpy as np
-from scipy import ndimage
 
 from raster_tools import gdal
 from raster_tools import datasets
@@ -50,8 +49,8 @@ class Shadower(object):
         slope = math.tan(math.radians(elevation))
         pixel = self.group.geo_transform[1]
 
-        dx = -math.sin(math.radians(azimuth))
-        dy = math.cos(math.radians(azimuth))
+        dx = math.sin(math.radians(azimuth))
+        dy = -math.cos(math.radians(azimuth))
 
         # calculate shift and corresponding elevation change
         self.ds = 1 / max(dx, dy)          # pixels
@@ -60,53 +59,70 @@ class Shadower(object):
         self.dy = dy * self.ds             # pixels
 
         # calculate margin for input data
-        mz = 367  # gerbrandy tower, in meters
-        ms = mz / slope / pixel                                     # pixels
-        self.mx = int(math.copysign(math.ceil(abs(dx * ms)), -dx))  # pixels
-        self.my = int(math.copysign(math.ceil(abs(dy * ms)), -dy))  # pixels
+        self.mz = 367  # gerbrandy tower, in meters
+        ms = self.mz / slope / pixel                               # pixels
+        self.mx = int(math.copysign(math.ceil(abs(dx * ms)), dx))  # pixels
+        self.my = int(math.copysign(math.ceil(abs(dy * ms)), dy))  # pixels
 
         self.output_path = output_path
 
-    def get_bounds_and_slices(self, geometry):
+    def get_size_and_bounds(self, geometry):
         """
         Return the window into the source raster that includes the
         required margin, and the slices that return from that window
         the part corresponding to geometry.
         """
         x1, y1, x2, y2 = self.group.geo_transform.get_indices(geometry)
+        size = x2 - x1, y2 - y1
+        bounds = (
+            min(x1, x1 + self.mx),
+            min(y1, y1 + self.my),
+            max(x2, x2 + self.mx),
+            max(y2, y2 + self.my),
+        )
+        return size, bounds
 
-        # bounds
-        bounds = (min(x1, x1 + self.mx),
-                  min(y1, y1 + self.my),
-                  max(x2, x2 + self.mx),
-                  max(y2, y2 + self.my))
+    def get_view(self, array, size, iteration=0):
+        """ Return shifted view on array """
+        w1, h1 = size
+        h2, w2 = array.shape
 
-        # slices
-        w, h = x2 - x1, y2 - y1
-        slices = (slice(None, h) if self.my > 0 else slice(-h, None),
-                  slice(None, w) if self.mx > 0 else slice(-w, None))
+        dx = int(round(iteration * self.dx))
+        dy = int(round(iteration * self.dy))
 
-        return bounds, slices
+        if self.mx > 0:
+            slice_x = slice(dx, w1 + dx)
+        else:
+            slice_x = slice(w2 - w1 + dx, w2 + dx)
+
+        if self.my > 0:
+            slice_y = slice(dy, h1 + dy)
+        else:
+            slice_y = slice(h2 - h1 + dy, h2 + dy)
+
+        slices = slice_y, slice_x
+
+        if iteration:
+            return array[slices] - iteration * self.dz
+        return array[slices]
 
     def shadow(self, feature):
+
         geometry = feature.geometry()
-        bounds, slices = self.get_bounds_and_slices(geometry)
+        size, bounds = self.get_size_and_bounds(geometry)
 
         # prepare
-        array1 = self.group.read(bounds)
-        array2 = np.empty_like(array1)
-        view1 = array1[slices]
-        view2 = array2[slices]
+        array = self.group.read(bounds)
+        view1 = self.get_view(array=array, size=size)
         target = np.zeros_like(view1, dtype='b1')
 
         # calculate shadow
         for iteration in itertools.count(1):
-            shift = iteration * self.dy, iteration * self.dx
-            ndimage.shift(array1, shift, array2, order=0)
-            view2 -= iteration * self.dz
+            view2 = self.get_view(array=array, size=size, iteration=iteration)
             index = np.logical_and(~target, view2 > view1)
-            print(index.sum())
             if not index.any():
+                break
+            if iteration * self.dz > self.mz:
                 break
             target[index] = True
         target = target.astype('u1')
