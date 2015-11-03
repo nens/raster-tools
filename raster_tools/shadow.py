@@ -107,11 +107,18 @@ class Shadower(object):
         return array[slices]
 
     def shadow(self, feature):
-
-        geometry = feature.geometry()
-        size, bounds = self.get_size_and_bounds(geometry)
+        # target path
+        leaf_number = feature[b'BLADNR']
+        path = os.path.join(self.output_path,
+                            leaf_number[:3],
+                            '{}.tif'.format(leaf_number))
+        if os.path.exists(path):
+            logger.debug('Target already exists.')
+            return
 
         # prepare
+        geometry = feature.geometry()
+        size, bounds = self.get_size_and_bounds(geometry)
         array = self.group.read(bounds)
         view1 = self.get_view(array=array, size=size)
         target = np.zeros_like(view1, dtype='b1')
@@ -126,15 +133,6 @@ class Shadower(object):
                 break
             target[index] = True
         target = target.astype('u1')
-
-        # target path
-        leaf_number = feature[b'BLADNR']
-        path = os.path.join(self.output_path,
-                            leaf_number[:3],
-                            '{}.tif'.format(leaf_number))
-        if os.path.exists(path):
-            logger.debug('Target already exists.')
-            return
 
         # create directory
         try:
