@@ -17,11 +17,11 @@ import logging
 import os
 import sys
 
-from osgeo import gdal
-from osgeo import ogr
-from osgeo import osr
-
 import psycopg2
+
+from raster_tools import gdal
+from raster_tools import ogr
+from raster_tools import osr
 
 from raster_tools import datasets
 
@@ -42,10 +42,8 @@ DATA_TYPE = {
 POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 
 logger = logging.getLogger(__name__)
-gdal.UseExceptions()
+
 gdal.PushErrorHandler(b'CPLQuietErrorHandler')
-ogr.UseExceptions()
-osr.UseExceptions()
 
 
 def get_geotransform(geometry, cellsize=(0.5, -0.5)):
