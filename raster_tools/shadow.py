@@ -132,7 +132,7 @@ class Shadower(object):
             if iteration * self.dz > self.mz:
                 break
             target[index] = True
-        target = target.astype('u1')
+        target = target.astype('u1') + 255  # True: 0, False: 255
 
         # create directory
         try:
@@ -141,7 +141,7 @@ class Shadower(object):
             pass  # no problem
 
         kwargs = {
-            'no_data_value': 0,
+            'no_data_value': 255,
             'projection': self.group.projection,
             'geo_transform': self.group.geo_transform.shifted(geometry),
         }
