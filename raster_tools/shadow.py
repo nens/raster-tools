@@ -29,11 +29,18 @@ driver = gdal.GetDriverByName(str('gtiff'))
 
 class Shadower(object):
     """
-    2. Do shifts and subtractions, compare to original and mark where
-       shifted > original. And take out of index.
-    3. Stop when nothing changes anymore.
+    Azimuth and elevation currently taken from
+    http://www.nrel.gov/midc/solpos/spa.html:
+        http://www.nrel.gov/midc/apps/spa.pl?
+        syear=2015&smonth=6&sday=21&eyear=2015&emonth=6&eday=21&step=60
+        &stepunit=1&latitude=52.155201&longitude=5.3850453&timezone=2&elev=0
+        &press=1000&temp=10&dut1=0.0&deltat=64.797&azmrot=180&slope=0
+        &refract=0.5667&field=0&field=1&zip=0
     """
     def __init__(self, raster_path, output_path):
+        # see class.__doc__
+        azimuth = 216
+        elevation = 57
 
         # put the input raster(s) in a group
         if os.path.isdir(raster_path):
@@ -43,9 +50,6 @@ class Shadower(object):
             datasets = [gdal.Open(raster_path)]
         self.group = groups.Group(*datasets)
 
-        # TODO Check this is june 12, 15:00
-        azimuth = 236
-        elevation = 50
         slope = math.tan(math.radians(elevation))
         m_per_px = self.group.geo_transform[1]
 
