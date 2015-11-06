@@ -47,20 +47,20 @@ class Shadower(object):
         azimuth = 236
         elevation = 50
         slope = math.tan(math.radians(elevation))
-        pixel = self.group.geo_transform[1]
+        m_per_px = self.group.geo_transform[1]
 
         dx = math.sin(math.radians(azimuth))
         dy = -math.cos(math.radians(azimuth))
 
         # calculate shift and corresponding elevation change
-        self.ds = 1 / max(dx, dy)          # pixels
-        self.dz = self.ds * slope * pixel  # meters
-        self.dx = dx * self.ds             # pixels
-        self.dy = dy * self.ds             # pixels
+        self.ds = 1 / max(abs(dx), abs(dy))                 # pixels
+        self.dz = self.ds * slope * m_per_px      # meters
+        self.dx = dx * self.ds                    # pixels
+        self.dy = dy * self.ds                    # pixels
 
         # calculate margin for input data
         self.mz = 367  # gerbrandy tower, in meters
-        ms = self.mz / slope / pixel                               # pixels
+        ms = self.mz / slope / m_per_px                            # pixels
         self.mx = int(math.copysign(math.ceil(abs(dx * ms)), dx))  # pixels
         self.my = int(math.copysign(math.ceil(abs(dy * ms)), dy))  # pixels
 
