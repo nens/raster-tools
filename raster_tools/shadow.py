@@ -16,6 +16,7 @@ import math
 import os
 import sys
 
+from scipy import ndimage
 import numpy as np
 
 from raster_tools import gdal
@@ -124,6 +125,11 @@ class Shadower(object):
         geometry = feature.geometry()
         size, bounds = self.get_size_and_bounds(geometry)
         array = self.group.read(bounds)
+
+        # maximum filter makes shadows a little wider
+        footprint = ndimage.generate_binary_structure(2, 1)
+        array = ndimage.maximum_filter(array, footprint=footprint)
+
         view1 = self.get_view(array=array, size=size)
         target = np.zeros_like(view1, dtype='b1')
 
