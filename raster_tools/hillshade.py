@@ -25,55 +25,74 @@ logger = logging.getLogger(__name__)
 driver = gdal.GetDriverByName(str('gtiff'))
 
 
-def process(array, values=16):
-    zz = 2 * 2
-    alt = math.radians(45)
-    az = math.radians(315)
+def zevenbergen_thorne(array, resolution, altitude=45, azimuth=315):
+    xres, yres = resolution
+    alt = math.radians(altitude)
+    az = math.radians(azimuth)
+    zsf = 1 / 2
+    square_zsf = zsf * zsf
 
+    # gradient
     y = np.empty_like(array)
-    y[0] = (y[1] - y[0]) * 2
-    y[-1] = (y[-1] - y[-2]) * 2
-    y[1: -1] = y[2:] - y[:-2]
+    y[1: -1] = (array[:-2] - array[2:]) / -yres
+    y[-1] = (array[-2] - array[-1]) * 2 / -yres
+    y[0] = (array[0] - array[1]) * 2 / -yres
 
     x = np.empty_like(array)
-    x[:, 0] = (x[:, 1] - x[:, 0]) * 2
-    x[:, -1] = (x[:, -1] - x[:, -2]) * 2
-    x[:, 1: -1] = x[:, 2:] - x[:, :-2]
+    x[:, 1: -1] = (array[:, :-2] - array[:, 2:]) / xres
+    x[:, -1] = (array[:, -2] - array[:, -1]) * 2 / xres
+    x[:, 0] = (array[:, 0] - array[:, 1]) * 2 / xres
 
     xx_plus_yy = x * x + y * y
-
     aspect = np.arctan2(y, x)
+
     cang = (math.sin(alt) -
-            math.cos(alt * zz) * np.sqrt(xx_plus_yy) *
-            np.sin(aspect - az)) / np.sqrt(1 + zz * xx_plus_yy)
-    result = np.where(cang < 0, 1, 1 + 254 * cang).astype('u1')
-    return result
+            math.cos(alt) * zsf * np.sqrt(xx_plus_yy) *
+            np.sin(aspect - az)) / np.sqrt(1 + square_zsf * xx_plus_yy)
 
-    # analyze data
-    lo, hi = array.min(), array.max()
-    bins = np.mgrid[lo:hi:257j]  # if applied to dem data, probably need more
-    histogram = np.hstack([[0], np.histogram(array, bins)[0]])
+    return np.where(cang <= 0, 1, 1 + 254 * cang).astype('u1')
 
-    # make interpolation to determine levels
-    stat_x = histogram.cumsum() / histogram.sum() * (hi - lo) + lo
-    stat_y = bins
-    edges = np.mgrid[lo:hi:(1 + values) * 1j]
-    centers = (edges[1:] + edges[:-1]) / 2
-    levels = np.interp(centers, stat_x, stat_y)
 
-    # make interpolation to apply to data
-    thin_y = np.sort(np.hstack(2 * [levels]))
-    thin_x = np.sort(np.hstack([edges[1:], edges[:-1]]))
-    result = np.interp(array, thin_x, thin_y).astype(array.dtype)
-    # from pylab import plot, savefig, show
-    # plot(stat_x, stat_y)
-    # plot(array.flatten(), result.flatten(), '.')
-    # plot(centers, levels, 'o')
-    # plot(thin_x, thin_y, 'o')
-    # show()
-    # savefig('hillshade.png')
-    # print(np.unique(result))
-    return result
+def other(array, resolution, altitude=45, azimuth=315):
+    xres, yres = resolution
+    alt = math.radians(altitude)
+    az = math.radians(azimuth)
+    zsf = 1 / 8
+    square_zsf = zsf * zsf
+
+    # gradient
+    s0 = slice(None, -2), slice(None, -2)
+    s1 = slice(None, -2), slice(1, -1)
+    s2 = slice(None, -2), slice(2, None)
+    s3 = slice(1, -1), slice(None, -2)
+    s4 = slice(1, -1), slice(1, -1)
+    s5 = slice(1, -1), slice(2, None)
+    s6 = slice(2, None), slice(None, -2)
+    s7 = slice(2, None), slice(1, -1)
+    s8 = slice(2, None), slice(2, None)
+
+    y = np.empty_like(array)
+    y[s4] = (array[s0] + 2 * array[s1] + array[s2]
+             - array[s6] - 2 * array[s7] - array[s8]) / -yres
+
+    x = np.empty_like(array)
+    x[s4] = (array[s0] + 2 * array[s3] + array[s6]
+             - array[s2] - 2 * array[s5] - array[s8]) / xres
+
+    # TODO Edges
+    x[0] = x[-1] = y[0] = y[-1] = 0
+    x[:, 0] = x[:, -1] = y[:, 0] = y[:, -1] = 0
+    x[0, 0] = x[-1, 0] = x[0, -1] = x[-1, -1] = 0
+    y[0, 0] = y[-1, 0] = y[0, -1] = y[-1, -1] = 0
+
+    xx_plus_yy = x * x + y * y
+    aspect = np.arctan2(y, x)
+
+    cang = (math.sin(alt) -
+            math.cos(alt) * zsf * np.sqrt(xx_plus_yy) *
+            np.sin(aspect - az)) / np.sqrt(1 + square_zsf * xx_plus_yy)
+
+    return np.where(cang <= 0, 1, 1 + 254 * cang).astype('u1')
 
 
 class Calculator(object):
@@ -94,7 +113,10 @@ class Calculator(object):
         # calculate
         geometry = feature.geometry()
         indices = self.group.geo_transform.get_indices(geometry)
-        array = process(self.group.read(indices))
+        array = self.group.read(indices)
+        resolution = self.group.geo_transform[1], self.group.geo_transform[5]
+        # hillshade = zevenbergen_thorne(array=array, resolution=resolution)
+        hillshade = other(array=array, resolution=resolution)
 
         # create directory
         try:
@@ -111,7 +133,7 @@ class Calculator(object):
             'tiled=yes',
             'compress=deflate',
         ]
-        with datasets.Dataset(array[np.newaxis, ...], **kwargs) as dataset:
+        with datasets.Dataset(hillshade[np.newaxis, ...], **kwargs) as dataset:
             driver.CreateCopy(path, dataset, options=options)
 
 
