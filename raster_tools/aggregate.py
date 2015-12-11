@@ -92,8 +92,12 @@ class Aggregator(object):
         view = array.reshape(h, f, w, f).transpose(1, 3, 0, 2)
         copy = view.reshape(f * f, h, w)
 
+        d = array.dtype
         n = self.no_data_value
-        return np.median(np.ma.masked_values(copy, n), 0).filled()
+        result = np.median(np.ma.masked_values(copy, n), 0)
+
+        # for some reason, the median operation changes dtype and fillvalue
+        return result.astype(d).filled(n)
 
     def aggregate(self, index_feature):
         # target path
@@ -118,6 +122,8 @@ class Aggregator(object):
 
         # aggregate
         source = self.get_source(geometry)
+        if source is None:
+            return
         target = self.execute(source)
 
         # save
