@@ -30,7 +30,7 @@ osr.UseExceptions()
 operations = {}
 
 # Version management for outdated warning
-VERSION = 19
+VERSION = 20
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -49,6 +49,7 @@ DTYPE = 'f4'
 FLOOR = 0.15
 OPERATION = '3di'
 PROJECTION = 'EPSG:28992'
+TIMESTAMP = '1970-01-01T00:00:00Z'
 SERVER = 'https://raster.lizard.net'
 
 Tile = collections.namedtuple('Tile', ['width',
@@ -72,12 +73,11 @@ class Layers(Operation):
     """ Extract rasters according to a layer parameter. """
     name = 'layers'
 
-    def __init__(self, layers, dtype, fillvalue, **kwargs):
+    def __init__(self, layers, dtype, fillvalue, time, **kwargs):
         """ Initialize the operation. """
         # self.layers = layers
         self.outputs = [self.name]
-        self.inputs = {self.name: {'layers': layers,
-                                   'time': '1970-01-01T00:00:00Z'}}
+        self.inputs = {self.name: {'layers': layers, 'time': time}}
 
         self.data_type = {
             self.name: dict(f4=gdal.GDT_Float32)[dtype],
@@ -161,7 +161,7 @@ class ThreeDi(Operation):
 
     required = set([y for x in outputs.values() for y in x])
 
-    def __init__(self, floor, landuse, soil, **kwargs):
+    def __init__(self, floor, landuse, soil, time, **kwargs):
         """ Initialize the operation. """
         self.layers = {
             self.I_BATHYMETRY: dict(layers=','.join([
@@ -177,7 +177,7 @@ class ThreeDi(Operation):
         self.inputs = {}
         for k in self.layers:
             if k in self.required:
-                self.inputs[k] = {'time': '1970-01-01T00:00:00Z'}
+                self.inputs[k] = {'time': time}
                 self.inputs[k].update(self.layers[k])
 
         self.calculators = {
@@ -973,6 +973,9 @@ def get_parser():
     parser.add_argument('-p', '--projection',
                         default=PROJECTION,
                         help='Projection. Default: "{}"'.format(PROJECTION))
+    parser.add_argument('-t', '--timestamp',
+                        default=TIMESTAMP, dest='time',
+                        help='Timestamp. Default: "{}"'.format(TIMESTAMP))
     parser.add_argument('-tl', '--landuse',
                         help='Path to landuse csv.')
     parser.add_argument('-ts', '--soil',
