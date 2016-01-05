@@ -40,12 +40,15 @@ setup(name='raster-tools',
       extras_require={'test': tests_require},
       entry_points={
           'console_scripts': [
-              # organization
-              'ahn2aig2tif        = raster_tools.ahn2aig2tif:main',
-              'ahn2zip2tif        = raster_tools.ahn2zip2tif:main',
-              'srtm-make-index    = raster_tools.srtm_make_index:main',
-              'srtm-fix-nodata    = raster_tools.srtm_fix_nodata:main',
-              'srtm-organize      = raster_tools.srtm_organize:main',
+              # ahn2
+              'ahn2-aig2tif       = raster_tools.ahn2.aig2tif:main',
+              'ahn2-zip2tif       = raster_tools.ahn2.zip2tif:main',
+              # # ahn3
+              'ahn3-download      = raster_tools.ahn3.download:main',
+              # # srtm
+              'srtm-make-index    = raster_tools.srtm.make_index:main',
+              'srtm-fix-nodata    = raster_tools.srtm.fix_nodata:main',
+              'srtm-organize      = raster_tools.srtm.organize:main',
               # modification
               'aggregate          = raster_tools.aggregate:main',
               'fillnodata         = raster_tools.fillnodata:main',
