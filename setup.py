@@ -62,8 +62,9 @@ setup(name='raster-tools',
               'bag2tif            = raster_tools.bag2tif:main',
               'rasterize-landuse  = raster_tools.rasterize_landuse:main',
               'rasterize          = raster_tools.rasterize:main',
-              # model generation
+              # modeling
               'extract            = raster_tools.extract:main',
+              'raster2line        = raster_tools.raster2line:main',
               # pointclouds
               'txt2tif            = raster_tools.txt2tif:main',
           ]},
