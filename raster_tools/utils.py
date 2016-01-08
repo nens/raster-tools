@@ -14,7 +14,7 @@ from raster_tools import ogr
 logger = logging.getLogger(__name__)
 
 
-def inverse(a, b, c, d):
+def get_inverse(a, b, c, d):
     """ Return inverse for a 2 x 2 matrix with elements (a, b), (c, d). """
     D = 1 / (a * d - b * c)
     return d * D, -b * D,  -c * D,  a * D
@@ -74,7 +74,7 @@ class GeoTransform(tuple):
 
         # inverse transformation
         p, a, b, q, c, d = self
-        e, f, g, h = inverse(a, b, c, d)
+        e, f, g, h = get_inverse(a, b, c, d)
 
         # apply to envelope corners
         X1 = int(round(e * (x1 - p) + f * (y2 - q)))

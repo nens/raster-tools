@@ -64,7 +64,7 @@ setup(name='raster-tools',
               'rasterize          = raster_tools.rasterize:main',
               # modeling
               'extract            = raster_tools.extract:main',
-              'raster2line        = raster_tools.raster2line:main',
+              'line-up            = raster_tools.line_up:main',
               # pointclouds
               'txt2tif            = raster_tools.txt2tif:main',
           ]},

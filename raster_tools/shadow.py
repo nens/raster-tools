@@ -25,6 +25,7 @@ from raster_tools import utils
 from raster_tools import groups
 
 logger = logging.getLogger(__name__)
+
 driver = gdal.GetDriverByName(str('gtiff'))
 
 

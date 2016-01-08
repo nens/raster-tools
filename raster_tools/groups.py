@@ -65,6 +65,11 @@ class Group(object):
     def read(self, bounds):
         """
         Return numpy array.
+
+        bounds: x1, y1, x2, y2 pixel window specifcation.
+
+        If the bounds fall outside the dataset, the result is padded
+        with no data values.
         """
         # overlapping bounds
         x1, y1, x2, y2 = bounds

@@ -21,26 +21,27 @@ For the script to work, a configuration variable AHN_PATH must be set in
 threedilib/localconfig.py pointing to the location of the elevation map,
 and a variable INDEX_PATH pointing to the .shp file that contains the
 index to the elevation map.
-
-TODO - no more index needed, instead, single raster - support for nodata,
-optional fillvalue """
-
+"""
 import argparse
+import logging
 import os
+import sys
 
-from raster_tools import gdal
-from raster_tools import ogr
 from scipy import ndimage
 import numpy as np
 
+from raster_tools import gdal
+from raster_tools import groups
+from raster_tools import ogr
+from raster_tools import utils
 from raster_tools import vectors
+
+logger = logging.getLogger(__name__)
 
 LAYOUT_POINT = 'point'
 LAYOUT_LINE = 'line'
 
-PIXELSIZE = 0.5  # AHN2
-STEPSIZE = 0.5  # for looking perpendicular to line.
-
+DRIVER = ogr.GetDriverByName(str('ESRI Shapefile'))
 LINESTRINGS = ogr.wkbLineString, ogr.wkbLineString25D
 MULTILINESTRINGS = ogr.wkbMultiLineString, ogr.wkbMultiLineString25D
 
@@ -62,6 +63,7 @@ def get_carpet(mline, distance, step=None):
         # take a look at np.around() (round to even values)!
         length = 2 * np.round(0.5 + distance / step) + 1
     offsets_1d = np.mgrid[-distance:distance:length * 1j]
+
     # normalize and rotate the vectors of the linesegments
     nvectors = vectors.normalize(vectors.rotate(mline.vectors, 270))
 
@@ -77,28 +79,6 @@ def get_carpet(mline, distance, step=None):
     return points
 
 
-def paste_values(points, values, leafno):
-    """ Paste values of evelation pixels at points. """
-    dataset = get_dataset(leafno)
-    xmin, ymin, xmax, ymax = dataset.get_extent()
-    cellsize = dataset.get_cellsize()
-    origin = dataset.get_origin()
-
-    # determine which points are outside leaf's extent
-    # '=' added for the corner where the index origin is
-    index = np.logical_and(np.logical_and(points[..., 0] >= xmin,
-                                          points[..., 0] < xmax),
-                           np.logical_and(points[..., 1] > ymin,
-                                          points[..., 1] <= ymax))
-    # determine indices for these points
-    indices = tuple(np.uint64(
-        (points[index] - origin) / cellsize,
-    ).transpose())[::-1]
-
-    # assign data for these points to corresponding values
-    values[index] = dataset.data[indices]
-
-
 def average_result(amount, lines, centers, values):
     """
     Return dictionary of numpy arrays.
@@ -110,6 +90,7 @@ def average_result(amount, lines, centers, values):
     # determine the size needed to fit an integer multiple of amount
     oldsize = values.size
     newsize = int(np.ceil(values.size / amount) * amount)
+
     # determine lines
     ma_lines = np.ma.array(np.empty((newsize, 2, 2)), mask=True)
     ma_lines[:oldsize] = lines
@@ -118,6 +99,7 @@ def average_result(amount, lines, centers, values):
         ma_lines.reshape(-1, amount, 2, 2)[:, 0, 0],
         ma_lines.reshape(-1, amount, 2, 2)[:, -1, 1],
     ]).transpose(1, 0, 2)
+
     # calculate points and values by averaging
     ma_centers = np.ma.array(np.empty((newsize, 2)), mask=True)
     ma_centers[:oldsize] = centers
@@ -149,65 +131,64 @@ class Dataset(object):
         return np.array([[self.geotransform[0], self.geotransform[3]]])
 
 
-class BaseWriter(object):
-    """ Base class for common writer methods. """
-    def __init__(self, target_path, raster_path, **kwargs):
-        self.dataset = gdal.Open(raster_path)
-        self.path = target_path
-        for key, value in kwargs.items():
-            setattr(self, key, value)
+class BaseProcessor(object):
+    """ Base class for common processor methods. """
+    def __init__(self, source, raster, target, **kwargs):
+        self.source = source
+        self.raster = raster
+        self.target = target
 
-    def __enter__(self):
-        """ Creates or replaces the target shapefile. """
-        driver = ogr.GetDriverByName(b'ESRI Shapefile')
-        if os.path.exists(self.path):
-            driver.DeleteDataSource(str(self.path))
-        self.dataset = driver.CreateDataSource(str(self.path))
-        return self
+        self.part = kwargs['part']
+        self.width = kwargs['width']
+        self.modify = kwargs['modify']
+        self.average = kwargs['average']
+        self.inverse = kwargs['inverse']
+        self.distance = kwargs['distance']
+        self.no_data_value = kwargs['no_data_value']
+        self.elevation_attribute = kwargs['elevation_attribute']
+        self.feature_id_attribute = kwargs['feature_id_attribute']
 
-    def __exit__(self, type, value, traceback):
-        """ Close dataset. """
-        self.layer = None
-        self.dataset = None
+        if kwargs['modify'] and not kwargs['distance']:
+            logger.warn('Warning: --modify used with zero distance.')
 
     def _modify(self, points, values, mline, step):
         """ Return dictionary of numpy arrays. """
-        # First a minimum or maximum filter with requested width
+        # first a minimum or maximum filter with requested width
         filtersize = np.round(self.width / step)
         if filtersize > 0:
-            # Choices based on inverse or not
+            # choices based on inverse or not
             cval = values.max() if self.inverse else values.min()
             if self.inverse:
                 extremum_filter = ndimage.maximum_filter
             else:
                 extremum_filter = ndimage.minimum_filter
-            # Filtering
+            # filtering
             fpoints = ndimage.convolve(
                 points, np.ones((1, filtersize, 1)) / filtersize,
-            )  # Moving average for the points
+            )  # moving average for the points
             fvalues = extremum_filter(
                 values, size=(1, filtersize), mode='constant', cval=cval,
-            )  # Moving extremum for the values
+            )  # moving extremum for the values
         else:
             fpoints = points
             fvalues = values
 
         if self.inverse:
-            # Find the minimum per filtered line
+            # find the minimum per filtered line
             index = (np.arange(len(fvalues)), fvalues.argmin(axis=1))
         else:
-            # Find the maximum per filtered line
+            # find the maximum per filtered line
             index = (np.arange(len(fvalues)), fvalues.argmax(axis=1))
         mpoints = fpoints[index]
         mvalues = fvalues[index]
 
-        # Sorting points and values according to projection on mline
+        # sorting points and values according to projection on mline
         parameters = mline.project(mpoints)
         ordering = parameters.argsort()
         spoints = mpoints[ordering]
         svalues = mvalues[ordering]
 
-        # Quick 'n dirty way of getting to result dict
+        # quick 'n dirty way of getting to result dict
         rlines = np.array([spoints[:-1], spoints[1:]]).transpose(1, 0, 2)
         rcenters = spoints[1:]
         rvalues = svalues[1:]
@@ -218,40 +199,45 @@ class BaseWriter(object):
 
     def _calculate(self, wkb_line_string):
         """ Return lines, points, values tuple of numpy arrays. """
-        # Determine the leafnos
-        mline = vectors.MagicLine(np.array(wkb_line_string.GetPoints())[:, :2])
-        leafnos = get_leafnos(mline=mline, distance=self.distance)
+        # determine the point and values carpets
+        p, a, b, q, c, d = self.raster.geo_transform
 
-        # Determine the point and values carpets
-        pline = mline.pixelize(size=PIXELSIZE)
-        points = get_carpet(
-            mline=pline,
-            distance=self.distance,
-            step=STEPSIZE,
-        )
-        values = np.ma.array(
-            np.empty(points.shape[:2]),
-            mask=True,
-        )
+        # determine the points
+        step = a                                       # cell width
+        nodes = np.array(wkb_line_string.GetPoints())  # original nodes
+        mline = vectors.MagicLine(nodes[:, :2])        # 2D nodes
+        pline = mline.pixelize(size=a)                 # cell edges
+        points = get_carpet(mline=pline, distance=self.distance, step=step)
 
-        # Get the values into the carpet per leafno
-        # TODO put values from raster in carpet
-        for leafno in leafnos:
-            paste_values(points, values, leafno)
+        # determine indices
+        x, y = points.transpose()
+        e, f, g, h = utils.get_inverse(a, b, c, d)
 
-        if values.mask.any():
-            raise ValueError('Masked values remaining after filling!')
+        # make indices
+        j = np.uint32(e * (x - p) + f * (y - q))
+        i = np.uint32(g * (x - p) + h * (y - q))
 
-        # Return lines, centers, values
+        bounds = (int(j.min()),
+                  int(i.min()),
+                  int(j.max()) + 1,
+                  int(i.max()) + 1)
+        array = self.raster.read(bounds)
+        values = array[i - bounds[1], j - bounds[0]].transpose()
+
+        # convert to desired nodatavalues
+        values[values == self.raster.no_data_value] = self.no_data_value
+
+        # return lines, centers, values
         if self.modify:
-            result = self._modify(points=points,
-                                  values=values,
+            result = self._modify(step=step,
                                   mline=mline,
-                                  step=STEPSIZE)
+                                  points=points,
+                                  values=values)
         else:
-            result = dict(lines=pline.lines,
-                          centers=pline.centers,
-                          values=values.data[1:-1].max(1))
+            extreme = np.min if self.inverse else np.max
+            result = {'lines': pline.lines,
+                      'centers': pline.centers,
+                      'values': extreme(values[1:-1], 1)}
 
         if self.average:
             return average_result(amount=self.average, **result)
@@ -260,30 +246,31 @@ class BaseWriter(object):
 
     def _add_layer(self, layer):
         """ Add empty copy of layer. """
-        # Create layer
-        self.layer = self.dataset.CreateLayer(layer.GetName())
-        # Copy field definitions
-        layer_definition = layer.GetLayerDefn()
-        for i in range(layer_definition.GetFieldCount()):
-            self.layer.CreateField(layer_definition.GetFieldDefn(i))
+        srs = self.source.layer.GetSpatialRef()
+        layer = self.target.CreateLayer(layer.GetName(), srs=srs)
+
+        layer_defn = self.source.layer.GetLayerDefn()
+        for i in range(layer_defn.GetFieldCount()):
+            layer.CreateField(layer_defn.GetFieldDefn(i))
+        self.layer = layer
 
 
-class CoordinateWriter(BaseWriter):
+class CoordinateProcessor(BaseProcessor):
     """ Writes a shapefile with height in z coordinate. """
     def _convert_wkb_line_string(self, source_wkb_line_string):
         """ Return a wkb line string. """
         result = self._calculate(wkb_line_string=source_wkb_line_string)
         target_wkb_line_string = ogr.Geometry(ogr.wkbLineString)
 
-        # Add the first point of the first line
+        # add the first point of the first line
         (x, y), z = result['lines'][0, 0], result['values'][0]
         target_wkb_line_string.AddPoint(float(x), float(y), float(z))
 
-        # Add the centers (x, y) and values (z)
+        # add the centers (x, y) and values (z)
         for (x, y), z in zip(result['centers'], result['values']):
             target_wkb_line_string.AddPoint(float(x), float(y), float(z))
 
-        # Add the last point of the last line
+        # add the last point of the last line
         (x, y), z = result['lines'][-1, 1], result['values'][-1]
         target_wkb_line_string.AddPoint(float(x), float(y), float(z))
 
@@ -309,36 +296,28 @@ class CoordinateWriter(BaseWriter):
 
     def _add_feature(self, feature):
         """ Add converted feature. """
-        # Create feature
+        # create feature
         layer_definition = self.layer.GetLayerDefn()
         new_feature = ogr.Feature(layer_definition)
-        # Copy attributes
+
+        # copy attributes
         for key, value in feature.items().items():
             new_feature[key] = value
-        # Set geometry and add to layer
+
+        # set geometry and add to layer
         geometry = self._convert(source_geometry=feature.geometry())
         new_feature.SetGeometry(geometry)
         self.layer.CreateFeature(new_feature)
-        self.indicator.update()
 
-    def add(self, path, **kwargs):
+    def process(self):
         """ Convert dataset at path. """
-        dataset = ogr.Open(path)
-        count = sum(layer.GetFeatureCount() for layer in dataset)
-        self.indicator = progress.Indicator(count)
-        for layer in dataset:
-            self._add_layer(layer)
-            for feature in layer:
-                try:
-                    self._add_feature(feature)
-                except Exception as e:
-                    with open('errors.txt', 'a') as errorfile:
-                        errorfile.write(unicode(e) + '\n')
-                        errorfile.write(unicode(feature.items()) + '\n')
-        dataset = None
+        source, part = self.source, self.part
+        self._add_layer(source.layer)
+        for feature in source.select(part) if part else source:
+            self._add_feature(feature)
 
 
-class AttributeWriter(BaseWriter):
+class AttributeProcessor(BaseProcessor):
     """ Writes a shapefile with height in z attribute. """
     def _convert(self, source_geometry):
         """
@@ -368,66 +347,70 @@ class AttributeWriter(BaseWriter):
     def _add_feature(self, feature_id, feature):
         """ Add converted features. """
         layer_definition = self.layer.GetLayerDefn()
-        generator = self._convert(source_geometry=feature.geometry())
-        for geometry, elevation in generator:
-            # Create feature
+        segments = self._convert(source_geometry=feature.geometry())
+        for geometry, elevation in segments:
+            # create feature
+
             new_feature = ogr.Feature(layer_definition)
-            # Copy attributes
+
+            # copy attributes
             for key, value in feature.items().items():
                 new_feature[key] = value
-            # Add special attributes
+
+            # add special attributes
             new_feature[str(self.elevation_attribute)] = elevation
             new_feature[str(self.feature_id_attribute)] = feature_id
-            # Set geometry and add to layer
+
+            # set geometry and add to layer
             new_feature.SetGeometry(geometry)
             self.layer.CreateFeature(new_feature)
-        self.indicator.update()
 
-    def add(self, path):
+    def process(self):
         """ Convert dataset at path. """
-        dataset = ogr.Open(path)
-        count = sum(layer.GetFeatureCount() for layer in dataset)
-        self.indicator = progress.Indicator(count)
-        for layer in dataset:
-            self._add_layer(layer)
-            self._add_fields()
-            for feature_id, feature in enumerate(layer):
-                try:
-                    self._add_feature(feature_id=feature_id, feature=feature)
-                except Exception as e:
-                    with open('errors.txt', 'a') as errorfile:
-                        errorfile.write(unicode(e) + '\n')
-                        errorfile.write(unicode(feature.items()) + '\n')
-        dataset = None
+        source, part = self.source, self.part
+        self._add_layer(self.source.layer)
+        self._add_fields()
+
+        selection = source.select(part) if part else source
+        for feature_id, feature in enumerate(selection):
+            self._add_feature(feature_id=feature_id, feature=feature)
 
 
-def addheight(raster_path, source_path, target_path, overwrite,
-              distance, width, modify, average, inverse,
-              layout, elevation_attribute, feature_id_attribute):
+def process(raster, source, target, **kwargs):
+    if kwargs.pop('layout') == LAYOUT_POINT:
+        Processor = CoordinateProcessor
+    else:
+        Processor = AttributeProcessor
+    Processor(raster=raster, source=source, target=target, **kwargs).process()
+
+
+def line_up(source_path, raster_path, target_path, **kwargs):
     """
     Take linestrings from source and create target with height added.
 
     Source and target are both shapefiles.
     """
-    if os.path.exists(target_path) and not overwrite:
-        print("'{}' already exists. Use --overwrite.".format(target_path))
-        return 1
+    # target
+    if os.path.exists(target_path):
+        if kwargs.pop('overwrite'):
+            DRIVER.DeleteDataSource(str(target_path))
+        else:
+            logger.info('"%s" already exists. Use --overwrite.', target_path)
+            return
+    target = DRIVER.CreateDataSource(str(target_path))
 
-    if modify and not distance:
-        print('Warning: --modify used with zero distance.')
+    # rasters
+    if os.path.isdir(raster_path):
+        datasets = [gdal.Open(os.path.join(raster_path, path))
+                    for path in sorted(os.listdir(raster_path))]
+    else:
+        datasets = [gdal.Open(raster_path)]
+    raster = groups.Group(*datasets)
 
-    Writer = CoordinateWriter if layout == LAYOUT_POINT else AttributeWriter
-    with Writer(raster_path,
-                target_path,
-                distance=distance,
-                width=width,
-                modify=modify,
-                average=average,
-                inverse=inverse,
-                elevation_attribute=elevation_attribute,
-                feature_id_attribute=feature_id_attribute) as writer:
-        writer.add(source_path)
-    return 0
+    # source
+    source = utils.PartialDataSource(source_path)
+
+    process(raster=raster, source=source, target=target, **kwargs)
 
 
 def get_parser():
@@ -470,7 +453,8 @@ def get_parser():
                         metavar='AMOUNT',
                         type=int,
                         default=0,
-                        help='Average of points and minimum of values.')
+                        help='Average of points and minimum (or'
+                             ' maximum, with --inverse) of values.')
     parser.add_argument('-l', '--layout',
                         metavar='LAYOUT',
                         choices=[LAYOUT_POINT, LAYOUT_LINE],
@@ -487,15 +471,22 @@ def get_parser():
     parser.add_argument('-i', '--inverse',
                         action='store_true',
                         help='Look for lowest points instead of highest.')
+    parser.add_argument('-p', '--part',
+                        help='partial processing source, for example "2/3"')
+    parser.add_argument('-n', '--no-data-value',
+                        type=float,
+                        default=-9999.,
+                        help='no data value for no data pixels.')
     return parser
 
 
 def main():
-    """ Call addheight() with commandline args. """
-    addheight(**vars(get_parser().parse_args()))
+    """ Call line_up with commandline args. """
+    logging.basicConfig(stream=sys.stderr,
+                        level=logging.DEBUG,
+                        format='%(message)s')
+    line_up(**vars(get_parser().parse_args()))
 
-
-cache = {}  # Contains leafno's and the index
 
 if __name__ == '__main__':
     exit(main())
