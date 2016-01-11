@@ -426,7 +426,9 @@ def get_parser():
     )
     parser.add_argument('raster_path',
                         metavar='RASTER',
-                        help='Path to gdal dataset.')
+                        help=('Path to gdal dataset or '
+                              'directory of datasets to '
+                              'be stacked in alphabetical order.'))
     parser.add_argument('source_path',
                         metavar='SOURCE',
                         help='Path to shapefile with 2D linestrings.')
@@ -453,7 +455,8 @@ def get_parser():
                               'Defaults to 0.0.'))
     parser.add_argument('-m', '--modify',
                         action='store_true',
-                        help='Change horizontal geometry.')
+                        help=('Move nodes perpendicular to be located'
+                              ' at the pixels with the extreme values.'))
     parser.add_argument('-a', '--average',
                         metavar='AMOUNT',
                         type=int,
