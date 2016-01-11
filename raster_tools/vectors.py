@@ -56,18 +56,20 @@ def rotate(vectors, degrees):
     ]).transpose()
 
 
-class MagicLine(object):
+class ParameterizedLine(object):
     """
     LineString with handy parameterization and projection properties.
     """
     def __init__(self, points):
-        # Data
+        # data
         self.points = np.array(points)
-        # Views
+
+        # views
         self.p = self.points[:-1]
         self.q = self.points[1:]
         self.lines = np.hstack([self.p, self.q]).reshape(-1, 2, 2)
-        # Derivatives
+
+        # derived
         self.length = len(points) - 1
         self.vectors = self.q - self.p
         self.centers = (self.p + self.q) / 2
@@ -80,56 +82,42 @@ class MagicLine(object):
                      1, np.remainder(parameters, 1)).reshape(-1, 1)
         return self.p[i] + t * self.vectors[i]
 
-    def _pixelize_to_parameters(self, size):
+    def pixelize(self, geo_transform):
         """
-        Return array of parameters where pixel boundary intersects self.
+        Return ParameterizedLine instance with points added at any
+        boundary crossing of the raster defined by geo_transform.
+        """
+        p, a, b, q, c, d = geo_transform
+        if p % a or q % d or b or c or a + d:
+            raise ValueError(('Currently only aligned, ')
+                             ('square pixels are implemented'))
+        size = a
 
-        Size is the size of the (square) pixel.
-        """
         extent = np.array([self.points.min(0), self.points.max(0)])
         parameters = []
-        # Loop dimensions for intersection parameters
+        # loop dimensions for intersection parameters
         for i in range(extent.shape[-1]):
             intersects = np.arange(
                 size * np.ceil(extent[0, i] / size),
                 size * np.ceil(extent[1, i] / size),
                 size,
             ).reshape(-1, 1)
-            # Calculate intersection parameters for each vector
+            # calculate intersection parameters for each vector
             nonzero = self.vectors[:, i].nonzero()
             lparameters = ((intersects - self.p[nonzero, i]) /
                            self.vectors[nonzero, i])
-            # Add integer to parameter and mask outside line
+            # add integer to parameter and mask outside line
             global_parameters = np.ma.array(
                 np.ma.array(lparameters + np.arange(nonzero[0].size)),
                 mask=np.logical_or(lparameters < 0, lparameters > 1),
             )
-            # Only unmasked values must be in parameters
+            # only unmasked values must be in parameters
             parameters.append(global_parameters.compressed())
 
-        # Add parameters for original points
+        # add parameters for original points
         parameters.append(np.arange(self.length + 1))
 
-        return np.sort(np.unique(np.concatenate(parameters)))
-
-    def pixelize(self, size, endsonly=False):
-        """
-        Return pixelized MagicLine instance.
-        """
-        all_parameters = self._pixelize_to_parameters(size)
-        if endsonly:
-            index_points = np.equal(all_parameters,
-                                    np.round(all_parameters)).nonzero()[0]
-            index_around_points = np.sort(np.unique(np.concatenate([
-                index_points,
-                index_points[:-1] + 1,
-                index_points[1:] - 1,
-            ])))
-            parameters = all_parameters[index_around_points]
-        else:
-            parameters = all_parameters
-
-        return self.__class__(self[parameters])
+        return ParameterizedLine(self[np.unique(np.concatenate(parameters))])
 
     def project(self, points):
         """
@@ -137,28 +125,29 @@ class MagicLine(object):
 
         Find closest projection of each point on the magic line.
         """
-        # Some reshapings
+        # some reshapings
         a = self.p.reshape(1, -1, 2)
         b = self.q.reshape(1, -1, 2)
         c = points.reshape(-1, 1, 2)
-        # Some vectors
+
+        # some vectors
         vab = b - a
         vac = c - a
         vabn = normalize(vab[0]).reshape(1, -1, 2)
 
-        # Perform dot product and calculations
+        # perform dot product and calculations
         dotprod = np.sum(vac * vabn, axis=2).reshape(len(points), -1, 1)
         vabl = magnitude(vab[0]).reshape(1, -1, 1)
-        lparameters = (dotprod / vabl)[..., 0].round(3)  # What round to take?
+        lparameters = (dotprod / vabl)[..., 0].round(3)  # what round to take?
 
-        # Add integer to parameter and mask outside line
+        # add integer to parameter and mask outside line
         gparameters = np.ma.array(
             np.array(lparameters +
                      np.arange(len(self.vectors)).reshape(1, -1)),
             mask=np.logical_or(lparameters < 0, lparameters > 1),
         )
 
-        # Calculate distances and sort accordingly
+        # calculate distances and sort accordingly
         projections = dotprod * vabn + a
         distances = np.ma.array(
             magnitude((c - projections).reshape(-1, 2)),

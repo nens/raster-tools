@@ -24,6 +24,7 @@ index to the elevation map.
 """
 import argparse
 import logging
+import math
 import os
 import sys
 
@@ -46,32 +47,28 @@ LINESTRINGS = ogr.wkbLineString, ogr.wkbLineString25D
 MULTILINESTRINGS = ogr.wkbMultiLineString, ogr.wkbMultiLineString25D
 
 
-def get_carpet(mline, distance, step=None):
+def get_carpet(parameterized_line, distance, step):
     """
-    Return MxNx2 numpy array.
+    Return M x N x 2 numpy array.
 
-    It contains the first point of the first line, the centers, and the
-    last point of the last line of the MagicLine, but perpendicularly
-    repeated along the normals to the segments of the MagicLine, up to
-    distance, with step.
+    It contains the first point of the first line, the centers, and
+    the last point of the last line of the ParameterizedLine, but
+    perpendicularly repeated by step along the normals to the segments
+    of the ParameterizedLine, until distance is reached.
     """
-    # determine the offsets from the points on the line
-    if step is None or step == 0:
-        length = 2
-    else:
-        # length must be uneven, and no less than 2 * distance / step + 1
-        # take a look at np.around() (round to even values)!
-        length = 2 * np.round(0.5 + distance / step) + 1
-    offsets_1d = np.mgrid[-distance:distance:length * 1j]
+    # length must be uneven, and no less than 2 * distance / step + 1
+    steps = math.ceil(distance / step)
+    offsets_1d = step * np.arange(-steps, steps + 1)
 
     # normalize and rotate the vectors of the linesegments
-    nvectors = vectors.normalize(vectors.rotate(mline.vectors, 270))
+    rvectors = vectors.rotate(parameterized_line.vectors, 270)
+    nvectors = vectors.normalize(rvectors)
 
     # extend vectors and centers
     evectors = np.concatenate([[nvectors[0]], nvectors[:], [nvectors[-1]]])
-    ecenters = np.concatenate([[mline.points[0]],
-                               mline.centers[:],
-                               [mline.points[-1]]])
+    ecenters = np.concatenate([[parameterized_line.points[0]],
+                               parameterized_line.centers[:],
+                               [parameterized_line.points[-1]]])
 
     offsets_2d = evectors.reshape(-1, 1, 2) * offsets_1d.reshape(1, -1, 1)
     points = offsets_2d + ecenters.reshape(-1, 1, 2)
@@ -151,10 +148,10 @@ class BaseProcessor(object):
         if kwargs['modify'] and not kwargs['distance']:
             logger.warn('Warning: --modify used with zero distance.')
 
-    def _modify(self, points, values, mline, step):
+    def _modify(self, parameterized_line, points, values, step):
         """ Return dictionary of numpy arrays. """
         # first a minimum or maximum filter with requested width
-        filtersize = np.round(self.width / step)
+        filtersize = round(self.width / step)
         if filtersize > 0:
             # choices based on inverse or not
             cval = values.max() if self.inverse else values.min()
@@ -183,7 +180,7 @@ class BaseProcessor(object):
         mvalues = fvalues[index]
 
         # sorting points and values according to projection on mline
-        parameters = mline.project(mpoints)
+        parameters = parameterized_line.project(mpoints)
         ordering = parameters.argsort()
         spoints = mpoints[ordering]
         svalues = mvalues[ordering]
@@ -193,30 +190,37 @@ class BaseProcessor(object):
         rcenters = spoints[1:]
         rvalues = svalues[1:]
 
-        return dict(lines=rlines,
-                    centers=rcenters,
-                    values=rvalues)
+        return {'lines': rlines, 'values': rvalues, 'centers': rcenters}
 
     def _calculate(self, wkb_line_string):
         """ Return lines, points, values tuple of numpy arrays. """
         # determine the point and values carpets
-        p, a, b, q, c, d = self.raster.geo_transform
+        geo_transform = self.raster.geo_transform
 
         # determine the points
-        step = a                                       # cell width
-        nodes = np.array(wkb_line_string.GetPoints())  # original nodes
-        mline = vectors.MagicLine(nodes[:, :2])        # 2D nodes
-        pline = mline.pixelize(size=a)                 # cell edges
-        points = get_carpet(mline=pline, distance=self.distance, step=step)
+        nodes = np.array(wkb_line_string.GetPoints())     # original nodes
+        pline1 = vectors.ParameterizedLine(nodes[:, :2])  # parameterization
+        pline2 = pline1.pixelize(geo_transform)           # add pixel edges
 
-        # determine indices
+        # expand points when necessary
+        if self.distance:
+            step = geo_transform[1]
+            points = get_carpet(step=step,
+                                distance=self.distance,
+                                parameterized_line=pline2)
+        else:
+            points = pline2.points.reshape(-1, 1, 2)
+
+        # determine float indices
         x, y = points.transpose()
+        p, a, b, q, c, d = geo_transform
         e, f, g, h = utils.get_inverse(a, b, c, d)
 
-        # make indices
+        # cast to integer indices
         j = np.uint32(e * (x - p) + f * (y - q))
         i = np.uint32(g * (x - p) + h * (y - q))
 
+        # read corresponding values from raster
         bounds = (int(j.min()),
                   int(i.min()),
                   int(j.max()) + 1,
@@ -224,20 +228,21 @@ class BaseProcessor(object):
         array = self.raster.read(bounds)
         values = array[i - bounds[1], j - bounds[0]].transpose()
 
-        # convert to desired nodatavalues
+        # convert to desired no data values
         values[values == self.raster.no_data_value] = self.no_data_value
 
         # return lines, centers, values
         if self.modify:
+            step = geo_transform[1]
             result = self._modify(step=step,
-                                  mline=mline,
                                   points=points,
-                                  values=values)
+                                  values=values,
+                                  parameterized_line=pline1)
         else:
-            extreme = np.min if self.inverse else np.max
-            result = {'lines': pline.lines,
-                      'centers': pline.centers,
-                      'values': extreme(values[1:-1], 1)}
+            extremum = np.min if self.inverse else np.max
+            result = {'lines': pline2.lines,
+                      'centers': pline2.centers,
+                      'values': extremum(values[1:-1], 1)}
 
         if self.average:
             return average_result(amount=self.average, **result)
