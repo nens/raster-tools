@@ -217,8 +217,8 @@ class BaseProcessor(object):
         e, f, g, h = utils.get_inverse(a, b, c, d)
 
         # cast to integer indices
-        j = np.uint32(e * (x - p) + f * (y - q))
-        i = np.uint32(g * (x - p) + h * (y - q))
+        j = np.int64(e * (x - p) + f * (y - q))
+        i = np.int64(g * (x - p) + h * (y - q))
 
         # read corresponding values from raster
         bounds = (int(j.min()),
