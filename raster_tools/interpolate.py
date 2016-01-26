@@ -34,9 +34,23 @@ VOID = 0
 DATA = 1
 ELSE = 2
 
-MARGIN = 3       # to be sure points from all sides are included
-BATCHSIZE = 3    # the interpolation patches are (1 + 2 * BATCHSIZE) wide
-THRESHOLD = 100  # approximate amount of sources into interpolation batch
+# set the amount of buffering over output geometry in meters to mitigate
+# edge effects
+RASTER_MARGIN = 100
+
+# use circle approximation to estimate upper limit on largest void
+# dimension below this threshold
+SOURCE_THRESHOLD = 100
+
+# add margin in pixel coordinates to estimated upper limit on largest
+# void dimension
+DIAMETER_MARGIN = 3
+
+# approximate amount of interpolation sources per batch
+TARGET_THRESHOLD = 100
+
+# actual amount of target points per batch equals (1 + 2 * BATCH_SIZE) ** 2
+BATCH_SIZE = 3
 
 
 def get_parser():
@@ -74,7 +88,8 @@ def get_parser():
 
 def find_width(mask):
     """
-    Determine an approximation for the width of the wides section in the mask.
+    Determine an approximation for the width of the widest section in
+    the mask.
     """
     h, w = mask.shape
     i = np.identity(3, 'b1')
@@ -100,7 +115,7 @@ def find_width(mask):
 
 def generate_batches(shape):
     h, w = shape
-    s = 1 + 2 * BATCHSIZE
+    s = 1 + 2 * BATCH_SIZE
     for i in xrange(0, h, s):
         for j in xrange(0, w, s):
             slices = slice(i, i + s), slice(j, j + s)
@@ -121,24 +136,28 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
     # need to estimate the maximum width?
     target_index = target_mask.nonzero()
     target_count = len(target_index[0])
-    if target_count < 100:
-        source_range = 2 * math.sqrt(100 / math.pi) + MARGIN
+    if target_count < TARGET_THRESHOLD:
+        # estimate upper limit on largest dimension of void
+        source_diameter = 2 * math.sqrt(TARGET_THRESHOLD / math.pi)
     else:
-        source_range = find_width(target_mask) + MARGIN
+        # determine using stripe pattern method
+        source_diameter = find_width(target_mask)
+    source_diameter += DIAMETER_MARGIN
 
     # determine sources
     source_points = np.vstack(source_index).transpose()
     source_values = source_data[source_index]
 
     # investigate and reduce if there are too many sources
-    batch_estimate = 4 * math.pi * source_range / (1 + math.sqrt(2))
-    if batch_estimate > THRESHOLD:
+    average_inter_pixel_distance = (1 + math.sqrt(2)) / 2
+    batch_estimate = math.pi * source_diameter / average_inter_pixel_distance
+    if batch_estimate > SOURCE_THRESHOLD:
         # select a random amount according to the threshold ratio
         select_index = np.arange(source_count, dtype='u8')
         np.random.shuffle(select_index)
 
         # reassign counts, points, values
-        source_count = int(source_count * THRESHOLD / batch_estimate)
+        source_count = int(source_count * SOURCE_THRESHOLD / batch_estimate)
         source_points = source_points[select_index[:source_count]]
         source_values = source_values[select_index[:source_count]]
 
@@ -155,10 +174,8 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
         target_center = np.median(target_points, 0)
 
         # query closest points for batch patch
-        result = source_tree.query(
-            target_center, k=source_count, p=2,
-            distance_upper_bound=source_range + math.sqrt(2) * BATCHSIZE
-        )[1]
+        result = source_tree.query(target_center, k=source_count, p=2,
+                                   distance_upper_bound=source_diameter)[1]
 
         # select sources that were in range
         select_index = result[result != source_count]
@@ -169,7 +186,7 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
         target_values = shepard.interpolate(target_points=target_points,
                                             source_points=select_points,
                                             source_values=select_values,
-                                            radius=source_range)
+                                            radius=source_diameter / 2)
 
         target_data[slices][target_index] = target_values
 
@@ -187,6 +204,8 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
     # imshow(ma, interpolation='none', cmap=spectral)
     # savefig('combined.png')
     # clf()
+    # import pdb
+    # pdb.set_trace()
 
 
 class Grower(object):
@@ -202,16 +221,14 @@ class Grower(object):
 
 
 class Interpolator(object):
-    def __init__(self, mask_path, output_path, raster_dataset, margin=100):
-        self.margin = margin
+    def __init__(self, mask_path, output_path, raster_path):
         self.output_path = output_path
-        self.raster_dataset = raster_dataset
+        self.raster_dataset = gdal.Open(raster_path)
 
-        self.projection = raster_dataset.GetProjection()
-        self.geometry = utils.get_geometry(raster_dataset)
-        self.geo_transform = utils.GeoTransform(
-            raster_dataset.GetGeoTransform(),
-        )
+        geo_transform = self.raster_dataset.GetGeoTransform()
+        self.geo_transform = utils.GeoTransform(geo_transform)
+        self.projection = self.raster_dataset.GetProjection()
+        self.geometry = utils.get_geometry(self.raster_dataset)
 
         if mask_path is None:
             self.mask_layer = None
@@ -220,7 +237,7 @@ class Interpolator(object):
             self.mask_layer = self.mask_data_source[0]
 
         # no data value
-        band = raster_dataset.GetRasterBand(1)
+        band = self.raster_dataset.GetRasterBand(1)
         data_type = band.DataType
         no_data_value = band.GetNoDataValue()
         self.no_data_value = gdal_array.flip_code(data_type)(no_data_value)
@@ -265,7 +282,7 @@ class Interpolator(object):
         # geometries
         inner_geometry = index_feature.geometry()
         outer_geometry = (inner_geometry
-                          .Buffer(self.margin, 1)
+                          .Buffer(RASTER_MARGIN, 1)
                           .Intersection(self.geometry))
         inner_geo_transform = self.geo_transform.shifted(inner_geometry)
         outer_geo_transform = self.geo_transform.shifted(outer_geometry)
@@ -308,7 +325,7 @@ class Interpolator(object):
             GTIF.CreateCopy(path, dataset, options=['COMPRESS=DEFLATE'])
 
 
-def command(index_path, mask_path, raster_path, output_path, part):
+def interpolate(index_path, mask_path, raster_path, output_path, part):
     """
     - use label to find the edge of islands of nodata
     - interpolate or take the min from the part of the edges that have data
@@ -319,11 +336,9 @@ def command(index_path, mask_path, raster_path, output_path, part):
     if part is not None:
         index = index.select(part)
 
-    raster_dataset = gdal.Open(raster_path)
-
     interpolator = Interpolator(mask_path=mask_path,
-                                output_path=output_path,
-                                raster_dataset=raster_dataset)
+                                raster_path=raster_path,
+                                output_path=output_path)
 
     for feature in index:
         interpolator.interpolate(feature)
@@ -331,16 +346,14 @@ def command(index_path, mask_path, raster_path, output_path, part):
 
 
 def main():
-    """ Call command with args from parser. """
-    logging.basicConfig(stream=sys.stderr,
-                        level=logging.INFO,
-                        format='%(message)s')
-    try:
-        return command(**vars(get_parser().parse_args()))
-    except SystemExit:
-        raise  # argparse does this
-    except:
-        logger.exception('An exception has occurred.')
+    """ Call interpolate with args from parser. """
+    log_kwargs = {'stream': sys.stderr,
+                  'level': logging.INFO,
+                  'format': '%(message)s'}
+    logging.basicConfig(**log_kwargs)
+
+    interpolate_kwargs = vars(get_parser().parse_args())
+    interpolate(**interpolate_kwargs)
 
 
 from pylab import imshow, show, savefig, clf, get_cmap
