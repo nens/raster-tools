@@ -48,25 +48,19 @@ def interpolate_f2(target_points, source_points, source_values, radius):
     distance = np.sqrt(np.square(vectors).sum(2))
     weights = weigh_s(distance=distance, radius=radius)
 
-    # from pylab import plot, show
-    # x1 = distance.ravel()
-    # y1 = weights.ravel()
-    # plot(x1, y1, '.')
-    # show()
-
-    # from pylab import plot, show, axis
-    # x1, y1 = source_points.transpose()[::-1]
-    # x2, y2 = target_points.transpose()[::-1]
-    # plot(x1, -y1, 'o', x2, -y2, 'o')
-    # axis('equal')
-    # show()
-    # import ipdb; ipdb.set_trace()
-
     # add to the sums
     sum_of_weighted_values = (weights * source_values[:, np.newaxis]).sum(0)
     sum_of_weights = weights.sum(0)
 
     return sum_of_weighted_values / sum_of_weights
+
+
+def interpolate_f3(target_points, source_points, source_values, radius):
+    """ Called f3 in the paper. """
+    if target_points.size < 10:
+        return
+    import ipdb
+    ipdb.set_trace()
 
 
 def interpolate(target_points, source_points, source_values, radius):
@@ -80,6 +74,6 @@ def interpolate(target_points, source_points, source_values, radius):
     Determines the values of the interpolation function with data as inputs
     at the coordinates points.
     """
-    return interpolate_f2(target_points=target_points,
+    return interpolate_f3(target_points=target_points,
                           source_points=source_points,
                           source_values=source_values, radius=radius)

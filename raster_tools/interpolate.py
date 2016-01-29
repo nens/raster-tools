@@ -38,15 +38,16 @@ ELSE = 2
 # edge effects
 RASTER_MARGIN = 100
 
-# use circle approximation to estimate upper limit on largest void
-# dimension below this threshold
+# use circle approximation to estimate
 SOURCE_THRESHOLD = 100
 
 # add margin in pixel coordinates to estimated upper limit on largest
 # void dimension
 DIAMETER_MARGIN = 3
 
-# approximate amount of interpolation sources per batch
+# use circle approximation to estimate worst possible cross void distance
+# below this threshold - above use a more elaborate method because larger
+# voids usually have elongated shapes like canals
 TARGET_THRESHOLD = 100
 
 # actual amount of target points per batch equals (1 + 2 * BATCH_SIZE) ** 2
@@ -82,6 +83,11 @@ def get_parser():
     parser.add_argument(
         '-p', '--part',
         help='partial processing source, for example "2/3"',
+    )
+    parser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        help='be more verbose',
     )
     return parser
 
@@ -133,22 +139,27 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
     if not source_count:
         return
 
-    # need to estimate the maximum width?
+    # estimate the required search radius for a batch of target points -
+    # the idea is that there must be some sources in range on the opposite
+    # edge void when targeting points close to the edge
     target_index = target_mask.nonzero()
     target_count = len(target_index[0])
     if target_count < TARGET_THRESHOLD:
-        # estimate upper limit on largest dimension of void
-        source_diameter = 2 * math.sqrt(TARGET_THRESHOLD / math.pi)
+        # approximate void by a circle and calculate the diameter
+        source_diameter = 2 * math.sqrt(target_count / math.pi)
     else:
-        # determine using stripe pattern method
+        # determine using stripe pattern method - the method is slower,
+        # but the possible benefit is much higher because it prevents
+        # selection of more points than necessary
         source_diameter = find_width(target_mask)
     source_diameter += DIAMETER_MARGIN
 
-    # determine sources
+    # determine all the source points for this void
     source_points = np.vstack(source_index).transpose()
     source_values = source_data[source_index]
 
-    # investigate and reduce if there are too many sources
+    # investigate and reduce if there are too many sources, given the
+    # estimated source diameter
     average_inter_pixel_distance = (1 + math.sqrt(2)) / 2
     batch_estimate = math.pi * source_diameter / average_inter_pixel_distance
     if batch_estimate > SOURCE_THRESHOLD:
@@ -189,23 +200,6 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
                                             radius=source_diameter / 2)
 
         target_data[slices][target_index] = target_values
-
-    # ma = np.ma.masked_values(target_data, target_data.min())
-    # imshow(ma, interpolation='none', cmap=spectral)
-    # savefig('target.png')
-    # clf()
-    # ma = np.ma.masked_values(source_data, source_data.min())
-    # imshow(ma, interpolation='none', cmap=spectral)
-    # savefig('source.png')
-    # clf()
-    # combined = source_data.copy()
-    # combined[target_mask] = target_data[target_mask]
-    # ma = np.ma.masked_values(combined, combined.min())
-    # imshow(ma, interpolation='none', cmap=spectral)
-    # savefig('combined.png')
-    # clf()
-    # import pdb
-    # pdb.set_trace()
 
 
 class Grower(object):
@@ -310,7 +304,7 @@ class Interpolator(object):
                              target_mask=target_mask,
                              source_data=source[slices],
                              target_data=target[slices])
-            print('{:2.0f}%'.format(100 * count / total))
+            logger.debug('%2.0f%%', 100 * count / total)
 
         # save
         slices = outer_geo_transform.get_slices(inner_geometry)
@@ -347,16 +341,11 @@ def interpolate(index_path, mask_path, raster_path, output_path, part):
 
 def main():
     """ Call interpolate with args from parser. """
-    log_kwargs = {'stream': sys.stderr,
-                  'level': logging.INFO,
-                  'format': '%(message)s'}
-    logging.basicConfig(**log_kwargs)
+    kwargs = vars(get_parser().parse_args())
 
-    interpolate_kwargs = vars(get_parser().parse_args())
-    interpolate(**interpolate_kwargs)
+    level = logging.DEBUG if kwargs.pop('verbose') else logging.INFO
+    logging.basicConfig(**{'level': level,
+                           'stream': sys.stderr,
+                           'format': '%(message)s'})
 
-
-from pylab import imshow, show, savefig, clf, get_cmap
-spectral = get_cmap('spectral')
-imshow, show, savefig, clf
-np.set_printoptions(linewidth=130, threshold=14400)
+    interpolate(**kwargs)
