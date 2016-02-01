@@ -43,6 +43,7 @@ setup(name='raster-tools',
               # ahn2
               'ahn2-aig2tif       = raster_tools.ahn2.aig2tif:main',
               'ahn2-zip2tif       = raster_tools.ahn2.zip2tif:main',
+              'ahn2-constant      = raster_tools.ahn2.constant:main',
               # # ahn3
               'ahn3-download      = raster_tools.ahn3.download:main',
               # # srtm
