@@ -1,5 +1,5 @@
-# (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 # -*- coding: utf-8 -*-
+# (c) Nelen & Schuurmans, see LICENSE.rst.
 
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -29,8 +29,7 @@ def create(array, geo_transform=None, projection=None, no_data_value=None):
     # prepare dataset name pointing to array
     datapointer = array.ctypes.data
     bands, lines, pixels = array.shape
-    datatypecode = gdal_array.NumericTypeCodeToGDALTypeCode(
-        array.dtype.type)
+    datatypecode = gdal_array.NumericTypeCodeToGDALTypeCode(array.dtype.type)
     datatype = gdal.GetDataTypeName(datatypecode)
     bandoffset, lineoffset, pixeloffset = array.strides
 

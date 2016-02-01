@@ -1,3 +1,4 @@
+# (c) Nelen & Schuurmans, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 """
 Interpolate nodata regions in a raster using IDW.

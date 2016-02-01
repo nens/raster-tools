@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
+# (c) Nelen & Schuurmans, see LICENSE.rst.
 """
 Tool to split and convert downloaded AHN2 zipfiles.
 """

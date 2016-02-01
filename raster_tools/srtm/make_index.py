@@ -2,7 +2,9 @@
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 """ Create index for rasterdata processing.
 
-Currently only implemented for SRTM data. """
+Currently only implemented for SRTM data. Filter may be an OGR datasource
+that contains land polygons, for example from OSM, to exclude sea
+tiles. """
 
 from __future__ import print_function
 from __future__ import unicode_literals

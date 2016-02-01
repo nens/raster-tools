@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
+# (c) Nelen & Schuurmans, see LICENSE.rst.
 """ Extract layers from a raster server using a geometry. """
 
 from __future__ import print_function
@@ -7,13 +7,14 @@ from __future__ import unicode_literals
 from __future__ import absolute_import
 from __future__ import division
 
-from multiprocessing import pool
 import argparse
 import collections
 import csv
 import logging
 import os
+import Queue
 import sys
+import threading
 import urllib
 import urlparse
 
@@ -29,7 +30,7 @@ osr.UseExceptions()
 operations = {}
 
 # Version management for outdated warning
-VERSION = 18
+VERSION = 20
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -48,6 +49,7 @@ DTYPE = 'f4'
 FLOOR = 0.15
 OPERATION = '3di'
 PROJECTION = 'EPSG:28992'
+TIMESTAMP = '1970-01-01T00:00:00Z'
 SERVER = 'https://raster.lizard.net'
 
 Tile = collections.namedtuple('Tile', ['width',
@@ -71,12 +73,11 @@ class Layers(Operation):
     """ Extract rasters according to a layer parameter. """
     name = 'layers'
 
-    def __init__(self, layers, dtype, fillvalue, **kwargs):
+    def __init__(self, layers, dtype, fillvalue, time, **kwargs):
         """ Initialize the operation. """
         # self.layers = layers
         self.outputs = [self.name]
-        self.inputs = {self.name: {'layers': layers,
-                                   'time': '1970-01-01T00:00:00Z'}}
+        self.inputs = {self.name: {'layers': layers, 'time': time}}
 
         self.data_type = {
             self.name: dict(f4=gdal.GDT_Float32)[dtype],
@@ -160,7 +161,7 @@ class ThreeDi(Operation):
 
     required = set([y for x in outputs.values() for y in x])
 
-    def __init__(self, floor, landuse, soil, **kwargs):
+    def __init__(self, floor, landuse, soil, time, **kwargs):
         """ Initialize the operation. """
         self.layers = {
             self.I_BATHYMETRY: dict(layers=','.join([
@@ -176,7 +177,7 @@ class ThreeDi(Operation):
         self.inputs = {}
         for k in self.layers:
             if k in self.required:
-                self.inputs[k] = {'time': '1970-01-01T00:00:00Z'}
+                self.inputs[k] = {'time': time}
                 self.inputs[k].update(self.layers[k])
 
         self.calculators = {
@@ -856,10 +857,14 @@ def make_polygon(x1, y2, x2, y1):
     return polygon
 
 
-def load(chunk):
-    """ This is for the pool. """
-    chunk.load()
-    return chunk
+def filler(queue, batch):
+    """ Fill queue with chunks from batch and terminate with None. """
+    for chunk in batch:
+        thread = threading.Thread(target=chunk.load)
+        thread.daemon = True
+        thread.start()
+        queue.put((chunk, thread))
+    queue.put(None)
 
 
 def extract(preparation):
@@ -872,13 +877,27 @@ def extract(preparation):
     total = len(target)
     gdal.TermProgress_nocb(0)
     batch = (c for b in target for c in b)
+    queue = Queue.Queue(maxsize=8)
+    kwargs = {'queue': queue, 'batch': batch}
 
-    thread_pool = pool.ThreadPool(processes=8)
-    for chunk in thread_pool.imap(load, batch):
+    thread1 = threading.Thread(target=filler, kwargs=kwargs)
+    thread1.daemon = True
+    thread1.start()
+
+    while True:
+        # fetch loaded chunks
+        try:
+            chunk, thread2 = queue.get()
+            thread2.join()  # this makes sure the chunk is laoded
+        except TypeError:
+            break
+
+        # save complete blocks
         if len(chunk.block.chunks) == len(chunk.block.inputs):
             chunk.block.save()
             gdal.TermProgress_nocb((chunk.block.tile.serial + 1) / total)
-    thread_pool.close()
+
+    thread1.join()
 
 
 def check_version():
@@ -954,6 +973,9 @@ def get_parser():
     parser.add_argument('-p', '--projection',
                         default=PROJECTION,
                         help='Projection. Default: "{}"'.format(PROJECTION))
+    parser.add_argument('-t', '--timestamp',
+                        default=TIMESTAMP, dest='time',
+                        help='Timestamp. Default: "{}"'.format(TIMESTAMP))
     parser.add_argument('-tl', '--landuse',
                         help='Path to landuse csv.')
     parser.add_argument('-ts', '--soil',

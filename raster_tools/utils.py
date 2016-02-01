@@ -1,3 +1,4 @@
+# (c) Nelen & Schuurmans, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
@@ -13,7 +14,7 @@ from raster_tools import ogr
 logger = logging.getLogger(__name__)
 
 
-def inverse(a, b, c, d):
+def get_inverse(a, b, c, d):
     """ Return inverse for a 2 x 2 matrix with elements (a, b), (c, d). """
     D = 1 / (a * d - b * c)
     return d * D, -b * D,  -c * D,  a * D
@@ -53,6 +54,15 @@ class GeoTransform(tuple):
         values[0], x2, y1, values[3] = geometry.GetEnvelope()
         return self.__class__(values)
 
+    def scaled(self, f):
+        """
+        Return shifted geo transform.
+
+        :param f: scale the cellsize by this factor
+        """
+        p, a, b, q, c, d = self
+        return self.__class__([p, a * f, b * f, q, c * f, d * f])
+
     def get_indices(self, geometry):
         """
         Return array indices tuple for geometry.
@@ -64,7 +74,7 @@ class GeoTransform(tuple):
 
         # inverse transformation
         p, a, b, q, c, d = self
-        e, f, g, h = inverse(a, b, c, d)
+        e, f, g, h = get_inverse(a, b, c, d)
 
         # apply to envelope corners
         X1 = int(round(e * (x1 - p) + f * (y2 - q)))
@@ -90,10 +100,7 @@ class GeoTransform(tuple):
         :param geometry: geometry to subselect
         """
         x1, y1, x2, y2 = self.get_indices(geometry)
-        return {'xoff': x1,
-                'yoff': y1,
-                'xsize': x2 - x1 + 1,
-                'ysize': y2 - y1 + 1}
+        return {'xoff': x1, 'yoff': y1, 'xsize': x2 - x1, 'ysize': y2 - y1}
 
 
 class PartialDataSource(object):
