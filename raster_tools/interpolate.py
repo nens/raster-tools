@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 from scipy import ndimage
 from scipy import spatial
+from scipy.interpolate import NearestNDInterpolator, LinearNDInterpolator
 
 from raster_tools import datasets
 from raster_tools import shepard
@@ -123,14 +124,14 @@ def find_width(mask):
 def generate_batches(shape):
     h, w = shape
     s = 1 + 2 * BATCH_SIZE
-    for i in xrange(0, h, s):
-        for j in xrange(0, w, s):
+    for i in range(0, h, s):
+        for j in range(0, w, s):
             slices = slice(i, i + s), slice(j, j + s)
             offset = i, j
             yield slices, offset
 
 
-def interpolate_void(source_data, target_data, source_mask, target_mask):
+def first_interpolate_void(source_data, target_data, source_mask, target_mask):
     """
     Call interpolation function
     """
@@ -199,8 +200,56 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
                                             source_points=select_points,
                                             source_values=select_values,
                                             radius=source_diameter / 2)
-
         target_data[slices][target_index] = target_values
+
+
+def interpolate_void(source_data, target_data, source_mask, target_mask):
+    """
+    1. NearestNeighbour everywhere
+    2. Linear interior
+    3. Iterative Uniform Smooth
+    """
+    # if source_mask.sum() == 1:
+    #   # target[target_mask] = source[source_mask].mean()
+    #   # return
+
+    source_index = source_mask.nonzero()
+    source_points = np.vstack(source_index).transpose()
+    source_values = source_data[source_index]
+
+    target_index = target_mask.nonzero()
+    target_points = np.vstack(target_index).transpose()
+
+    not_target_mask = ~target_mask
+    not_target_index = not_target_mask.nonzero()
+    not_target_points = np.vstack(not_target_index).transpose()
+
+    work = np.empty_like(target_data)
+
+    # linear interpolation of inside
+    work[target_index] = LinearNDInterpolator(
+        source_points, source_values,
+    )(target_points)
+
+    # nearest neighbour interpolation of the rest
+    not_target_values = NearestNDInterpolator(
+        source_points, source_values,
+    )(not_target_points)
+    work[not_target_index] = not_target_values
+    print(work.min())
+    print(work.max())
+
+    from pylab import imshow, plot, show
+    imshow(work)
+    show()
+
+    plot(work[20])
+    for i in range(64):
+        work[not_target_index] = not_target_values
+        ndimage.uniform_filter(work, output=work)
+        plot(work[20])
+    show()
+    target_data[target_mask] = work[target_mask]
 
 
 class Grower(object):
@@ -296,6 +345,8 @@ class Interpolator(object):
             return
 
         for count, slices in enumerate(objects, 1):
+            if count != 37681:
+                continue
             # the masking
             target_mask = np.equal(label[slices], count)
             edge = ndimage.binary_dilation(target_mask) - target_mask
