@@ -14,13 +14,11 @@ import logging
 import os
 import sys
 
-from math import sqrt, pi
-
 logger = logging.getLogger(__name__)
 
 import numpy as np
 from scipy import ndimage
-from scipy.interpolate import NearestNDInterpolator, LinearNDInterpolator
+from scipy.interpolate import NearestNDInterpolator
 
 from raster_tools import datasets
 from raster_tools import utils
@@ -35,14 +33,7 @@ VOID = 0
 DATA = 1
 ELSE = 2
 
-# set the amount of buffering over output geometry in meters to mitigate
-# edge effects
-RASTER_MARGIN = 100
-
-# use circle approximation to estimate worst possible cross void distance
-# below this threshold - above use a more elaborate method because larger
-# voids usually have elongated shapes like canals
-TARGET_THRESHOLD = 100
+MARGIN = 1000
 
 
 def get_parser():
@@ -83,38 +74,10 @@ def get_parser():
     return parser
 
 
-def find_width(mask):
-    """
-    Determine an approximation for the width of the widest section in
-    the mask.
-    """
-    h, w = mask.shape
-    i = np.identity(3, 'b1')
-
-    # create patterns
-    backward = np.tile(i, (h // 3 + 1, w // 3 + 1))[:h, :w]
-    forward = np.tile(i, (h // 3 + 1, w // 3 + 1))[:h, w - 1::-1]
-    vertical = np.tile(np.array([0, 1], 'b1'), (h, w // 2 + 1))[:, :w]
-    horizontal = np.tile(np.array([[0], [1]], 'b1'), (h // 2 + 1, w))[:h, :]
-
-    # intersect with mask and find longest line
-    maxima = []
-    structure = np.ones((3, 3), 'b1')
-    for pattern in forward, backward, vertical, horizontal:
-        merge = np.logical_and(mask, pattern)
-        label, count = ndimage.label(merge, structure=structure)
-        maximum = ndimage.sum(merge, label, np.arange(count) + 1).max()
-        if pattern is backward or pattern is forward:
-            maximum *= sqrt(2)  # the diagonals are longer
-        maxima.append(maximum)
-    return min(maxima)
-
-
 def interpolate_void(source_data, target_data, source_mask, target_mask):
     """
-    1. Linear interior
     1. NearestNeighbour everywhere, after each smooth
-    3. Iterative Uniform Smooth, with decreasing size until some threshold
+    2. Iterative Uniform Smooth, with decreasing size
     """
     # count sources
     source_index = source_mask.nonzero()
@@ -132,33 +95,22 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
         target_data[target_mask] = source_data[source_mask].mean()
         return
 
-    # estimate meaningful initial filter size
-    target_points = np.vstack(target_index).transpose()
-
-    if target_count < TARGET_THRESHOLD:
-        # approximate void by a circle and calculate the diameter
-        initial_size = 2 * sqrt(target_count / pi)
-    else:
-        # determine using stripe pattern method
-        initial_size = find_width(target_mask)
-
     # determine source points and values
     source_points = np.vstack(source_index).transpose()
     source_values = source_data[source_index]
+
+    # nearest neighbour interpolation of all a a start
+    nearest_interpolator = NearestNDInterpolator(source_points, source_values)
+    target_points = np.vstack(target_index).transpose()
+    target_values = nearest_interpolator(target_points)
 
     # determine non-target points
     not_target_mask = ~target_mask
     not_target_index = not_target_mask.nonzero()
     not_target_points = np.vstack(not_target_index).transpose()
-
-    # linear interpolation of inside as initial condition
-    linear_interpolator = LinearNDInterpolator(source_points, source_values)
-    target_values = linear_interpolator(target_points)
-
-    # nearest neighbour interpolation of the rest
-    nearest_interpolator = NearestNDInterpolator(source_points, source_values)
     not_target_values = nearest_interpolator(not_target_points)
 
+    # use a work array
     work = np.empty_like(target_data)
     work[target_index] = target_values
     work[not_target_index] = not_target_values
@@ -168,7 +120,7 @@ def interpolate_void(source_data, target_data, source_mask, target_mask):
     missed_index = missed_mask.nonzero()
     work[missed_index] = source_values.mean()
 
-    for size in sizes(initial_size):
+    for size in sizes(target_count // max(target_data.shape)):
         ndimage.uniform_filter(work, size, output=work)
         work[not_target_index] = not_target_values
 
@@ -264,7 +216,7 @@ class Interpolator(object):
         # geometries
         inner_geometry = index_feature.geometry()
         outer_geometry = (inner_geometry
-                          .Buffer(RASTER_MARGIN, 1)
+                          .Buffer(MARGIN, 1)
                           .Intersection(self.geometry))
         inner_geo_transform = self.geo_transform.shifted(inner_geometry)
         outer_geo_transform = self.geo_transform.shifted(outer_geometry)
@@ -277,14 +229,23 @@ class Interpolator(object):
         # action
         grower = Grower(shape=meta.shape)
         label, total = ndimage.label(void_mask)
+        crop = outer_geo_transform.get_slices(inner_geometry)
         objects = (grower.grow(o) for o in ndimage.find_objects(label))
         if not total:
             logger.debug('No objects found.')
             return
 
         for count, slices in enumerate(objects, 1):
-            # if count != 61950:
-                # continue
+            discard = (
+                crop[0].start >= slices[0].stop or
+                crop[0].stop <= slices[0].start or
+                crop[1].start >= slices[1].stop or
+                crop[1].stop <= slices[1].start
+            )
+            if discard:
+                logger.debug('skip')
+                continue
+
             # the masking
             target_mask = np.equal(label[slices], count)
             edge = ndimage.binary_dilation(target_mask) - target_mask
@@ -298,14 +259,14 @@ class Interpolator(object):
 
         # save
         slices = outer_geo_transform.get_slices(inner_geometry)
-        if np.equal(target[slices], self.no_data_value).all():
+        if np.equal(target[crop], self.no_data_value).all():
             logger.debug('Nothing filled.')
             return
 
         kwargs = {'projection': self.projection,
                   'geo_transform': inner_geo_transform,
                   'no_data_value': self.no_data_value.item()}
-        with datasets.Dataset(target[slices][np.newaxis], **kwargs) as dataset:
+        with datasets.Dataset(target[crop][np.newaxis], **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=['COMPRESS=DEFLATE'])
 
 
