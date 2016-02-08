@@ -11,19 +11,18 @@ from __future__ import division
 
 import argparse
 import logging
-import math
 import os
 import sys
+
+from math import sqrt, pi
 
 logger = logging.getLogger(__name__)
 
 import numpy as np
 from scipy import ndimage
-from scipy import spatial
 from scipy.interpolate import NearestNDInterpolator, LinearNDInterpolator
 
 from raster_tools import datasets
-from raster_tools import shepard
 from raster_tools import utils
 
 from raster_tools import ogr
@@ -40,20 +39,10 @@ ELSE = 2
 # edge effects
 RASTER_MARGIN = 100
 
-# use circle approximation to estimate
-SOURCE_THRESHOLD = 100
-
-# add margin in pixel coordinates to estimated upper limit on largest
-# void dimension
-DIAMETER_MARGIN = 3
-
 # use circle approximation to estimate worst possible cross void distance
 # below this threshold - above use a more elaborate method because larger
 # voids usually have elongated shapes like canals
 TARGET_THRESHOLD = 100
-
-# actual amount of target points per batch equals (1 + 2 * BATCH_SIZE) ** 2
-BATCH_SIZE = 3
 
 
 def get_parser():
@@ -116,140 +105,89 @@ def find_width(mask):
         label, count = ndimage.label(merge, structure=structure)
         maximum = ndimage.sum(merge, label, np.arange(count) + 1).max()
         if pattern is backward or pattern is forward:
-            maximum *= math.sqrt(2)  # the diagonals are longer
+            maximum *= sqrt(2)  # the diagonals are longer
         maxima.append(maximum)
     return min(maxima)
 
 
-def generate_batches(shape):
-    h, w = shape
-    s = 1 + 2 * BATCH_SIZE
-    for i in range(0, h, s):
-        for j in range(0, w, s):
-            slices = slice(i, i + s), slice(j, j + s)
-            offset = i, j
-            yield slices, offset
-
-
-def first_interpolate_void(source_data, target_data, source_mask, target_mask):
-    """
-    Call interpolation function
-    """
-    # how big is the work?
-    source_index = source_mask.nonzero()
-    source_count = len(source_index[0])
-    if not source_count:
-        return
-
-    # estimate the required search radius for a batch of target points -
-    # the idea is that there must be some sources in range on the opposite
-    # edge void when targeting points close to the edge
-    target_index = target_mask.nonzero()
-    target_count = len(target_index[0])
-    if target_count < TARGET_THRESHOLD:
-        # approximate void by a circle and calculate the diameter
-        source_diameter = 2 * math.sqrt(target_count / math.pi)
-    else:
-        # determine using stripe pattern method - the method is slower,
-        # but the possible benefit is much higher because it prevents
-        # selection of more points than necessary
-        source_diameter = find_width(target_mask)
-    source_diameter += DIAMETER_MARGIN
-
-    # determine all the source points for this void
-    source_points = np.vstack(source_index).transpose()
-    source_values = source_data[source_index]
-
-    # investigate and reduce if there are too many sources, given the
-    # estimated source diameter
-    average_inter_pixel_distance = (1 + math.sqrt(2)) / 2
-    batch_estimate = math.pi * source_diameter / average_inter_pixel_distance
-    if batch_estimate > SOURCE_THRESHOLD:
-        # select a random amount according to the threshold ratio
-        select_index = np.arange(source_count, dtype='u8')
-        np.random.shuffle(select_index)
-
-        # reassign counts, points, values
-        source_count = int(source_count * SOURCE_THRESHOLD / batch_estimate)
-        source_points = source_points[select_index[:source_count]]
-        source_values = source_values[select_index[:source_count]]
-
-    # construct a KDtree for the source points
-    source_tree = spatial.cKDTree(source_points)
-
-    for slices, offset in generate_batches(target_data.shape):
-        # determine target patch
-        target_index = target_mask[slices].nonzero()
-        target_count = len(target_index[0])
-        if not target_count:
-            continue
-        target_points = np.vstack(target_index).transpose() + offset
-        target_center = np.median(target_points, 0)
-
-        # query closest points for batch patch
-        result = source_tree.query(target_center, k=source_count, p=2,
-                                   distance_upper_bound=source_diameter)[1]
-
-        # select sources that were in range
-        select_index = result[result != source_count]
-        select_points = source_points[select_index]
-        select_values = source_values[select_index]
-
-        # interpolate
-        target_values = shepard.interpolate(target_points=target_points,
-                                            source_points=select_points,
-                                            source_values=select_values,
-                                            radius=source_diameter / 2)
-        target_data[slices][target_index] = target_values
-
-
 def interpolate_void(source_data, target_data, source_mask, target_mask):
     """
-    1. NearestNeighbour everywhere
-    2. Linear interior
-    3. Iterative Uniform Smooth
+    1. Linear interior
+    1. NearestNeighbour everywhere, after each smooth
+    3. Iterative Uniform Smooth, with decreasing size until some threshold
     """
-    # if source_mask.sum() == 1:
-    #   # target[target_mask] = source[source_mask].mean()
-    #   # return
-
+    # count sources
     source_index = source_mask.nonzero()
+    source_count = len(source_index[0])
+
+    if source_count == 0:
+        return  # nothing to do
+
+    # count targets
+    target_index = target_mask.nonzero()
+    target_count = len(target_index[0])
+
+    if target_count == 1:
+        # just mean of sources
+        target_data[target_mask] = source_data[source_mask].mean()
+        return
+
+    # estimate meaningful initial filter size
+    target_points = np.vstack(target_index).transpose()
+
+    if target_count < TARGET_THRESHOLD:
+        # approximate void by a circle and calculate the diameter
+        initial_size = 2 * sqrt(target_count / pi)
+    else:
+        # determine using stripe pattern method
+        initial_size = find_width(target_mask)
+
+    # determine source points and values
     source_points = np.vstack(source_index).transpose()
     source_values = source_data[source_index]
 
-    target_index = target_mask.nonzero()
-    target_points = np.vstack(target_index).transpose()
-
+    # determine non-target points
     not_target_mask = ~target_mask
     not_target_index = not_target_mask.nonzero()
     not_target_points = np.vstack(not_target_index).transpose()
 
-    work = np.empty_like(target_data)
-
-    # linear interpolation of inside
-    work[target_index] = LinearNDInterpolator(
-        source_points, source_values,
-    )(target_points)
+    # linear interpolation of inside as initial condition
+    linear_interpolator = LinearNDInterpolator(source_points, source_values)
+    target_values = linear_interpolator(target_points)
 
     # nearest neighbour interpolation of the rest
-    not_target_values = NearestNDInterpolator(
-        source_points, source_values,
-    )(not_target_points)
+    nearest_interpolator = NearestNDInterpolator(source_points, source_values)
+    not_target_values = nearest_interpolator(not_target_points)
+
+    work = np.empty_like(target_data)
+    work[target_index] = target_values
     work[not_target_index] = not_target_values
-    print(work.min())
-    print(work.max())
 
-    from pylab import imshow, plot, show
-    imshow(work)
-    show()
+    # the mean of the inputs for points at corners
+    missed_mask = np.isnan(work)
+    missed_index = missed_mask.nonzero()
+    work[missed_index] = source_values.mean()
 
-    plot(work[20])
-    for i in range(64):
+    for size in sizes(initial_size):
+        ndimage.uniform_filter(work, size, output=work)
         work[not_target_index] = not_target_values
-        ndimage.uniform_filter(work, output=work)
-        plot(work[20])
-    show()
+
+    work[not_target_index] = not_target_values
     target_data[target_mask] = work[target_mask]
+
+
+class Sizes(object):
+    def __init__(self):
+        f = [3, 3]
+        for i in range(62):
+            n = f[-2] + f[-1]
+            f.append(n if n % 2 else n - 1)
+        self.sizes = np.array(f)
+
+    def __call__(self, initial):
+        start = np.searchsorted(self.sizes, initial, side='left')
+        for i in range(start, -1, -1):
+            yield self.sizes[i]
 
 
 class Grower(object):
@@ -345,8 +283,8 @@ class Interpolator(object):
             return
 
         for count, slices in enumerate(objects, 1):
-            if count != 37681:
-                continue
+            # if count != 61950:
+                # continue
             # the masking
             target_mask = np.equal(label[slices], count)
             edge = ndimage.binary_dilation(target_mask) - target_mask
@@ -374,7 +312,7 @@ class Interpolator(object):
 def interpolate(index_path, mask_path, raster_path, output_path, part):
     """
     - use label to find the edge of islands of nodata
-    - interpolate or take the min from the part of the edges that have data
+    - interpolate per void
     - write to output according to index
     """
     # select some or all polygons
@@ -401,3 +339,6 @@ def main():
                            'format': '%(message)s'})
 
     interpolate(**kwargs)
+
+
+sizes = Sizes()
