@@ -18,22 +18,15 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 from scipy import ndimage
-from scipy.interpolate import NearestNDInterpolator
 
 from raster_tools import datasets
 from raster_tools import utils
 
-from raster_tools import ogr
 from raster_tools import gdal
 from raster_tools import gdal_array
 
 GTIF = gdal.GetDriverByName(b'gtiff')
-
-VOID = 0
-DATA = 1
-ELSE = 2
-
-MARGIN = 1000
+MARGIN = 0  # edge effect prevention margin
 
 
 def get_parser():
@@ -57,12 +50,6 @@ def get_parser():
         help='target folder',
     )
     parser.add_argument(
-        '-m', '--mask',
-        metavar='MASK',
-        dest='mask_path',
-        help='shapefile with regions to ignore',
-    )
-    parser.add_argument(
         '-p', '--part',
         help='partial processing source, for example "2/3"',
     )
@@ -74,128 +61,104 @@ def get_parser():
     return parser
 
 
-def interpolate_void(source_data, target_data, source_mask, target_mask):
+def fold(data):
+    """ Return folded array. """
+    return np.dstack([data[0::2, 0::2],
+                      data[0::2, 1::2],
+                      data[1::2, 0::2],
+                      data[1::2, 1::2]])
+
+
+def pad_and_agg(data, no_data_value, pad):
+    """ Pad, fold, return. """
+    s1, s2 = data.shape
+    p1, p2 = pad
+    result = np.empty(((s1 + p1) / 2, (s2 + p2) / 2), dtype=data.dtype)
+
+    # body
+    ma = np.ma.masked_values(
+        fold(data[:s1 - p1, :s2 - p2]),
+        no_data_value,
+    )
+    result[:(s1 - p1) / 2, :(s2 - p2) / 2] = ma.mean(2).filled(no_data_value)
+
+    if p1 and p2:
+        # corner pixel
+        result[-1, -1] = data[-1, -1]
+    if p1:
+        # bottom row
+        ma = np.ma.masked_values(
+            fold(data[-1:, :s2 - p2].repeat(2, axis=0)),
+            no_data_value,
+        )
+        result[-1:, :(s2 - p2) / 2] = ma.mean(2).filled(no_data_value)
+    if p2:
+        # right column
+        ma = np.ma.masked_values(fold(
+            data[:s1 - p1, -1:].repeat(2, axis=1)),
+            no_data_value,
+        )
+        result[:(s1 - p1) / 2:, -1:] = ma.mean(2).filled(no_data_value)
+
+    return result
+
+
+def zoom(data):
+    """ Return zoomed array. """
+    return data.repeat(2, axis=0).repeat(2, axis=1)
+
+
+def fill(data, no_data_value):
     """
-    1. NearestNeighbour everywhere, after each smooth
-    2. Iterative Uniform Smooth, with decreasing size
+    Fill must return a filled array. It does so by aggregating, requesting a fill for that, and zooming back. After zooming back, it fills and smooths the data and returns.
     """
-    # count sources
-    source_index = source_mask.nonzero()
-    source_count = len(source_index[0])
+    if no_data_value not in data:
+        return data  # this should be the top level of the challenge at hand
 
-    if source_count == 0:
-        return  # nothing to do
+    # determine the structure
+    margin = tuple(n % 2 for n in data.shape)
 
-    # count targets
-    target_index = target_mask.nonzero()
-    target_count = len(target_index[0])
-
-    if target_count == 1:
-        # just mean of sources
-        target_data[target_mask] = source_data[source_mask].mean()
-        return
-
-    # determine source points and values
-    source_points = np.vstack(source_index).transpose()
-    source_values = source_data[source_index]
-
-    # nearest neighbour interpolation of all a a start
-    nearest_interpolator = NearestNDInterpolator(source_points, source_values)
-    target_points = np.vstack(target_index).transpose()
-    target_values = nearest_interpolator(target_points)
-
-    # determine non-target points
-    not_target_mask = ~target_mask
-    not_target_index = not_target_mask.nonzero()
-    not_target_points = np.vstack(not_target_index).transpose()
-    not_target_values = nearest_interpolator(not_target_points)
-
-    # use a work array
-    work = np.empty_like(target_data)
-    work[target_index] = target_values
-    work[not_target_index] = not_target_values
-
-    # the mean of the inputs for points at corners
-    missed_mask = np.isnan(work)
-    missed_index = missed_mask.nonzero()
-    work[missed_index] = source_values.mean()
-
-    for size in sizes(target_count // max(target_data.shape)):
-        ndimage.uniform_filter(work, size, output=work)
-        work[not_target_index] = not_target_values
-
-    work[not_target_index] = not_target_values
-    target_data[target_mask] = work[target_mask]
+    # get a work array with only small holes remaining to be filled
+    above = pad_and_agg(pad=margin, data=data, no_data_value=no_data_value)
+    above_filled = fill(data=above, no_data_value=no_data_value)
+    
+    # get back down, but we have to distuinguish between our agged values and the above filled values, which we should keep.
+    zoomed = zoom(above_filled)[:data.shape[0], :data.shape[1]]
+    # index agged?  ==> redo pixel-by-pixel
+    # index filled? ==> keep
 
 
-class Sizes(object):
-    def __init__(self):
-        f = [3, 3]
-        for i in range(62):
-            n = f[-2] + f[-1]
-            f.append(n if n % 2 else n - 1)
-        self.sizes = np.array(f)
 
-    def __call__(self, initial):
-        start = np.searchsorted(self.sizes, initial, side='left')
-        for i in range(start, -1, -1):
-            yield self.sizes[i]
+    # fill them!
+    above_filled[this == no_data_value] = 7
 
+    return filled
 
-class Grower(object):
-    def __init__(self, shape):
-        self.shape = shape
+    # return the zoomed work array
+    result = np.where(
+        np.equal(data, no_data_value),
+        ndimage.uniform_filter(filled)
+        data,
+    )  # or so
 
-    def grow(self, slices):
-        """ Grow slices by one, but do not exceed shape dims. """
-        return tuple(slice(
-            max(0, s.start - 1),
-            min(l, s.stop + 1))
-            for s, l in zip(slices, self.shape))
 
 
 class Interpolator(object):
-    def __init__(self, mask_path, output_path, raster_path):
+    def __init__(self, output_path, raster_path):
+        # paths and source data
         self.output_path = output_path
         self.raster_dataset = gdal.Open(raster_path)
 
+        # geospatial reference
         geo_transform = self.raster_dataset.GetGeoTransform()
         self.geo_transform = utils.GeoTransform(geo_transform)
         self.projection = self.raster_dataset.GetProjection()
-        self.geometry = utils.get_geometry(self.raster_dataset)
 
-        if mask_path is None:
-            self.mask_layer = None
-        else:
-            self.mask_data_source = ogr.Open(mask_path)
-            self.mask_layer = self.mask_data_source[0]
-
-        # no data value
+        # data settings
         band = self.raster_dataset.GetRasterBand(1)
         data_type = band.DataType
         no_data_value = band.GetNoDataValue()
         self.no_data_value = gdal_array.flip_code(data_type)(no_data_value)
-
-    def get_arrays(self, geometry):
-        """ Meta is the three class array. """
-        # read the data
-        window = self.geo_transform.get_window(geometry)
-        source = self.raster_dataset.ReadAsArray(**window)
-        target = np.empty_like(source)
-        target.fill(self.no_data_value)
-        meta = np.where(np.equal(source,
-                                 self.no_data_value), VOID, DATA).astype('u1')
-
-        # rasterize the water if mask is available
-        if self.mask_layer is not None:
-            kwargs = {'geo_transform': self.geo_transform.shifted(geometry)}
-            with datasets.Dataset(meta[np.newaxis], **kwargs) as dataset:
-                gdal.RasterizeLayer(dataset,
-                                    [1],
-                                    self.mask_layer,
-                                    burn_values=[ELSE])
-
-        return source, target, meta
 
     def interpolate(self, index_feature):
         # target path
@@ -215,65 +178,46 @@ class Interpolator(object):
 
         # geometries
         inner_geometry = index_feature.geometry()
-        outer_geometry = (inner_geometry
-                          .Buffer(MARGIN, 1)
-                          .Intersection(self.geometry))
+        outer_geometry = inner_geometry.Buffer(0, 1)
+
+        # geo transforms
         inner_geo_transform = self.geo_transform.shifted(inner_geometry)
         outer_geo_transform = self.geo_transform.shifted(outer_geometry)
 
-        # arrays
-        source, target, meta = self.get_arrays(outer_geometry)
-        void_mask = np.equal(meta, VOID)
-        data_mask = np.equal(meta, DATA)
+        # data
+        window = self.geo_transform.get_window(outer_geometry)
+        source = self.raster_dataset.ReadAsArray(**window)
+        no_data_value = self.no_data_value
 
-        # action
-        grower = Grower(shape=meta.shape)
-        label, total = ndimage.label(void_mask)
-        crop = outer_geo_transform.get_slices(inner_geometry)
-        objects = (grower.grow(o) for o in ndimage.find_objects(label))
-        if not total:
-            logger.debug('No objects found.')
+        if np.equal(source, no_data_value).all():
+            logger.debug('Source contains no data.')
             return
 
-        for count, slices in enumerate(objects, 1):
-            discard = (
-                crop[0].start >= slices[0].stop or
-                crop[0].stop <= slices[0].start or
-                crop[1].start >= slices[1].stop or
-                crop[1].stop <= slices[1].start
-            )
-            if discard:
-                logger.debug('skip')
-                continue
+        # fill
+        filled = fill(data=source, no_data_value=no_data_value)
 
-            # the masking
-            target_mask = np.equal(label[slices], count)
-            edge = ndimage.binary_dilation(target_mask) - target_mask
-            source_mask = np.logical_and(data_mask[slices], edge)
-            # the filling
-            interpolate_void(source_mask=source_mask,
-                             target_mask=target_mask,
-                             source_data=source[slices],
-                             target_data=target[slices])
-            logger.debug('%2.0f%%', 100 * count / total)
+        # cut out
+        slices = outer_geo_transform.get_slices(inner_geometry)
+        source = source[slices]
+        filled = filled[slices]
+
+        target = np.where(
+            np.equal(source, self.no_data_value),
+            filled,
+            self.no_data_value,
+        )[np.newaxis]
 
         # save
-        slices = outer_geo_transform.get_slices(inner_geometry)
-        if np.equal(target[crop], self.no_data_value).all():
-            logger.debug('Nothing filled.')
-            return
-
         kwargs = {'projection': self.projection,
                   'geo_transform': inner_geo_transform,
                   'no_data_value': self.no_data_value.item()}
-        with datasets.Dataset(target[crop][np.newaxis], **kwargs) as dataset:
+        with datasets.Dataset(target, **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=['COMPRESS=DEFLATE'])
 
 
-def interpolate(index_path, mask_path, raster_path, output_path, part):
+def interpolate(index_path, raster_path, output_path, part):
     """
-    - use label to find the edge of islands of nodata
-    - interpolate per void
+    - interpolate all voids per feature at once
     - write to output according to index
     """
     # select some or all polygons
@@ -281,8 +225,7 @@ def interpolate(index_path, mask_path, raster_path, output_path, part):
     if part is not None:
         index = index.select(part)
 
-    interpolator = Interpolator(mask_path=mask_path,
-                                raster_path=raster_path,
+    interpolator = Interpolator(raster_path=raster_path,
                                 output_path=output_path)
 
     for feature in index:
@@ -300,6 +243,3 @@ def main():
                            'format': '%(message)s'})
 
     interpolate(**kwargs)
-
-
-sizes = Sizes()
