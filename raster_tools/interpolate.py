@@ -10,11 +10,7 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
-import logging
 import os
-import sys
-
-logger = logging.getLogger(__name__)
 
 import numpy as np
 from scipy import ndimage
@@ -25,8 +21,8 @@ from raster_tools import utils
 from raster_tools import gdal
 from raster_tools import gdal_array
 
-GTIF = gdal.GetDriverByName(b'gtiff')
-MARGIN = 0  # edge effect prevention margin
+GTIF = gdal.GetDriverByName(str('gtiff'))
+MARGIN = 2000  # edge effect prevention margin
 
 
 def get_parser():
@@ -53,94 +49,78 @@ def get_parser():
         '-p', '--part',
         help='partial processing source, for example "2/3"',
     )
-    parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help='be more verbose',
-    )
     return parser
 
 
-def fold(data):
+def fold(values):
     """ Return folded array. """
-    return np.dstack([data[0::2, 0::2],
-                      data[0::2, 1::2],
-                      data[1::2, 0::2],
-                      data[1::2, 1::2]])
+    return np.dstack([values[0::2, 0::2],
+                      values[0::2, 1::2],
+                      values[1::2, 0::2],
+                      values[1::2, 1::2]])
 
 
-def pad_and_agg(data, no_data_value, pad):
+def aggregate(values, no_data_value):
     """ Pad, fold, return. """
-    s1, s2 = data.shape
-    p1, p2 = pad
-    result = np.empty(((s1 + p1) / 2, (s2 + p2) / 2), dtype=data.dtype)
+    s1, s2 = values.shape
+    p1, p2 = s1 % 2, s2 % 2  # determine padding to make even-sized
+    result = np.empty(((s1 + p1) / 2, (s2 + p2) / 2), dtype=values.dtype)
 
     # body
     ma = np.ma.masked_values(
-        fold(data[:s1 - p1, :s2 - p2]),
+        fold(values[:s1 - p1, :s2 - p2]),
         no_data_value,
     )
     result[:(s1 - p1) / 2, :(s2 - p2) / 2] = ma.mean(2).filled(no_data_value)
 
     if p1 and p2:
         # corner pixel
-        result[-1, -1] = data[-1, -1]
+        result[-1, -1] = values[-1, -1]
     if p1:
         # bottom row
         ma = np.ma.masked_values(
-            fold(data[-1:, :s2 - p2].repeat(2, axis=0)),
+            fold(values[-1:, :s2 - p2].repeat(2, axis=0)),
             no_data_value,
         )
         result[-1:, :(s2 - p2) / 2] = ma.mean(2).filled(no_data_value)
     if p2:
         # right column
         ma = np.ma.masked_values(fold(
-            data[:s1 - p1, -1:].repeat(2, axis=1)),
+            values[:s1 - p1, -1:].repeat(2, axis=1)),
             no_data_value,
         )
         result[:(s1 - p1) / 2:, -1:] = ma.mean(2).filled(no_data_value)
 
-    return result
+    return {'values': result, 'no_data_value': no_data_value}
 
 
-def zoom(data):
+def zoom(values):
     """ Return zoomed array. """
-    return data.repeat(2, axis=0).repeat(2, axis=1)
+    return values.repeat(2, axis=0).repeat(2, axis=1)
 
 
-def fill(data, no_data_value):
+def smooth(values):
+    """ Two-step uniform for symmetric smoothing. """
+    return (ndimage.uniform_filter(values, 2) / 2 +
+            ndimage.uniform_filter(values, 2, origin=-1) / 2)
+
+
+def fill(values, no_data_value):
     """
-    Fill must return a filled array. It does so by aggregating, requesting a fill for that, and zooming back. After zooming back, it fills and smooths the data and returns.
+    Fill must return a filled array. It does so by aggregating, requesting
+    a fill for that, and zooming back. After zooming back, it smooths
+    the filled values and returns.
     """
-    if no_data_value not in data:
-        return data  # this should be the top level of the challenge at hand
+    mask = values == no_data_value
+    if not mask.any():
+        # this should end the recursion
+        return values
 
-    # determine the structure
-    margin = tuple(n % 2 for n in data.shape)
-
-    # get a work array with only small holes remaining to be filled
-    above = pad_and_agg(pad=margin, data=data, no_data_value=no_data_value)
-    above_filled = fill(data=above, no_data_value=no_data_value)
-    
-    # get back down, but we have to distuinguish between our agged values and the above filled values, which we should keep.
-    zoomed = zoom(above_filled)[:data.shape[0], :data.shape[1]]
-    # index agged?  ==> redo pixel-by-pixel
-    # index filled? ==> keep
-
-
-
-    # fill them!
-    above_filled[this == no_data_value] = 7
-
-    return filled
-
-    # return the zoomed work array
-    result = np.where(
-        np.equal(data, no_data_value),
-        ndimage.uniform_filter(filled)
-        data,
-    )  # or so
-
+    # aggregate
+    filled = fill(**aggregate(values=values, no_data_value=no_data_value))
+    zoomed = zoom(filled)[:values.shape[0], :values.shape[1]]
+    return np.where(mask, smooth(zoomed), values)
+    return np.where(mask, zoomed, values)
 
 
 class Interpolator(object):
@@ -162,12 +142,11 @@ class Interpolator(object):
 
     def interpolate(self, index_feature):
         # target path
-        leaf_number = index_feature[b'BLADNR']
+        leaf_number = index_feature[str('bladnr')]
         path = os.path.join(self.output_path,
                             leaf_number[:3],
                             '{}.tif'.format(leaf_number))
         if os.path.exists(path):
-            logger.debug('Target already exists.')
             return
 
         # create directory
@@ -190,11 +169,10 @@ class Interpolator(object):
         no_data_value = self.no_data_value
 
         if np.equal(source, no_data_value).all():
-            logger.debug('Source contains no data.')
             return
 
         # fill
-        filled = fill(data=source, no_data_value=no_data_value)
+        filled = fill(values=source, no_data_value=no_data_value)
 
         # cut out
         slices = outer_geo_transform.get_slices(inner_geometry)
@@ -208,11 +186,13 @@ class Interpolator(object):
         )[np.newaxis]
 
         # save
+        options = ['compress=deflate', 'tiled=yes']
         kwargs = {'projection': self.projection,
                   'geo_transform': inner_geo_transform,
                   'no_data_value': self.no_data_value.item()}
+
         with datasets.Dataset(target, **kwargs) as dataset:
-            GTIF.CreateCopy(path, dataset, options=['COMPRESS=DEFLATE'])
+            GTIF.CreateCopy(path, dataset, options=options)
 
 
 def interpolate(index_path, raster_path, output_path, part):
@@ -236,10 +216,4 @@ def interpolate(index_path, raster_path, output_path, part):
 def main():
     """ Call interpolate with args from parser. """
     kwargs = vars(get_parser().parse_args())
-
-    level = logging.DEBUG if kwargs.pop('verbose') else logging.INFO
-    logging.basicConfig(**{'level': level,
-                           'stream': sys.stderr,
-                           'format': '%(message)s'})
-
     interpolate(**kwargs)
