@@ -122,7 +122,6 @@ def fill(values, no_data_value):
     filled = fill(**aggregate(values=values, no_data_value=no_data_value))
     zoomed = zoom(filled)[:values.shape[0], :values.shape[1]]
     return np.where(mask, smooth(zoomed), values)
-    return np.where(mask, zoomed, values)
 
 
 class Interpolator(object):
@@ -167,22 +166,22 @@ class Interpolator(object):
 
         # data
         window = self.geo_transform.get_window(outer_geometry)
-        source = self.raster_dataset.ReadAsArray(**window)
+        values = self.raster_dataset.ReadAsArray(**window)
         no_data_value = self.no_data_value
 
-        if np.equal(source, no_data_value).all():
+        if values is None or np.equal(values, no_data_value).all():
             return
 
         # fill
-        filled = fill(values=source, no_data_value=no_data_value)
+        filled = fill(values=values, no_data_value=no_data_value)
 
         # cut out
         slices = outer_geo_transform.get_slices(inner_geometry)
-        source = source[slices]
+        values = values[slices]
         filled = filled[slices]
 
         target = np.where(
-            np.equal(source, self.no_data_value),
+            np.equal(values, self.no_data_value),
             filled,
             self.no_data_value,
         )[np.newaxis]
