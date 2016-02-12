@@ -192,7 +192,7 @@ def get_parser():
     parser.add_argument(
         'raster_path',
         metavar='RASTER',
-        help='source GDAL raster dataset with voids'
+        help='source GDAL raster or directory GDAL rasters to stack.'
     )
     parser.add_argument(
         'output_path',
