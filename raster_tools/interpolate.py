@@ -23,6 +23,9 @@ from raster_tools import gdal_array
 
 GTIF = gdal.GetDriverByName(str('gtiff'))
 MARGIN = 2000  # edge effect prevention margin
+KERNEL = np.array([[0.0625, 0.1250,  0.0625],
+                   [0.1250, 0.2500,  0.1250],
+                   [0.0625, 0.1250,  0.0625]])
 
 
 def get_parser():
@@ -101,8 +104,7 @@ def zoom(values):
 
 def smooth(values):
     """ Two-step uniform for symmetric smoothing. """
-    return (ndimage.uniform_filter(values, 2) / 2 +
-            ndimage.uniform_filter(values, 2, origin=-1) / 2)
+    return ndimage.correlate(values, KERNEL)
 
 
 def fill(values, no_data_value):
