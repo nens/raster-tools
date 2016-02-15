@@ -53,7 +53,6 @@ setup(name='raster-tools',
               # modification
               'aggregate          = raster_tools.aggregate:main',
               'fillnodata         = raster_tools.fillnodata:main',
-              'interpolate        = raster_tools.interpolate:main',
               'hillshade          = raster_tools.hillshade:main',
               'addalpha           = raster_tools.addalpha:main',
               'rebase             = raster_tools.rebase:main',

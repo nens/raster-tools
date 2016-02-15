@@ -1,7 +1,7 @@
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 """
-Interpolate nodata regions in a raster using IDW.
+Interpolate nodata regions in a raster using recursive aggregation.
 """
 
 from __future__ import print_function
