@@ -8,6 +8,8 @@ from __future__ import division
 
 import logging
 
+import numpy as np
+
 from raster_tools import gdal
 from raster_tools import ogr
 
@@ -37,6 +39,50 @@ def get_geometry(dataset):
     geometry = ogr.Geometry(ogr.wkbPolygon)
     geometry.AddGeometry(ring)
     return geometry
+
+
+def aggregate(values, no_data_value):
+    """
+    Return aggregated array.
+
+    Arrays with uneven dimension sizes will raise an exception.
+    """
+    result = np.ma.masked_values(
+        np.dstack([values[0::2, 0::2],
+                   values[0::2, 1::2],
+                   values[1::2, 0::2],
+                   values[1::2, 1::2]]),
+        no_data_value,
+        copy=False,
+    ).mean(2).filled(no_data_value)
+    return {'values': result, 'no_data_value': no_data_value}
+
+
+def aggregate_uneven(values, no_data_value):
+    """ Pad, fold, return. """
+    kwargs = {'no_data_value': no_data_value}
+
+    s1, s2 = values.shape
+    p1, p2 = s1 % 2, s2 % 2  # required padding to make even-sized
+
+    # quick out for even-sized dimensions
+    if not (p1 or p2):
+        return aggregate(values, **kwargs)
+
+    # 4-step: a) even section, b) bottom, c) right and d) corner
+    result = np.empty(((s1 + p1) / 2, (s2 + p2) / 2), dtype=values.dtype)
+    # the even section
+    a = aggregate(values[:s1 - p1, :s2 - p2], **kwargs)
+    result[:(s1 - p1) / 2, :(s2 - p2) / 2] = a['values']
+    if p1:  # bottom row
+        b = aggregate(values[-1:, :s2 - p2].repeat(2, axis=0), **kwargs)
+        result[-1:, :(s2 - p2) / 2] = b['values']
+    if p2:   # right column
+        c = aggregate(values[:s1 - p1, -1:].repeat(2, axis=1), **kwargs)
+        result[:(s1 - p1) / 2:, -1:] = c['values']
+    if p1 and p2:  # corner pixel
+        result[-1, -1] = values[-1, -1]
+    return {'values': result, 'no_data_value': no_data_value}
 
 
 class GeoTransform(tuple):
@@ -127,6 +173,6 @@ class PartialDataSource(object):
         stop = len(self) if selected == parts else int(selected * size)
         total = stop - start
         gdal.TermProgress_nocb(0)
-        for count, fid in enumerate(xrange(start, stop), 1):
+        for count, fid in enumerate(range(start, stop), 1):
             yield self.layer[fid]
             gdal.TermProgress_nocb(count / total)

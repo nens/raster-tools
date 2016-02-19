@@ -55,48 +55,6 @@ def get_parser():
     return parser
 
 
-def fold(values):
-    """ Return folded array. """
-    return np.dstack([values[0::2, 0::2],
-                      values[0::2, 1::2],
-                      values[1::2, 0::2],
-                      values[1::2, 1::2]])
-
-
-def aggregate(values, no_data_value):
-    """ Pad, fold, return. """
-    s1, s2 = values.shape
-    p1, p2 = s1 % 2, s2 % 2  # determine padding to make even-sized
-    result = np.empty(((s1 + p1) / 2, (s2 + p2) / 2), dtype=values.dtype)
-
-    # body
-    ma = np.ma.masked_values(
-        fold(values[:s1 - p1, :s2 - p2]),
-        no_data_value,
-    )
-    result[:(s1 - p1) / 2, :(s2 - p2) / 2] = ma.mean(2).filled(no_data_value)
-
-    if p1 and p2:
-        # corner pixel
-        result[-1, -1] = values[-1, -1]
-    if p1:
-        # bottom row
-        ma = np.ma.masked_values(
-            fold(values[-1:, :s2 - p2].repeat(2, axis=0)),
-            no_data_value,
-        )
-        result[-1:, :(s2 - p2) / 2] = ma.mean(2).filled(no_data_value)
-    if p2:
-        # right column
-        ma = np.ma.masked_values(fold(
-            values[:s1 - p1, -1:].repeat(2, axis=1)),
-            no_data_value,
-        )
-        result[:(s1 - p1) / 2:, -1:] = ma.mean(2).filled(no_data_value)
-
-    return {'values': result, 'no_data_value': no_data_value}
-
-
 def zoom(values):
     """ Return zoomed array. """
     return values.repeat(2, axis=0).repeat(2, axis=1)
@@ -119,12 +77,13 @@ def fill(values, no_data_value):
         return values
 
     # aggregate
-    filled = fill(**aggregate(values=values, no_data_value=no_data_value))
+    filled = fill(**utils.aggregate(values=values,
+                                    no_data_value=no_data_value))
     zoomed = zoom(filled)[:values.shape[0], :values.shape[1]]
     return np.where(mask, smooth(zoomed), values)
 
 
-class Interpolator(object):
+class Filler(object):
     def __init__(self, output_path, raster_path):
         # paths and source data
         self.output_path = output_path
@@ -141,12 +100,12 @@ class Interpolator(object):
         no_data_value = band.GetNoDataValue()
         self.no_data_value = gdal_array.flip_code(data_type)(no_data_value)
 
-    def interpolate(self, index_feature):
+    def fill(self, index_feature):
         # target path
-        leaf_number = index_feature[str('bladnr')]
+        name = index_feature[str('name')]
         path = os.path.join(self.output_path,
-                            leaf_number[:3],
-                            '{}.tif'.format(leaf_number))
+                            leaf_number[:2],
+                            '{}.tif'.format(name))
         if os.path.exists(path):
             return
 
@@ -196,25 +155,22 @@ class Interpolator(object):
             GTIF.CreateCopy(path, dataset, options=options)
 
 
-def interpolate(index_path, raster_path, output_path, part):
+def fill(index_path, raster_path, output_path, part):
     """
-    - interpolate all voids per feature at once
-    - write to output according to index
     """
     # select some or all polygons
     index = utils.PartialDataSource(index_path)
     if part is not None:
         index = index.select(part)
 
-    interpolator = Interpolator(raster_path=raster_path,
-                                output_path=output_path)
+    filler = Filler(raster_path=raster_path, output_path=output_path)
 
     for feature in index:
-        interpolator.interpolate(feature)
+        filler.fill(feature)
     return 0
 
 
 def main():
-    """ Call interpolate with args from parser. """
+    """ Call fill with args from parser. """
     kwargs = vars(get_parser().parse_args())
-    interpolate(**kwargs)
+    fill(**kwargs)

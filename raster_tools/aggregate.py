@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 """
-Aggregate by some factor using the median of the aggregated pixels.
+Aggregate recursively by taking the mean of quads.
 """
 
 from __future__ import print_function
@@ -10,22 +10,17 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
-import logging
 import os
-import sys
-
 
 import numpy as np
-
-from raster_tools import gdal
-from raster_tools import gdal_array
 
 from raster_tools import datasets
 from raster_tools import utils
 
-GTIF = gdal.GetDriverByName(b'gtiff')
+from raster_tools import gdal
+from raster_tools import gdal_array
 
-logger = logging.getLogger(__name__)
+GTIF = gdal.GetDriverByName(str('gtiff'))
 
 
 def get_parser():
@@ -49,10 +44,9 @@ def get_parser():
         help='target folder',
     )
     parser.add_argument(
-        '-f', '--factor',
-        metavar='FACTOR',
-        default=100,
-        help='shrink factor',
+        '-i', '--iterations',
+        type=int, default=6,
+        help='partial processing source, for example "2/3"',
     )
     parser.add_argument(
         '-p', '--part',
@@ -62,51 +56,30 @@ def get_parser():
 
 
 class Aggregator(object):
-    def __init__(self, raster_dataset, output_path, factor):
-        self.raster_dataset = raster_dataset
+    def __init__(self, output_path, raster_path, iterations):
+        # paths and source data
+        self.iterations = iterations
         self.output_path = output_path
-        self.factor = factor
+        self.raster_dataset = gdal.Open(raster_path)
 
-        self.projection = raster_dataset.GetProjection()
-        self.geo_transform = utils.GeoTransform(
-            raster_dataset.GetGeoTransform(),
-        )
+        # geospatial reference
+        geo_transform = self.raster_dataset.GetGeoTransform()
+        self.geo_transform = utils.GeoTransform(geo_transform)
+        self.projection = self.raster_dataset.GetProjection()
 
-        # no data value
-        band = raster_dataset.GetRasterBand(1)
+        # data settings
+        band = self.raster_dataset.GetRasterBand(1)
         data_type = band.DataType
         no_data_value = band.GetNoDataValue()
         self.no_data_value = gdal_array.flip_code(data_type)(no_data_value)
 
-    def get_source(self, geometry):
-        """ Meta is the three class array. """
-        window = self.geo_transform.get_window(geometry)
-        return self.raster_dataset.ReadAsArray(**window)
-
-    def execute(self, array):
-        f = self.factor
-        h, w = array.shape
-        h /= f
-        w /= f
-
-        view = array.reshape(h, f, w, f).transpose(1, 3, 0, 2)
-        copy = view.reshape(f * f, h, w)
-
-        d = array.dtype
-        n = self.no_data_value
-        result = np.median(np.ma.masked_values(copy, n), 0)
-
-        # for some reason, the median operation changes dtype and fillvalue
-        return result.astype(d).filled(n)
-
     def aggregate(self, index_feature):
         # target path
-        leaf_number = index_feature[b'BLADNR']
+        name = index_feature[str('name')]
         path = os.path.join(self.output_path,
-                            leaf_number[:3],
-                            '{}.tif'.format(leaf_number))
+                            name[:2],
+                            '{}.tif'.format(name))
         if os.path.exists(path):
-            logger.debug('Target already exists.')
             return
 
         # create directory
@@ -115,43 +88,43 @@ class Aggregator(object):
         except OSError:
             pass  # no problem
 
-        # extract source
         geometry = index_feature.geometry()
-        geo_transform1 = self.geo_transform.shifted(geometry)
-        geo_transform2 = geo_transform1.scaled(self.factor)
+        factor = 2 ** self.iterations
+        geo_transform = self.geo_transform.shifted(geometry).scaled(factor)
 
-        # aggregate
-        source = self.get_source(geometry)
-        if source is None:
+        # data
+        window = self.geo_transform.get_window(geometry)
+        values = self.raster_dataset.ReadAsArray(**window)
+        no_data_value = self.no_data_value
+
+        if values is None or np.equal(values, no_data_value).all():
             return
-        target = self.execute(source)
+
+        # aggregate repeatedly
+        kwargs = {'values': values, 'no_data_value': no_data_value}
+        for _ in range(self.iterations):
+            kwargs = utils.aggregate(**kwargs)
 
         # save
-        if np.equal(target, self.no_data_value).all():
-            logger.debug('Target contains no data.')
-            return
-
+        values = kwargs['values'][np.newaxis]
+        options = ['compress=deflate', 'tiled=yes']
         kwargs = {'projection': self.projection,
-                  'geo_transform': geo_transform2,
-                  'no_data_value': self.no_data_value.item()}
-        with datasets.Dataset(target[np.newaxis], **kwargs) as dataset:
-            GTIF.CreateCopy(path, dataset, options=['COMPRESS=DEFLATE'])
+                  'geo_transform': geo_transform,
+                  'no_data_value': no_data_value.item()}
+
+        with datasets.Dataset(values, **kwargs) as dataset:
+            GTIF.CreateCopy(path, dataset, options=options)
 
 
-def aggregate(index_path, raster_path, output_path, factor, part):
+def aggregate(index_path, part, **kwargs):
     """
-    Aggregate by some factor using the median of the aggregated pixels.
     """
     # select some or all polygons
     index = utils.PartialDataSource(index_path)
     if part is not None:
         index = index.select(part)
 
-    raster_dataset = gdal.Open(raster_path)
-
-    aggregator = Aggregator(factor=factor,
-                            output_path=output_path,
-                            raster_dataset=raster_dataset)
+    aggregator = Aggregator(**kwargs)
 
     for feature in index:
         aggregator.aggregate(feature)
@@ -160,12 +133,5 @@ def aggregate(index_path, raster_path, output_path, factor, part):
 
 def main():
     """ Call aggregate with args from parser. """
-    logging.basicConfig(stream=sys.stderr,
-                        level=logging.INFO,
-                        format='%(message)s')
-    try:
-        return aggregate(**vars(get_parser().parse_args()))
-    except SystemExit:
-        raise  # argparse does this
-    except:
-        logger.exception('An exception has occurred.')
+    kwargs = vars(get_parser().parse_args())
+    aggregate(**kwargs)
