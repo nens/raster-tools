@@ -66,13 +66,18 @@ class Group(object):
         """
         Return numpy array.
 
-        bounds: x1, y1, x2, y2 pixel window specifcation.
+        bounds: x1, y1, x2, y2 pixel window specifcation, or an ogr geometry
 
         If the bounds fall outside the dataset, the result is padded
         with no data values.
         """
+        # find indices
+        try:
+            x1, y1, x2, y2 = bounds
+        except ValueError:
+            x1, y1, x2, y2 = self.geo_transform.get_indices(bounds)
+
         # overlapping bounds
-        x1, y1, x2, y2 = bounds
         w, h = self.width, self.height
         p1 = min(w, max(0, x1))
         q1 = min(h, max(0, y1))

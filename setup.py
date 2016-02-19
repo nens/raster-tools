@@ -51,6 +51,7 @@ setup(name='raster-tools',
               'srtm-fix-nodata    = raster_tools.srtm.fix_nodata:main',
               'srtm-organize      = raster_tools.srtm.organize:main',
               # modification
+              'mfillnodata         = raster_tools.mfillnodata:main',
               'fillnodata         = raster_tools.fillnodata:main',
               'hillshade          = raster_tools.hillshade:main',
               'aggregate          = raster_tools.aggregate:main',
