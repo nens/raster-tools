@@ -51,10 +51,8 @@ def aggregate(values, no_data_value):
         np.dstack([values[0::2, 0::2],
                    values[0::2, 1::2],
                    values[1::2, 0::2],
-                   values[1::2, 1::2]]),
-        no_data_value,
-        copy=False,
-    ).mean(2).filled(no_data_value)
+                   values[1::2, 1::2]]), no_data_value,
+    ).mean(2).astype(values.dtype).filled(no_data_value)
     return {'values': result, 'no_data_value': no_data_value}
 
 
