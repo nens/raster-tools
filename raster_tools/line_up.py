@@ -76,7 +76,7 @@ def get_carpet(parameterized_line, distance, step):
     return points
 
 
-def average_result(amount, lines, centers, values):
+def average_result(amount, inverse, lines, centers, values):
     """
     Return dictionary of numpy arrays.
 
@@ -84,6 +84,8 @@ def average_result(amount, lines, centers, values):
     converted per group to a line from the start point of the first line
     in the group to the end point of the last line in the group.
     """
+    extremum = np.max if inverse else np.min
+
     # determine the size needed to fit an integer multiple of amount
     oldsize = values.size
     newsize = int(np.ceil(values.size / amount) * amount)
@@ -103,7 +105,7 @@ def average_result(amount, lines, centers, values):
     ma_values = np.ma.array(np.empty(newsize), mask=True)
     ma_values[:oldsize] = values
     return dict(lines=result_lines,
-                values=ma_values.reshape(-1, amount).min(1),
+                values=extremum(ma_values.reshape(-1, amount), 1),
                 centers=ma_centers.reshape(-1, amount, 2).mean(1))
 
 
@@ -242,10 +244,11 @@ class BaseProcessor(object):
             extremum = np.min if self.inverse else np.max
             result = {'lines': pline2.lines,
                       'centers': pline2.centers,
-                      'values': extremum(values[1:-1], 1)}
+                      'values': extremum(values, 1)}
 
         if self.average:
-            return average_result(amount=self.average, **result)
+            return average_result(amount=self.average,
+                                  inverse=self.inverse, **result)
         else:
             return result
 
@@ -268,6 +271,7 @@ class CoordinateProcessor(BaseProcessor):
         target_wkb_line_string = ogr.Geometry(ogr.wkbLineString)
 
         # add the first point of the first line
+        result = self._calculate(wkb_line_string=source_wkb_line_string)
         (x, y), z = result['lines'][0, 0], result['values'][0]
         target_wkb_line_string.AddPoint(float(x), float(y), float(z))
 
