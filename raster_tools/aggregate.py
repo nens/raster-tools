@@ -97,6 +97,13 @@ class Aggregator(object):
         values = self.raster_dataset.ReadAsArray(**window)
         no_data_value = self.no_data_value
 
+        # set errors to no data
+        index = np.logical_and(
+            values != no_data_value,
+            np.logical_or(values < -1000, values > 1000),
+        )
+        values[index] == no_data_value
+
         if values is None or np.equal(values, no_data_value).all():
             return
 
