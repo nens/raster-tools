@@ -52,6 +52,7 @@ setup(name='raster-tools',
               'srtm-organize      = raster_tools.srtm.organize:main',
               # modification
               'mfillnodata         = raster_tools.mfillnodata:main',
+              'streamline          = raster_tools.streamline:main',
               'fillnodata         = raster_tools.fillnodata:main',
               'hillshade          = raster_tools.hillshade:main',
               'aggregate          = raster_tools.aggregate:main',

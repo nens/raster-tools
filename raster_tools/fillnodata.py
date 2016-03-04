@@ -97,7 +97,7 @@ def fillnodata(source_path, target_path, border_path):
     kwargs = {'projection': source_dataset.GetProjection(),
               'geo_transform': source_dataset.GetGeoTransform()}
     kwargs['array'] = result['values'][np.newaxis]
-    kwargs['no_data_value'] = result['no_data_value']
+    kwargs['no_data_value'] = result['no_data_value'].item()
 
     with datasets.Dataset(**kwargs) as dataset:
         GTIF.CreateCopy(target_path, dataset, options=OPTIONS)
