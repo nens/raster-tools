@@ -22,6 +22,40 @@ from raster_tools import utils
 from raster_tools import gdal
 from raster_tools import gdal_array
 
+
+# create lookup table for combined directions
+"""
+1. find separate vectors, or complex numbers?
+2. pick the one with the greatest dot product with the resultant
+"""
+
+encoding = np.arange(0, 256, dtype='u1')
+vector = np.zeros((256, 2))
+for i in 1, 2, 4, 8, 16, 32, 64, 128:
+    s = np.bool8(encoding & i)             # select matched encodings
+    p = np.pi / 4 * np.log2(i)             # trigonometric phase
+    v = np.hstack([np.cos(p), np.sin(p)])  # corresponding vector
+    vector[s] += v                         # add vectors
+
+common = np.zeros((256, 1))
+mapped = np.zeros_like(encoding)
+for i in 1, 2, 4, 8, 16, 32, 64, 128:
+    s = np.bool8(encoding & i)             # select matched encodings
+    p = np.pi / 4 * np.log2(i)             # trigonometric phase
+    v = np.hstack([np.cos(p), np.sin(p)])  # corresponding vector
+    d = (v * vector).sum(1).reshape(-1, 1) # dot product
+    x = np.logical_and(s, d >= common)     # common index
+    common[x] = d[x]
+    mapped[x] = i
+
+print(mapped)
+
+
+
+exit()
+
+
+
 GTIF = gdal.GetDriverByName(str('gtiff'))
 
 
@@ -59,10 +93,14 @@ def calculate_flow_direction(values):
         # better drops replace the direction
         more_drop = this_drop > best_drop
         direction[more_drop] = code[i, j]
+        best_drop[more_drop] = this_drop[more_drop]
 
         # same drops add to the direction
         same_drop = this_drop == best_drop
         direction[same_drop] += code[i, j]
+
+    import ipdb
+    ipdb.set_trace() 
 
     return direction
 

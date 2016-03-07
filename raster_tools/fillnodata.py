@@ -50,7 +50,7 @@ def fill(values, no_data_value, border):
 
     # aggregate
     aggregated_shape = values.shape[0] / 2, values.shape[1] / 2
-    if border and border.shape == aggregated_shape:
+    if border is not None and border.shape == aggregated_shape:
         aggregated = {'values': border, 'no_data_value': no_data_value}
     else:
         aggregated = utils.aggregate_uneven(values=values,
@@ -75,13 +75,16 @@ class Filler(object):
     def fill(self, geometry):
         """ Return dictionary with data and no data value of filling. """
         values = self.source.read(geometry)
+        no_data_value = self.source.no_data_value
         if self.border:
             border = self.border.read(geometry)
         else:
             border = None
-        result = fill(values=values, border=border,
-                      no_data_value=self.source.no_data_value)
-        return {'values': result, 'no_data_value': self.source.no_data_value}
+        result = fill(values=values,
+                      border=border,
+                      no_data_value=no_data_value)
+        result[values != no_data_value] = no_data_value
+        return {'values': result, 'no_data_value': no_data_value}
 
 
 def fillnodata(source_path, target_path, border_path):
