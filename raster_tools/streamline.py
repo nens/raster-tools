@@ -22,38 +22,51 @@ from raster_tools import utils
 from raster_tools import gdal
 from raster_tools import gdal_array
 
+FLOW_ARRAY = np.array([(64, 128, 1),
+                       (32,   0, 2),
+                       (16,   8, 4)], 'u1')
 
-# create lookup table for combined directions
-"""
-1. find separate vectors, or complex numbers?
-2. pick the one with the greatest dot product with the resultant
-"""
+FLOW_INDICES = FLOW_ARRAY.nonzero()
+FLOW_NUMBERS = FLOW_ARRAY[FLOW_INDICES][np.newaxis, ...]
+FLOW_OFFSETS = np.array(FLOW_INDICES).reshape(1, 8, 2) - 1
+FLOW_INVERSE = FLOW_ARRAY[tuple(-np.array(FLOW_OFFSETS[0].T) + 1)][np.newaxis]
 
-encoding = np.arange(0, 256, dtype='u1')
-vector = np.zeros((256, 2))
-for i in 1, 2, 4, 8, 16, 32, 64, 128:
-    s = np.bool8(encoding & i)             # select matched encodings
-    p = np.pi / 4 * np.log2(i)             # trigonometric phase
-    v = np.hstack([np.cos(p), np.sin(p)])  # corresponding vector
-    vector[s] += v                         # add vectors
-
-common = np.zeros((256, 1))
-mapped = np.zeros_like(encoding)
-for i in 1, 2, 4, 8, 16, 32, 64, 128:
-    s = np.bool8(encoding & i)             # select matched encodings
-    p = np.pi / 4 * np.log2(i)             # trigonometric phase
-    v = np.hstack([np.cos(p), np.sin(p)])  # corresponding vector
-    d = (v * vector).sum(1).reshape(-1, 1) # dot product
-    x = np.logical_and(s, d >= common)     # common index
-    common[x] = d[x]
-    mapped[x] = i
-
-print(mapped)
+# FLOW_VECTORS = None  # later, to get rid of trigonometry
+# FLOW_WEIGHTS = None  # later, to get rid of explicit weighting
 
 
+def get_neighbours(indices):
+    """ Return indices to neighbour points if the indices points. """
+    array1 = np.array(indices).transpose().reshape(-1, 1, 2)
+    array8 = array1 + FLOW_OFFSETS
+    return tuple(array8.reshape(-1, 2).transpose())
 
-exit()
 
+def get_look_up_table():
+    """
+    Create and return look-up-table.
+    """
+    # first pass, determine resultant vectors for the encoded components
+    encoding = np.arange(0, 256, dtype='u1')
+    vector = np.zeros((256, 2))
+    for i in 1, 2, 4, 8, 16, 32, 64, 128:
+        s = np.bool8(encoding & i)             # select matched encodings
+        p = np.pi / 4 * np.log2(i)             # trigonometric phase
+        v = np.hstack([np.cos(p), np.sin(p)])  # corresponding vector
+        vector[s] += v                         # add vectors
+
+    # second pass, determine the most common component compared to resultant
+    common = np.zeros(256)
+    mapped = np.zeros_like(encoding)
+    for i in 1, 2, 4, 8, 16, 32, 64, 128:
+        s = np.bool8(encoding & i)             # select matched encodings
+        p = np.pi / 4 * np.log2(i)             # trigonometric phase
+        v = np.hstack([np.cos(p), np.sin(p)])  # corresponding vector
+        d = (v * vector).sum(1)                # dot product
+        x = np.logical_and(s, d >= common)     # common index
+        common[x] = d[x]
+        mapped[x] = i
+    return mapped
 
 
 GTIF = gdal.GetDriverByName(str('gtiff'))
@@ -70,17 +83,20 @@ def fill_simple_depressions(values):
 
 
 def calculate_flow_direction(values):
+    """
+    Single neighbour: Encode directly
+    Multiple neighbours:
+    - Zero drop: Resolve later, iteratively
+    - Nonzero drop: Resolve immediately using look-up table
+    """
     # output and coding
     direction = np.zeros_like(values, dtype='u1')
-    code = np.array([(64, 128, 1),
-                     (32,   0, 2),
-                     (16,   8, 4)], 'u1')
 
     # calculation of drop per neighbour cell
     a, b = 1, math.sqrt(2) / 2
     factor = np.array([(b, a, b),
                        (a, 0, a),
-                       (b, a, b)])
+                       (b, a, b)])  # TODO replace with weights for use in lut
 
     best_drop = np.zeros_like(values)
     for i, j in zip(*factor.nonzero()):
@@ -90,19 +106,68 @@ def calculate_flow_direction(values):
 
         this_drop = ndimage.correlate(values, kernel)
 
-        # better drops replace the direction
-        more_drop = this_drop > best_drop
-        direction[more_drop] = code[i, j]
-        best_drop[more_drop] = this_drop[more_drop]
-
         # same drops add to the direction
         same_drop = this_drop == best_drop
-        direction[same_drop] += code[i, j]
+        direction[same_drop] += FLOW_ARRAY[i, j]
 
-    import ipdb
-    ipdb.set_trace() 
+        # better drops replace the direction
+        more_drop = this_drop > best_drop
+        direction[more_drop] = FLOW_ARRAY[i, j]
+        best_drop[more_drop] = this_drop[more_drop]
+
+    # use look-up-table to eliminate multi-directions for nonzero drops:
+    lut = get_look_up_table()
+    some_drop = best_drop > 0
+    direction[some_drop] = lut[direction[some_drop]]
+
+    # assign outward to edges
+    direction[0, 0] = 64
+    direction[0, 1:-1] = 128
+    direction[0, -1] = 1
+    direction[1:-1, -1] = 2
+    direction[-1, -1] = 4
+    direction[-1, 1:-1] = 8
+    direction[-1, 0] = 16
+    direction[1:-1, 0] = 32
+
+    # iterate to solve undefined directions where possible
+    while True:
+        undefined = np.bool8(np.log2(direction) % 1)
+        edges = undefined - ndimage.binary_erosion(undefined)
+
+        t_index1 = edges.nonzero()
+        direction1 = direction[t_index1]
+
+        # find neigh
+        t_index8 = get_neighbours(t_index1)
+        direction8 = direction[t_index8].reshape(-1, 8)
+
+        # neighbour must be in encoded direction
+        b_index8a = np.bool8(direction1[:, np.newaxis] & FLOW_NUMBERS)
+        # neighbour must have a defined flow direction
+        b_index8b = ~np.bool8(np.log2(direction8))
+        # that direction must not point towards the cell to be defined
+        b_index8c = direction1[:, np.newaxis] != FLOW_INVERSE
+        # combined index
+        b_index8 = np.logical_and.reduce([b_index8a, b_index8b, b_index8c])
+
+        if not b_index8.any():
+            break
+
+        argmax = np.argmax(b_index8, axis=1)
+        nonzero = b_index8.any(axis=1)
+        superindex = tuple([t_index1[0][nonzero], t_index1[1][nonzero]])
+        direction[superindex] = FLOW_NUMBERS[0, argmax[nonzero]]
 
     return direction
+
+
+def fill_complex_depressions(direction, values):
+    undefined = np.bool8(np.log2(direction) % 1)
+    label, count = ndimage.label(undefined)
+    hi, lo = values.max(), values.min()
+    unsigned = ((values - lo / (hi - lo)) * 65535).astype('u2')
+    return ndimage.watershed_ift(unsigned, markers=label)
 
 
 class Streamliner(object):
@@ -143,18 +208,22 @@ class Streamliner(object):
         # data
         window = self.geo_transform.get_window(geometry)
         values = self.raster_dataset.ReadAsArray(**window)
-        no_data_value = self.no_data_value
+        # no_data_value = self.no_data_value
 
         # processing
         fill_simple_depressions(values)
-        values = calculate_flow_direction(values)
+
+        direction = calculate_flow_direction(values)
+
+        values = fill_complex_depressions(values=values, direction=direction)
 
         # save
         values = values[np.newaxis]
         options = ['compress=deflate', 'tiled=yes']
         kwargs = {'projection': self.projection,
                   'geo_transform': geo_transform,
-                  'no_data_value': no_data_value.item()}
+                  # 'no_data_value': no_data_value.item()}
+                  'no_data_value': None}
 
         with datasets.Dataset(values, **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=options)
