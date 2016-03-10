@@ -121,14 +121,14 @@ def calculate_flow_direction(values):
     direction[some_drop] = lut[direction[some_drop]]
 
     # assign outward to edges
-    direction[0, 0] = 64
-    direction[0, 1:-1] = 128
     direction[0, -1] = 1
     direction[1:-1, -1] = 2
     direction[-1, -1] = 4
     direction[-1, 1:-1] = 8
     direction[-1, 0] = 16
     direction[1:-1, 0] = 32
+    direction[0, 0] = 64
+    direction[0, 1:-1] = 128
 
     # iterate to solve undefined directions where possible
     while True:
@@ -159,15 +159,24 @@ def calculate_flow_direction(values):
         superindex = tuple([t_index1[0][nonzero], t_index1[1][nonzero]])
         direction[superindex] = FLOW_NUMBERS[0, argmax[nonzero]]
 
-    return direction
+    # set still undefined directions (complex depressions) to zero
+    return np.where(np.log2(direction) % 1, 0, direction)
 
 
 def fill_complex_depressions(direction, values):
-    undefined = np.bool8(np.log2(direction) % 1)
-    label, count = ndimage.label(undefined)
+    """ Return watershed, the rest remains to be solved later. """
+    label, count = ndimage.label(direction == 0)
     hi, lo = values.max(), values.min()
     unsigned = ((values - lo / (hi - lo)) * 65535).astype('u2')
     return ndimage.watershed_ift(unsigned, markers=label)
+
+
+def calculate_flow_accumulation(direction):
+    # start with any defined direction as 0 and the rest as maxint
+    # add 1 to any cell pointed to, or first uniq -c it.
+    # any cell updated is basis for next step.
+    import ipdb
+    ipdb.set_trace()
 
 
 class Streamliner(object):
@@ -212,10 +221,9 @@ class Streamliner(object):
 
         # processing
         fill_simple_depressions(values)
-
         direction = calculate_flow_direction(values)
-
-        values = fill_complex_depressions(values=values, direction=direction)
+        accumulation = calculate_flow_accumulation(direction)
+        values = accumulation
 
         # save
         values = values[np.newaxis]
