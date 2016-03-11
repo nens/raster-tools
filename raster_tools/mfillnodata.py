@@ -13,69 +13,33 @@ import argparse
 import os
 
 import numpy as np
-from scipy import ndimage
 
 from raster_tools import datasets
 from raster_tools import utils
 
-from raster_tools import ogr
 from raster_tools import fillnodata
+from raster_tools import gdal
 
 GTIF = gdal.GetDriverByName(str('gtiff'))
 
-def zoom(values):
-    """ Return zoomed array. """
-    return values.repeat(2, axis=0).repeat(2, axis=1)
 
-
-def smooth(values):
-    """ Two-step uniform for symmetric smoothing. """
-    return ndimage.correlate(values, KERNEL)
-
-
-def fill(values, no_data_value):
+def fill(index_path, source_path, border_path, output_path, part):
     """
-    Fill must return a filled array. It does so by aggregating, requesting
-    a fill for that, and zooming back. After zooming back, it smooths
-    the filled values and returns.
     """
-    mask = values == no_data_value
-    if not mask.any():
-        # this should end the recursion
-        return values
+    # select some or all polygons
+    index = utils.PartialDataSource(index_path)
+    if part is not None:
+        index = index.select(part)
 
-    # aggregate
-    filled = fill(**utils.aggregate(values=values,
-                                    no_data_value=no_data_value))
-    zoomed = zoom(filled)[:values.shape[0], :values.shape[1]]
-    return np.where(mask, smooth(zoomed), values)
+    filler = fillnodata.Filler(source_path=source_path,
+                               border_path=border_path)
 
-
-class Filler(object):
-    def __init__(self, output_path, raster_path):
-        # paths and source data
-        self.output_path = output_path
-        self.raster_dataset = gdal.Open(raster_path)
-
-        # geospatial reference
-        geo_transform = self.raster_dataset.GetGeoTransform()
-        self.geo_transform = utils.GeoTransform(geo_transform)
-        self.projection = self.raster_dataset.GetProjection()
-
-        # data settings
-        band = self.raster_dataset.GetRasterBand(1)
-        data_type = band.DataType
-        no_data_value = band.GetNoDataValue()
-        self.no_data_value = gdal_array.flip_code(data_type)(no_data_value)
-
-    def fill(self, index_feature):
+    for feature in index:
         # target path
-        name = index_feature[str('name')]
-        path = os.path.join(self.output_path,
-                            leaf_number[:2],
-                            '{}.tif'.format(name))
+        name = feature[str('bladnr')]
+        path = os.path.join(output_path, name[:3], '{}.tif'.format(name))
         if os.path.exists(path):
-            return
+            continue
 
         # create directory
         try:
@@ -84,57 +48,32 @@ class Filler(object):
             pass  # no problem
 
         # geometries
-        inner_geometry = index_feature.geometry()
-        outer_geometry = inner_geometry.Buffer(0, 1)
+        inner_geometry = feature.geometry()
+        outer_geometry = inner_geometry.Buffer(32, 1)
 
         # geo transforms
-        inner_geo_transform = self.geo_transform.shifted(inner_geometry)
-        outer_geo_transform = self.geo_transform.shifted(outer_geometry)
-
-        # data
-        window = self.geo_transform.get_window(outer_geometry)
-        values = self.raster_dataset.ReadAsArray(**window)
-        no_data_value = self.no_data_value
-
-        if values is None or np.equal(values, no_data_value).all():
-            return
+        geo_transform = filler.source.geo_transform
+        inner_geo_transform = geo_transform.shifted(inner_geometry)
+        outer_geo_transform = geo_transform.shifted(outer_geometry)
 
         # fill
-        filled = fill(values=values, no_data_value=no_data_value)
+        result = filler.fill(outer_geometry)
 
         # cut out
         slices = outer_geo_transform.get_slices(inner_geometry)
-        values = values[slices]
-        filled = filled[slices]
-
-        target = np.where(
-            np.equal(values, self.no_data_value),
-            filled,
-            self.no_data_value,
-        )[np.newaxis]
+        values = result['values'][slices]
+        no_data_value = result['no_data_value']
+        if np.equal(values, no_data_value).all():
+            return
 
         # save
         options = ['compress=deflate', 'tiled=yes']
-        kwargs = {'projection': self.projection,
+        kwargs = {'projection': filler.source.projection,
                   'geo_transform': inner_geo_transform,
-                  'no_data_value': self.no_data_value.item()}
+                  'no_data_value': no_data_value.item()}
 
-        with datasets.Dataset(target, **kwargs) as dataset:
+        with datasets.Dataset(values[np.newaxis], **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=options)
-
-
-def fill(index_path, raster_path, output_path, part):
-    """
-    """
-    # select some or all polygons
-    index = utils.PartialDataSource(index_path)
-    if part is not None:
-        index = index.select(part)
-
-    filler = Filler(raster_path=raster_path, output_path=output_path)
-
-    for feature in index:
-        filler.fill(feature)
     return 0
 
 
@@ -149,9 +88,14 @@ def get_parser():
         help='shapefile with geometries and names of output tiles',
     )
     parser.add_argument(
-        'raster_path',
-        metavar='RASTER',
+        'source_path',
+        metavar='SOURCE',
         help='source GDAL raster dataset with voids'
+    )
+    parser.add_argument(
+        'border_path',
+        metavar='BORDER',
+        help='Filled aggregated raster that ends the recursive filling.'
     )
     parser.add_argument(
         'output_path',
@@ -163,8 +107,6 @@ def get_parser():
         help='partial processing source, for example "2/3"',
     )
     return parser
-
-
 
 
 def main():
