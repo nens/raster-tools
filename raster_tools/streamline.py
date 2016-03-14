@@ -22,54 +22,41 @@ from raster_tools import utils
 from raster_tools import gdal
 from raster_tools import gdal_array
 
-FLOW_ARRAY = np.array([(64, 128, 1),
-                       (32,   0, 2),
-                       (16,   8, 4)], 'u1')
+GTIF = gdal.GetDriverByName(str('gtiff'))
+DTYPE = np.dtype('i8, i8')
 
-FLOW_INDICES = FLOW_ARRAY.nonzero()
-FLOW_NUMBERS = FLOW_ARRAY[FLOW_INDICES][np.newaxis, ...]
-FLOW_OFFSETS = np.array(FLOW_INDICES).transpose()[np.newaxis] - 1
-FLOW_INVERSE = FLOW_ARRAY[tuple(-np.array(FLOW_OFFSETS[0].T) + 1)][np.newaxis]
+COURSES = np.array([(64, 128, 1),
+                    (32,   0, 2),
+                    (16,   8, 4)], 'u1')
 
-# FLOW_VECTORS = None  # later, to get rid of trigonometry
-# FLOW_WEIGHTS = None  # later, to get rid of explicit weighting
+INDICES = COURSES.nonzero()
+NUMBERS = COURSES[INDICES][np.newaxis, ...]
+OFFSETS = np.array(INDICES).transpose()[np.newaxis] - 1
+WEIGHTS = 1 / np.sqrt(np.square(OFFSETS).sum(2))
+VECTORS = OFFSETS * WEIGHTS[..., np.newaxis]
+INVERSE = COURSES[tuple(-np.array(OFFSETS[0].T) + 1)][np.newaxis]
 
 
 def get_neighbours(indices):
-    """ Return indices to neighbour points if the indices points. """
+    """ Return indices to neighbour points of the indices points. """
     array1 = np.array(indices).transpose().reshape(-1, 1, 2)
-    array8 = array1 + FLOW_OFFSETS
+    array8 = array1 + OFFSETS
     return tuple(array8.reshape(-1, 2).transpose())
 
 
 def get_look_up_table():
-    """
-    Create and return look-up-table.
-    """
-    # first pass, determine resultant vectors for the encoded components
-    encoding = np.arange(0, 256, dtype='u1')
-    vector = np.zeros((256, 2))
-    for i in 1, 2, 4, 8, 16, 32, 64, 128:
-        s = np.bool8(encoding & i)             # select matched encodings
-        p = np.pi / 4 * np.log2(i)             # trigonometric phase
-        v = np.hstack([np.cos(p), np.sin(p)])  # corresponding vector
-        vector[s] += v                         # add vectors
+    """ Create and return look-up-table. """
+    # resultant vectors
+    encode = np.arange(256, dtype='u1')[:, np.newaxis]    # which courses
+    select = np.bool8(encode & NUMBERS)[..., np.newaxis]  # which numbers
+    result = (select * VECTORS).sum(1)[:, np.newaxis, :]  # what resultant
 
-    # second pass, determine the most common component compared to resultant
-    common = np.zeros(256)
-    mapped = np.zeros_like(encoding)
-    for i in 1, 2, 4, 8, 16, 32, 64, 128:
-        s = np.bool8(encoding & i)             # select matched encodings
-        p = np.pi / 4 * np.log2(i)             # trigonometric phase
-        v = np.hstack([np.cos(p), np.sin(p)])  # corresponding vector
-        d = (v * vector).sum(1)                # dot product
-        x = np.logical_and(s, d >= common)     # common index
-        common[x] = d[x]
-        mapped[x] = i
+    # select courses with the highest dotproduct and
+    common = (result * VECTORS).sum(2)                    # best direction
+    fitted = (common * select[..., 0]).argmax(1)          # fitting encoded
+    mapped = NUMBERS[0, fitted]                           # mapping
+    mapped[0] = 0
     return mapped
-
-
-GTIF = gdal.GetDriverByName(str('gtiff'))
 
 
 def fill_simple_depressions(values):
@@ -82,6 +69,39 @@ def fill_simple_depressions(values):
     values[locs] = edge[locs]
 
 
+def calculate_uphill(values):
+    """ Return course encoded uphill directions. """
+    uphill = np.zeros(values.shape, dtype='u1')
+    h, w = values.shape
+    for (i, j), k in zip(OFFSETS[0], NUMBERS[0]):
+        u1 = max(0, -i)
+        u2 = min(h, h - i)
+        v1 = max(0, -j)
+        v2 = min(w, w - j)
+        slices1 = slice(u1, u2), slice(v1, v2)
+        slices2 = slice(u1 + i, u2 + i), slice(v1 + j, v2 + j)
+        uphill[slices1] += k * (values[slices2] >= values[slices1])
+    return uphill
+
+
+def get_traveled(indices, courses):
+    """ Return indices when travelling along courses. """
+    # turn indices into points array
+    points = np.array(indices).transpose()[:, np.newaxis, :]  # make points
+
+    # determine uphill directions and apply offsets
+    encode = courses[indices][:, np.newaxis]                   # which codes
+    select = np.bool8(encode & NUMBERS)[..., np.newaxis]       # which courses
+    target = (points + select * OFFSETS).reshape(-1, 2)        # apply offsets
+
+    # select unique points
+    unique = np.unique(
+        np.ascontiguousarray(target).view(DTYPE)
+    ).view(target.dtype).reshape(-1, 2)
+
+    return tuple(unique.transpose())                            # return tuple
+
+
 def fill_complex_depressions(values, mask=None):
     """
     Fill complex depressions in a bottom-up approach, roughly analogous to:
@@ -92,8 +112,8 @@ def fill_complex_depressions(values, mask=None):
     :param values: DEM values
     :param mask: cells defined as not-in-a-depression
     """
-    # start with edges marked as not-in-a-depression
     if mask is None:
+        # start with edges marked as not-in-a-depression
         mask = np.zeros(values.shape, dtype='b1')
         mask[0, :-1] = True
         mask[:-1, -1] = True
@@ -103,36 +123,26 @@ def fill_complex_depressions(values, mask=None):
     # structure allows for diagonal flow
     structure = np.ones((3, 3))
 
-    while not mask.all():
+    while True:
+        # iterate to find outer contours of depressions
+        uphill = calculate_uphill(values)
+        indices = np.nonzero(
+            mask - ndimage.binary_erosion(mask, structure=structure),
+        )
 
-        # iterate to find outer countours of depressions
         while True:
-            edges = ndimage.binary_dilation(mask, structure=structure) - mask
-
-            # find edge values
-            t_index1 = edges.nonzero()
-            values1 = values[t_index1][:, np.newaxis]
-
-            # find neighbour values
-            t_index8 = get_neighbours(t_index1)
-            values8 = values[t_index8].reshape(-1, 8)
-
-            # neighbours that are lower than edge values
-            b_index8a = values8 <= values1
-            # neighbours that are marked as not-in-a-depression
-            b_index8b = mask[t_index8].reshape(-1, 8)
-            # combined index into edge values to set to true
-            b_index8 = np.logical_and.reduce([b_index8a, b_index8b])
-
-            if not b_index8.any():
+            upwards = get_traveled(indices=indices, courses=uphill)
+            unknown = ~mask[upwards]
+            if not unknown.any():
                 break
 
-            # adjust mask
-            mask[t_index1] = b_index8.any(axis=1)
+            indices = upwards[0][unknown], upwards[1][unknown]
+            mask[indices] = True
 
-            # print((~mask).sum())
-
-        if mask.all():
+        # done when all masked
+        all_masked = mask.all()
+        print(mask.size - mask.sum())
+        if all_masked:
             return
 
         # include edges of undefined, this may merge adjacent depressions
@@ -183,11 +193,11 @@ def calculate_flow_direction(values):
 
         # same drops add to the direction
         same_drop = this_drop == best_drop
-        direction[same_drop] += FLOW_ARRAY[i, j]
+        direction[same_drop] += COURSES[i, j]
 
         # better drops replace the direction
         more_drop = this_drop > best_drop
-        direction[more_drop] = FLOW_ARRAY[i, j]
+        direction[more_drop] = COURSES[i, j]
         best_drop[more_drop] = this_drop[more_drop]
 
     # use look-up-table to eliminate multi-directions for nonzero drops:
@@ -218,11 +228,11 @@ def calculate_flow_direction(values):
         direction8 = direction[t_index8].reshape(-1, 8)
 
         # neighbour must be in encoded direction
-        b_index8a = np.bool8(direction1 & FLOW_NUMBERS)
+        b_index8a = np.bool8(direction1 & NUMBERS)
         # neighbour must have a defined flow direction
         b_index8b = ~np.bool8(np.log2(direction8))
         # that direction must not point towards the cell to be defined
-        b_index8c = direction1 != FLOW_INVERSE
+        b_index8c = direction1 != INVERSE
         # combined index
         b_index8 = np.logical_and.reduce([b_index8a, b_index8b, b_index8c])
 
@@ -232,7 +242,7 @@ def calculate_flow_direction(values):
         argmax = np.argmax(b_index8, axis=1)
         nonzero = b_index8.any(axis=1)
         superindex = tuple([t_index1[0][nonzero], t_index1[1][nonzero]])
-        direction[superindex] = FLOW_NUMBERS[0, argmax[nonzero]]
+        direction[superindex] = NUMBERS[0, argmax[nonzero]]
 
     # set still undefined directions (complex depressions) to zero
     return np.where(np.log2(direction) % 1, 0, direction)
@@ -277,7 +287,7 @@ class Streamliner(object):
         except OSError:
             pass  # no problem
 
-        geometry = index_feature.geometry().Buffer(0)
+        geometry = index_feature.geometry().Buffer(-400)
         geo_transform = self.geo_transform.shifted(geometry)
 
         # data
