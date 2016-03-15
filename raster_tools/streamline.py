@@ -84,7 +84,7 @@ def calculate_uphill(values):
     return uphill
 
 
-def get_traveled(indices, courses):
+def get_traveled(indices, courses, unique):
     """ Return indices when travelling along courses. """
     # turn indices into points array
     points = np.array(indices).transpose()[:, np.newaxis, :]  # make points
@@ -94,15 +94,15 @@ def get_traveled(indices, courses):
     select = np.bool8(encode & NUMBERS)[..., np.newaxis]       # which courses
     target = (points + select * OFFSETS).reshape(-1, 2)        # apply offsets
 
-    # select unique points
-    unique = np.unique(
-        np.ascontiguousarray(target).view(DTYPE)
-    ).view(target.dtype).reshape(-1, 2)
+    if unique:
+        target = np.unique(
+            np.ascontiguousarray(target).view(DTYPE)
+        ).view(target.dtype).reshape(-1, 2)
 
-    return tuple(unique.transpose())                            # return tuple
+    return tuple(target.transpose())                           # return tuple
 
 
-def fill_complex_depressions(values, mask=None):
+def _fill_complex_depressions(values, mask=None, unique=False):
     """
     Fill complex depressions in a bottom-up approach, roughly analogous to:
 
@@ -121,50 +121,79 @@ def fill_complex_depressions(values, mask=None):
         mask[1:, 0] = True
 
     # structure allows for diagonal flow
-    structure = np.ones((3, 3))
+    kwargs = {'structure': np.ones((3, 3))}
 
+    # initial uphill and indices
+    uphill = calculate_uphill(values)
+    indices = np.nonzero(
+        mask - ndimage.binary_erosion(mask, **kwargs),
+    )
+
+    # iterate to raise depressions to pour points
     while True:
         # iterate to find outer contours of depressions
-        uphill = calculate_uphill(values)
-        indices = np.nonzero(
-            mask - ndimage.binary_erosion(mask, structure=structure),
-        )
-
         while True:
-            upwards = get_traveled(indices=indices, courses=uphill)
+            upwards = get_traveled(unique=unique,
+                                   courses=uphill,
+                                   indices=indices)
             unknown = ~mask[upwards]
             if not unknown.any():
                 break
 
-            indices = upwards[0][unknown], upwards[1][unknown]
+            diff = np.zeros_like(mask)
+            diff[upwards[0][unknown], upwards[1][unknown]] = True
+
+            if unique:
+                indices = upwards[0][unknown], upwards[1][unknown]
+            else:
+                indices = diff.nonzero()
+
             mask[indices] = True
 
         # done when all masked
         all_masked = mask.all()
-        print(mask.size - mask.sum())
         if all_masked:
             return
 
-        # include edges of undefined, this may merge adjacent depressions
-        dilated = ndimage.binary_dilation(~mask, structure=structure)
-        # label these depressions
-        label_total, count = ndimage.label(dilated, structure=structure)
-        # label their edges as well
-        label_edges = (dilated - ~mask) * label_total
-        # measure the minimum of the edge per depression
-        label_minima = ndimage.minimum(
-            values,
-            labels=label_edges,
-            index=range(1, count + 1),
-        )
-        # make a mapping array that links label to edge minima
-        label_mapper = np.hstack([
-            np.finfo(label_minima.dtype).min, label_minima,
-        ])
-        # fill depressions up to these minima
-        nonzero = label_total.nonzero()
-        values[nonzero] = np.maximum(values[nonzero],
-                                     label_mapper[label_total[nonzero]])
+        # determine labeled depressions and surrounding contours
+        diff = np.zeros_like(mask)
+        label, total = ndimage.label(~mask, **kwargs)
+        for count, slices in enumerate(ndimage.find_objects(label), 1):
+            slices = tuple(slice(s.start - 1, s.stop + 1) for s in slices)
+            depress = (label[slices] == count)
+            dilated = ndimage.binary_dilation(depress, **kwargs)
+
+            # determine contour and mark as starting point for next iteration
+            contour = dilated - depress
+            diff[slices][contour] = True
+
+            # make contour minimum the new lower limit for the depression
+            minimum = values[slices][contour].min()
+            values[slices][dilated] = np.maximum(minimum,
+                                                 values[slices][dilated])
+
+        # recalculate uphill and take contours as new indices
+        uphill = calculate_uphill(values)
+        indices = diff.nonzero()
+
+
+def fill_complex_depressions(values, mask=None):
+    """
+    Two stage filling.
+    """
+    # stage 1: blocks of 100 x 100
+    height, width = values.shape
+    for step, offset in (100, 0), (100, 50):
+        for y in range(offset, 1 + height - step, step):
+            for x in range(offset, 1 + width - step, step):
+                slices = slice(y, y + step), slice(x, x + step)
+                _fill_complex_depressions(
+                    unique=False,
+                    values=values[slices],
+                    mask=None if mask is None else mask[slices],
+                )
+    # stage 2: complete area
+    _fill_complex_depressions(values=values, mask=mask, unique=True)
 
 
 def calculate_flow_direction(values):
@@ -287,7 +316,7 @@ class Streamliner(object):
         except OSError:
             pass  # no problem
 
-        geometry = index_feature.geometry().Buffer(-400)
+        geometry = index_feature.geometry().Buffer(0)
         geo_transform = self.geo_transform.shifted(geometry)
 
         # data
@@ -297,9 +326,11 @@ class Streamliner(object):
 
         # processing
         fill_simple_depressions(values)
+        before = values.copy()
         fill_complex_depressions(values)
-        direction = calculate_flow_direction(values)
-        direction
+        values = values - before
+        # direction = calculate_flow_direction(values)
+        # direction
         # accumulation = calculate_flow_accumulation(direction)
         # values = accumulation
 
@@ -309,7 +340,7 @@ class Streamliner(object):
         kwargs = {'projection': self.projection,
                   'geo_transform': geo_transform,
                   # 'no_data_value': no_data_value.item()}
-                  'no_data_value': None}
+                  'no_data_value': 0}
 
         with datasets.Dataset(values, **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=options)
