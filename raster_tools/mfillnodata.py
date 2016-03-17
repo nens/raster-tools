@@ -64,7 +64,7 @@ def fill(index_path, source_path, border_path, output_path, part):
         values = result['values'][slices]
         no_data_value = result['no_data_value']
         if np.equal(values, no_data_value).all():
-            return
+            continue
 
         # save
         options = ['compress=deflate', 'tiled=yes']
@@ -74,7 +74,6 @@ def fill(index_path, source_path, border_path, output_path, part):
 
         with datasets.Dataset(values[np.newaxis], **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=options)
-    return 0
 
 
 def get_parser():

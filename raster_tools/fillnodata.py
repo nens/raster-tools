@@ -78,6 +78,9 @@ class Filler(object):
         no_data_value = self.source.no_data_value
         if self.border:
             border = self.border.read(geometry)
+            if (border == self.border.no_data_value).any():
+                # triggers infinite recursion or gives undesired results
+                return {'values': values, 'no_data_value': no_data_value}
         else:
             border = None
         result = fill(values=values,
@@ -125,7 +128,7 @@ def get_parser():
         '--border', '-b',
         metavar='BORDER',
         dest='border_path',
-        help='target GDAL raster without voids',
+        help='preaggregated GDAL border raster without voids',
     )
     return parser
 
