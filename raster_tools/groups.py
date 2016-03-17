@@ -31,7 +31,11 @@ class Meta(object):
 
         # not compared
         self.dtype = np.dtype(numpy_type)
-        self.no_data_value = numpy_type(band.GetNoDataValue())
+        no_data_value = band.GetNoDataValue()
+        # if no_data_value is None:
+        #   # self.no_data_value = None
+        # else:
+        self.no_data_value = numpy_type(no_data_value)
 
     def __eq__(self, other):
         return (self.width == other.width and

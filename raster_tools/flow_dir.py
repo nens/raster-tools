@@ -10,7 +10,6 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
-import math
 import os
 
 from scipy import ndimage
@@ -59,31 +58,6 @@ def get_look_up_table():
     return mapped
 
 
-def fill_simple_depressions(values):
-    """ Fill simple depressions in-place. """
-    footprint = np.array([(1, 1, 1),
-                          (1, 0, 1),
-                          (1, 1, 1)], dtype='b1')
-    edge = ndimage.minimum_filter(values, footprint=footprint)
-    locs = edge > values
-    values[locs] = edge[locs]
-
-
-def calculate_uphill(values):
-    """ Return course encoded uphill directions. """
-    uphill = np.zeros(values.shape, dtype='u1')
-    h, w = values.shape
-    for (i, j), k in zip(OFFSETS[0], NUMBERS[0]):
-        u1 = max(0, -i)
-        u2 = min(h, h - i)
-        v1 = max(0, -j)
-        v2 = min(w, w - j)
-        slices1 = slice(u1, u2), slice(v1, v2)
-        slices2 = slice(u1 + i, u2 + i), slice(v1 + j, v2 + j)
-        uphill[slices1] += k * (values[slices2] >= values[slices1])
-    return uphill
-
-
 def get_traveled(indices, courses, unique):
     """ Return indices when travelling along courses. """
     # turn indices into points array
@@ -102,100 +76,6 @@ def get_traveled(indices, courses, unique):
     return tuple(target.transpose())                           # return tuple
 
 
-def _fill_complex_depressions(values, mask=None, unique=False):
-    """
-    Fill complex depressions in a bottom-up approach, roughly analogous to:
-
-    http://topotools.cr.usgs.gov/pdfs/
-    methods_applications_surface_depression_analysis.pdf
-
-    :param values: DEM values
-    :param mask: cells defined as not-in-a-depression
-    """
-    if mask is None:
-        # start with edges marked as not-in-a-depression
-        mask = np.zeros(values.shape, dtype='b1')
-        mask[0, :-1] = True
-        mask[:-1, -1] = True
-        mask[-1, 1:] = True
-        mask[1:, 0] = True
-
-    # structure allows for diagonal flow
-    kwargs = {'structure': np.ones((3, 3))}
-
-    # initial uphill and indices
-    uphill = calculate_uphill(values)
-    indices = np.nonzero(
-        mask - ndimage.binary_erosion(mask, **kwargs),
-    )
-
-    # iterate to raise depressions to pour points
-    while True:
-        # iterate to find outer contours of depressions
-        while True:
-            upwards = get_traveled(unique=unique,
-                                   courses=uphill,
-                                   indices=indices)
-            unknown = ~mask[upwards]
-            if not unknown.any():
-                break
-
-            diff = np.zeros_like(mask)
-            diff[upwards[0][unknown], upwards[1][unknown]] = True
-
-            if unique:
-                indices = upwards[0][unknown], upwards[1][unknown]
-            else:
-                indices = diff.nonzero()
-
-            mask[indices] = True
-
-        # done when all masked
-        all_masked = mask.all()
-        if all_masked:
-            return
-
-        # determine labeled depressions and surrounding contours
-        diff = np.zeros_like(mask)
-        label, total = ndimage.label(~mask, **kwargs)
-        for count, slices in enumerate(ndimage.find_objects(label), 1):
-            slices = tuple(slice(s.start - 1, s.stop + 1) for s in slices)
-            depress = (label[slices] == count)
-            dilated = ndimage.binary_dilation(depress, **kwargs)
-
-            # determine contour and mark as starting point for next iteration
-            contour = dilated - depress
-            diff[slices][contour] = True
-
-            # make contour minimum the new lower limit for the depression
-            minimum = values[slices][contour].min()
-            values[slices][dilated] = np.maximum(minimum,
-                                                 values[slices][dilated])
-
-        # recalculate uphill and take contours as new indices
-        uphill = calculate_uphill(values)
-        indices = diff.nonzero()
-
-
-def fill_complex_depressions(values, mask=None):
-    """
-    Two stage filling.
-    """
-    # stage 1: blocks of 100 x 100
-    height, width = values.shape
-    for step, offset in (100, 0), (100, 50):
-        for y in range(offset, 1 + height - step, step):
-            for x in range(offset, 1 + width - step, step):
-                slices = slice(y, y + step), slice(x, x + step)
-                _fill_complex_depressions(
-                    unique=False,
-                    values=values[slices],
-                    mask=None if mask is None else mask[slices],
-                )
-    # stage 2: complete area
-    _fill_complex_depressions(values=values, mask=mask, unique=True)
-
-
 def calculate_flow_direction(values):
     """
     Single neighbour: Encode directly
@@ -203,14 +83,12 @@ def calculate_flow_direction(values):
     - Zero drop: Resolve later, iteratively
     - Nonzero drop: Resolve immediately using look-up table
     """
-    # output and coding
+    # output
     direction = np.zeros_like(values, dtype='u1')
 
     # calculation of drop per neighbour cell
-    a, b = 1, math.sqrt(2) / 2
-    factor = np.array([(b, a, b),
-                       (a, 0, a),
-                       (b, a, b)])  # TODO replace with weights for use in lut
+    factor = np.zeros((3, 3))
+    factor[INDICES] = WEIGHTS[0]
 
     best_drop = np.zeros_like(values)
     for i, j in zip(*factor.nonzero()):
@@ -221,7 +99,7 @@ def calculate_flow_direction(values):
         this_drop = ndimage.correlate(values, kernel)
 
         # same drops add to the direction
-        same_drop = this_drop == best_drop
+        same_drop = (this_drop == best_drop)
         direction[same_drop] += COURSES[i, j]
 
         # better drops replace the direction
@@ -231,7 +109,7 @@ def calculate_flow_direction(values):
 
     # use look-up-table to eliminate multi-directions for nonzero drops:
     lut = get_look_up_table()
-    some_drop = best_drop > 0
+    some_drop = (best_drop > 0)
     direction[some_drop] = lut[direction[some_drop]]
 
     # assign outward to edges
@@ -245,9 +123,11 @@ def calculate_flow_direction(values):
     direction[0, 1:-1] = 128
 
     # iterate to solve undefined directions where possible
+    kwargs = {'structure': np.ones((3, 3))}
+
     while True:
         undefined = np.bool8(np.log2(direction) % 1)
-        edges = undefined - ndimage.binary_erosion(undefined)
+        edges = undefined - ndimage.binary_erosion(undefined, **kwargs)
 
         t_index1 = edges.nonzero()
         direction1 = direction[t_index1][:, np.newaxis]
@@ -259,9 +139,9 @@ def calculate_flow_direction(values):
         # neighbour must be in encoded direction
         b_index8a = np.bool8(direction1 & NUMBERS)
         # neighbour must have a defined flow direction
-        b_index8b = ~np.bool8(np.log2(direction8))
+        b_index8b = ~np.bool8(np.log2(direction8) % 1)
         # that direction must not point towards the cell to be defined
-        b_index8c = direction1 != INVERSE
+        b_index8c = direction8 != INVERSE
         # combined index
         b_index8 = np.logical_and.reduce([b_index8a, b_index8b, b_index8c])
 
@@ -277,14 +157,7 @@ def calculate_flow_direction(values):
     return np.where(np.log2(direction) % 1, 0, direction)
 
 
-def calculate_flow_accumulation(direction):
-    # start with any defined direction as 0 and the rest as maxint
-    # add 1 to any cell pointed to, or first uniq -c it.
-    # any cell updated is basis for next step.
-    pass
-
-
-class Streamliner(object):
+class DirectionCalculator(object):
     def __init__(self, output_path, raster_path):
         # paths and source data
         self.output_path = output_path
@@ -301,11 +174,11 @@ class Streamliner(object):
         no_data_value = band.GetNoDataValue()
         self.no_data_value = gdal_array.flip_code(data_type)(no_data_value)
 
-    def streamline(self, index_feature):
+    def calculate(self, index_feature):
         # target path
         name = index_feature[str('bladnr')]
         path = os.path.join(self.output_path,
-                            name[:2],
+                            name[:3],
                             '{}.tif'.format(name))
         if os.path.exists(path):
             return
@@ -322,31 +195,21 @@ class Streamliner(object):
         # data
         window = self.geo_transform.get_window(geometry)
         values = self.raster_dataset.ReadAsArray(**window)
-        # no_data_value = self.no_data_value
 
         # processing
-        fill_simple_depressions(values)
-        before = values.copy()
-        fill_complex_depressions(values)
-        values = values - before
-        # direction = calculate_flow_direction(values)
-        # direction
-        # accumulation = calculate_flow_accumulation(direction)
-        # values = accumulation
+        direction = calculate_flow_direction(values)[np.newaxis]
 
-        # save
-        values = values[np.newaxis]
+        # saving
         options = ['compress=deflate', 'tiled=yes']
         kwargs = {'projection': self.projection,
                   'geo_transform': geo_transform,
-                  # 'no_data_value': no_data_value.item()}
-                  'no_data_value': 0}
+                  'no_data_value': None}
 
-        with datasets.Dataset(values, **kwargs) as dataset:
+        with datasets.Dataset(direction, **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=options)
 
 
-def streamline(index_path, part, **kwargs):
+def flow_dir(index_path, part, **kwargs):
     """
     """
     # select some or all polygons
@@ -354,10 +217,10 @@ def streamline(index_path, part, **kwargs):
     if part is not None:
         index = index.select(part)
 
-    streamliner = Streamliner(**kwargs)
+    calculator = DirectionCalculator(**kwargs)
 
     for feature in index:
-        streamliner.streamline(feature)
+        calculator.calculate(feature)
     return 0
 
 
@@ -396,4 +259,4 @@ def get_parser():
 def main():
     """ Call aggregate with args from parser. """
     kwargs = vars(get_parser().parse_args())
-    streamline(**kwargs)
+    flow_dir(**kwargs)
