@@ -87,12 +87,13 @@ def _fill_complex_depressions(values, mask=None, unique=False):
     :param mask: cells defined as not-in-a-depression
     """
     if mask is None:
-        # start with edges marked as not-in-a-depression
         mask = np.zeros(values.shape, dtype='b1')
-        mask[0, :-1] = True
-        mask[:-1, -1] = True
-        mask[-1, 1:] = True
-        mask[1:, 0] = True
+
+    # mark edges as not-in-a-depression
+    mask[0, :-1] = True
+    mask[:-1, -1] = True
+    mask[-1, 1:] = True
+    mask[1:, 0] = True
 
     # structure allows for diagonal flow
     kwargs = {'structure': np.ones((3, 3))}
@@ -171,10 +172,11 @@ def fill_complex_depressions(values, mask=None):
 
 
 class PitFiller(object):
-    def __init__(self, output_path, raster_path):
+    def __init__(self, output_path, raster_path, cover_path):
         # paths and source data
         self.output_path = output_path
         self.raster_dataset = gdal.Open(raster_path)
+        self.cover_dataset = gdal.Open(cover_path)
 
         # geospatial reference
         geo_transform = self.raster_dataset.GetGeoTransform()
@@ -208,11 +210,23 @@ class PitFiller(object):
         # data
         window = self.geo_transform.get_window(geometry)
         values = self.raster_dataset.ReadAsArray(**window)
+        cover = self.cover_dataset.ReadAsArray(**window)
+        mask = (cover == 144)  # inner water
         no_data_value = self.no_data_value
+
+        # set buildings to maximum dem before directions
+        cover = self.cover_dataset.ReadAsArray(**window)
+        maximum = np.finfo(values.dtype).max
+        building = np.logical_and(cover > 1, cover < 15)
+        original = values[building]
+        values[building] = maximum
 
         # processing
         fill_simple_depressions(values)
-        fill_complex_depressions(values)
+        fill_complex_depressions(values=values, mask=mask)
+
+        # put buildings back in place
+        values[building] = original
 
         # save
         values = values[np.newaxis]
@@ -253,7 +267,12 @@ def get_parser():
     parser.add_argument(
         'raster_path',
         metavar='RASTER',
-        help='source GDAL raster dataset with voids'
+        help='source GDAL raster that has no voids.'
+    )
+    parser.add_argument(
+        'cover_path',
+        metavar='COVER',
+        help='functional landuse raster.'
     )
     parser.add_argument(
         'output_path',

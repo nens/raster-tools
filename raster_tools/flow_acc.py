@@ -51,32 +51,41 @@ def get_traveled(courses):
 def accumulate(values):
     """
     Accumulate flow.
+
+    Key principle is the flow array, that relates the source cell A to
+    the target cell B as B = flow[A].
     """
     # construct a mapping array for the flow
     size = values.size
     height, width = values.shape
     traveled = get_traveled(values)
-    flow = np.empty(size + 1, dtype='i8')
 
+    # construct the flow array
+    flow = np.empty(size + 1, dtype='i8')
     flow[-1] = size
-    flow[:size] = np.where(values.ravel() == 0,
-                           size,
-                           traveled[0] * width + traveled[1])
-    flow[np.logical_or(flow < 0, flow > size)] = size
+    flow[:size] = np.where(np.logical_or.reduce([
+        values.ravel() == 0,    # undefined cells
+        traveled[0] < 0,        # flow-off to the top
+        traveled[0] >= height,  # ... bottom
+        traveled[1] < 0,        # ... left
+        traveled[1] >= width,   # ... right
+    ]), size, traveled[0] * width + traveled[1])
+
+    # eliminate cells pointing towards each other
+    flow[flow == flow[flow[flow]]] = size
 
     # run the flow until nothing changes anymore
-    state = np.arange(size)
-    accumulation = np.zeros(size, 'u8')
-    import itertools
-    count = itertools.count()
+    state = np.arange(size)              # each cell has water
+    accumulation = np.zeros(size, 'u8')  # this contains the result
     while True:
-        print(next(count))
-        state = flow[state]
-        state.sort()
-        state = state[:np.searchsorted(state, size)]
-        if not state.size:
+        state = flow[state]                           # flow the water
+        state.sort()                                  # sort
+        state = state[:np.searchsorted(state, size)]  # trim
+        left = state.size
+        print(left)
+        if not left:
             break
-        accumulation += np.bincount(state, minlength=size)
+        accumulation += np.bincount(state, minlength=size)  # count current
 
     return accumulation.reshape(height, width)
 
@@ -115,10 +124,10 @@ class Accumulator(object):
         values = self.raster_dataset.ReadAsArray(**window)
 
         # processing
-        values = accumulate(values[:400, :200])
+        values = accumulate(values)
 
         # save
-        values = np.log10(values[np.newaxis] + 1)
+        values = np.log10(values[np.newaxis] + 1).astype('f4')
         options = ['compress=deflate', 'tiled=yes']
         kwargs = {'projection': self.projection,
                   'geo_transform': geo_transform,

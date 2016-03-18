@@ -19,7 +19,7 @@ from raster_tools import datasets
 from raster_tools import utils
 
 from raster_tools import gdal
-from raster_tools import gdal_array
+# from raster_tools import gdal_array
 
 GTIF = gdal.GetDriverByName(str('gtiff'))
 DTYPE = np.dtype('i8, i8')
@@ -52,7 +52,11 @@ def get_look_up_table():
 
     # select courses with the highest dotproduct and
     common = (result * VECTORS).sum(2)                    # best direction
-    fitted = (common * select[..., 0]).argmax(1)          # fitting encoded
+    fitted = np.where(
+        common.any(1),                                    # any common?
+        (common * select[..., 0]).argmax(1),              # select best
+        select[..., 0].argmax(1),                         # select any
+    )
     mapped = NUMBERS[0, fitted]                           # mapping
     mapped[0] = 0
     return mapped
@@ -91,6 +95,7 @@ def calculate_flow_direction(values):
     factor[INDICES] = WEIGHTS[0]
 
     best_drop = np.zeros_like(values)
+
     for i, j in zip(*factor.nonzero()):
         kernel = np.zeros((3, 3))
         kernel[i, j] = -factor[i, j]
@@ -126,7 +131,7 @@ def calculate_flow_direction(values):
     kwargs = {'structure': np.ones((3, 3))}
 
     while True:
-        undefined = np.bool8(np.log2(direction) % 1)
+        undefined = ~np.in1d(direction, NUMBERS).reshape(direction.shape)
         edges = undefined - ndimage.binary_erosion(undefined, **kwargs)
 
         t_index1 = edges.nonzero()
@@ -139,7 +144,7 @@ def calculate_flow_direction(values):
         # neighbour must be in encoded direction
         b_index8a = np.bool8(direction1 & NUMBERS)
         # neighbour must have a defined flow direction
-        b_index8b = ~np.bool8(np.log2(direction8) % 1)
+        b_index8b = np.in1d(direction8, NUMBERS).reshape(b_index8a.shape)
         # that direction must not point towards the cell to be defined
         b_index8c = direction8 != INVERSE
         # combined index
@@ -154,25 +159,27 @@ def calculate_flow_direction(values):
         direction[superindex] = NUMBERS[0, argmax[nonzero]]
 
     # set still undefined directions (complex depressions) to zero
-    return np.where(np.log2(direction) % 1, 0, direction)
+    direction[~np.in1d(direction, NUMBERS).reshape(direction.shape)] = 0
+    return direction
 
 
 class DirectionCalculator(object):
-    def __init__(self, output_path, raster_path):
+    def __init__(self, output_path, raster_path, cover_path):
         # paths and source data
         self.output_path = output_path
         self.raster_dataset = gdal.Open(raster_path)
+        self.cover_dataset = gdal.Open(cover_path)
 
         # geospatial reference
         geo_transform = self.raster_dataset.GetGeoTransform()
         self.geo_transform = utils.GeoTransform(geo_transform)
         self.projection = self.raster_dataset.GetProjection()
 
-        # data settings
-        band = self.raster_dataset.GetRasterBand(1)
-        data_type = band.DataType
-        no_data_value = band.GetNoDataValue()
-        self.no_data_value = gdal_array.flip_code(data_type)(no_data_value)
+        # # data settings
+        # band = self.raster_dataset.GetRasterBand(1)
+        # data_type = band.DataType
+        # no_data_value = band.GetNoDataValue()
+        # self.no_data_value = gdal_array.flip_code(data_type)(no_data_value)
 
     def calculate(self, index_feature):
         # target path
@@ -196,14 +203,22 @@ class DirectionCalculator(object):
         window = self.geo_transform.get_window(geometry)
         values = self.raster_dataset.ReadAsArray(**window)
 
+        # set buildings to maximum dem before directions
+        cover = self.cover_dataset.ReadAsArray(**window)
+        maximum = np.finfo(values.dtype).max
+        building = np.logical_and(cover > 1, cover < 15)
+        values[building] = maximum
+
         # processing
         direction = calculate_flow_direction(values)[np.newaxis]
+
+        # direction[building] = 0  # roofs do not contribute
 
         # saving
         options = ['compress=deflate', 'tiled=yes']
         kwargs = {'projection': self.projection,
                   'geo_transform': geo_transform,
-                  'no_data_value': None}
+                  'no_data_value': 0}
 
         with datasets.Dataset(direction, **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=options)
@@ -238,6 +253,11 @@ def get_parser():
         'raster_path',
         metavar='RASTER',
         help='source GDAL raster dataset with voids'
+    )
+    parser.add_argument(
+        'cover_path',
+        metavar='COVER',
+        help='functional landuse raster.'
     )
     parser.add_argument(
         'output_path',
