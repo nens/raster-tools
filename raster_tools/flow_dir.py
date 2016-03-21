@@ -96,6 +96,7 @@ def calculate_flow_direction(values):
 
     best_drop = np.zeros_like(values)
 
+    # assign directions based on zero or positive drops
     for i, j in zip(*factor.nonzero()):
         kernel = np.zeros((3, 3))
         kernel[i, j] = -factor[i, j]
@@ -112,7 +113,7 @@ def calculate_flow_direction(values):
         direction[more_drop] = COURSES[i, j]
         best_drop[more_drop] = this_drop[more_drop]
 
-    # use look-up-table to eliminate multi-directions for nonzero drops:
+    # use look-up-table to eliminate multi-directions for positive drops:
     lut = get_look_up_table()
     some_drop = (best_drop > 0)
     direction[some_drop] = lut[direction[some_drop]]
@@ -175,12 +176,6 @@ class DirectionCalculator(object):
         self.geo_transform = utils.GeoTransform(geo_transform)
         self.projection = self.raster_dataset.GetProjection()
 
-        # # data settings
-        # band = self.raster_dataset.GetRasterBand(1)
-        # data_type = band.DataType
-        # no_data_value = band.GetNoDataValue()
-        # self.no_data_value = gdal_array.flip_code(data_type)(no_data_value)
-
     def calculate(self, index_feature):
         # target path
         name = index_feature[str('bladnr')]
@@ -203,15 +198,19 @@ class DirectionCalculator(object):
         window = self.geo_transform.get_window(geometry)
         values = self.raster_dataset.ReadAsArray(**window)
 
-        # set buildings to maximum dem before directions
+        # set buildings to maximum dem before calculating directions
         cover = self.cover_dataset.ReadAsArray(**window)
         maximum = np.finfo(values.dtype).max
         building = np.logical_and(cover > 1, cover < 15)
         values[building] = maximum
 
         # processing
-        direction = calculate_flow_direction(values)[np.newaxis]
+        direction = calculate_flow_direction(values)
 
+        # make water undefined
+        direction[cover == 144] = 0
+
+        # make buildings undefined
         # direction[building] = 0  # roofs do not contribute
 
         # saving
@@ -220,7 +219,7 @@ class DirectionCalculator(object):
                   'geo_transform': geo_transform,
                   'no_data_value': 0}
 
-        with datasets.Dataset(direction, **kwargs) as dataset:
+        with datasets.Dataset(direction[np.newaxis], **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=options)
 
 

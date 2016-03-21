@@ -107,6 +107,17 @@ class GeoTransform(tuple):
         p, a, b, q, c, d = self
         return self.__class__([p, a * f, b * f, q, c * f, d * f])
 
+    def get_coordinates(self, indices):
+        """ Return x, y coordinates.
+
+        :param indices: i, j tuple of integers or arrays.
+
+        i corresponds to the y direction in a non-skew grid.
+        """
+        p, a, b, q, c, d = self
+        i, j = indices
+        return p + a * j + b * i, q + c * j + d * i
+
     def get_indices(self, geometry):
         """
         Return array indices tuple for geometry.

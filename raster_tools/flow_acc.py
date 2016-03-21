@@ -71,9 +71,6 @@ def accumulate(values):
         traveled[1] >= width,   # ... right
     ]), size, traveled[0] * width + traveled[1])
 
-    # eliminate cells pointing towards each other
-    flow[flow == flow[flow[flow]]] = size
-
     # run the flow until nothing changes anymore
     state = np.arange(size)              # each cell has water
     accumulation = np.zeros(size, 'u8')  # this contains the result
@@ -82,7 +79,6 @@ def accumulate(values):
         state.sort()                                  # sort
         state = state[:np.searchsorted(state, size)]  # trim
         left = state.size
-        print(left)
         if not left:
             break
         accumulation += np.bincount(state, minlength=size)  # count current

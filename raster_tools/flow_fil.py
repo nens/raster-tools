@@ -85,9 +85,13 @@ def _fill_complex_depressions(values, mask=None, unique=False):
 
     :param values: DEM values
     :param mask: cells defined as not-in-a-depression
+
+    Beware that the values array is modified in-place.
     """
     if mask is None:
         mask = np.zeros(values.shape, dtype='b1')
+    else:
+        mask = mask.copy()
 
     # mark edges as not-in-a-depression
     mask[0, :-1] = True
