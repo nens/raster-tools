@@ -37,7 +37,7 @@ def fill(index_path, source_path, border_path, output_path, part):
     for feature in index:
         # target path
         name = feature[str('name')]
-        path = os.path.join(output_path, name[:3], '{}.tif'.format(name))
+        path = os.path.join(output_path, name[:2], '{}.tif'.format(name))
         if os.path.exists(path):
             continue
 
