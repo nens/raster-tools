@@ -46,7 +46,7 @@ setup(name='raster-tools',
               'ahn2-constant      = raster_tools.ahn2.constant:main',
               # # ahn3
               'ahn3-download      = raster_tools.ahn3.download:main',
-              # # srtm
+              # srtm
               'srtm-make-index    = raster_tools.srtm.make_index:main',
               'srtm-fix-nodata    = raster_tools.srtm.fix_nodata:main',
               'srtm-organize      = raster_tools.srtm.organize:main',
@@ -62,7 +62,9 @@ setup(name='raster-tools',
               'aggregate          = raster_tools.aggregate:main',
               'rebase             = raster_tools.rebase:main',
               'shadow             = raster_tools.shadow:main',
-              'reindex              = raster_tools.reindex:main',
+              # organization
+              'retile             = raster_tools.retile:main',
+              'reindex            = raster_tools.reindex:main',
               # rasterization
               'bag2tif            = raster_tools.bag2tif:main',
               'rasterize-landuse  = raster_tools.rasterize_landuse:main',

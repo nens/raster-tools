@@ -15,10 +15,10 @@ import os
 import numpy as np
 
 from raster_tools import datasets
+from raster_tools import groups
 from raster_tools import utils
 
 from raster_tools import gdal
-from raster_tools import gdal_array
 
 GTIF = gdal.GetDriverByName(str('gtiff'))
 
@@ -60,18 +60,21 @@ class Aggregator(object):
         # paths and source data
         self.iterations = iterations
         self.output_path = output_path
-        self.raster_dataset = gdal.Open(raster_path)
+
+        # rasters
+        if os.path.isdir(raster_path):
+            datasets = [gdal.Open(os.path.join(raster_path, path))
+                        for path in sorted(os.listdir(raster_path))]
+        else:
+            datasets = [gdal.Open(raster_path)]
+        self.raster_group = groups.Group(*datasets)
 
         # geospatial reference
-        geo_transform = self.raster_dataset.GetGeoTransform()
-        self.geo_transform = utils.GeoTransform(geo_transform)
-        self.projection = self.raster_dataset.GetProjection()
+        self.geo_transform = self.raster_group.geo_transform
+        self.projection = self.raster_group.projection
 
         # data settings
-        band = self.raster_dataset.GetRasterBand(1)
-        data_type = band.DataType
-        no_data_value = band.GetNoDataValue()
-        self.no_data_value = gdal_array.flip_code(data_type)(no_data_value)
+        self.no_data_value = self.raster_group.no_data_value
 
     def aggregate(self, index_feature):
         # target path
@@ -93,12 +96,8 @@ class Aggregator(object):
         geo_transform = self.geo_transform.shifted(geometry).scaled(factor)
 
         # data
-        window = self.geo_transform.get_window(geometry)
-        values = self.raster_dataset.ReadAsArray(**window)
+        values = self.raster_group.read(geometry)
         no_data_value = self.no_data_value
-
-        if values is None:
-            return
 
         # set errors to no data
         index = np.logical_and(
