@@ -1,0 +1,108 @@
+# -*- coding: utf-8 -*-
+"""
+Retile some large rasters according to an index.
+"""
+
+from __future__ import print_function
+from __future__ import unicode_literals
+from __future__ import absolute_import
+from __future__ import division
+
+import argparse
+import os
+
+import numpy as np
+
+from raster_tools import gdal
+from raster_tools import datasets
+from raster_tools import groups
+from raster_tools import utils
+
+driver = gdal.GetDriverByName(str('gtiff'))
+
+
+class Retiler(object):
+    def __init__(self, source_path, target_path):
+        """ Init group. """
+        self.group = groups.Group(gdal.Open(source_path))
+
+        self.projection = self.group.projection
+        self.geo_transform = self.group.geo_transform
+        self.no_data_value = self.group.no_data_value
+
+        self.target_path = target_path
+
+    def retile(self, feature):
+        """ Retile to feature. """
+        # target path
+        leaf_number = feature[str('BLADNR')]
+        path = os.path.join(self.target_path,
+                            leaf_number[:3],
+                            '{}.tif'.format(leaf_number))
+        if os.path.exists(path):
+            return
+
+        # retile
+        geometry = feature.geometry()
+        geo_transform = self.geo_transform.shifted(geometry)
+        values = self.group.read(geometry)
+        if (values == self.no_data_value).all():
+            return
+
+        # create directory
+        try:
+            os.makedirs(os.path.dirname(path))
+        except OSError:
+            pass  # no problem
+
+        # save
+        kwargs = {'projection': self.projection,
+                  'geo_transform': geo_transform,
+                  'no_data_value': self.no_data_value.item()}
+        options = ['tiled=yes', 'compress=deflate']
+
+        with datasets.Dataset(values[np.newaxis, ...], **kwargs) as dataset:
+            driver.CreateCopy(path, dataset, options=options)
+
+
+def retile(index_path, source_path, target_path, part):
+    """ Convert all features. """
+    index = utils.PartialDataSource(index_path)
+    if part is not None:
+        index = index.select(part)
+
+    retiler = Retiler(source_path=source_path, target_path=target_path)
+
+    for feature in index:
+        retiler.retile(feature)
+
+
+def get_parser():
+    """ Return argument parser. """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        'index_path',
+        metavar='INDEX',
+        help='shapefile with geometries and names of output tiles',
+    )
+    parser.add_argument(
+        'source_path',
+        metavar='SOURCE',
+        help='path to source raster or directory with source rasters.'
+    )
+    parser.add_argument(
+        'target_path',
+        metavar='TARGET',
+        help='target directory',
+    )
+    parser.add_argument(
+        '-p', '--part',
+        help='partial processing source, for example "2/3"',
+    )
+    return parser
+
+
+def main():
+    """ Call hillshade with args from parser. """
+    kwargs = vars(get_parser().parse_args())
+    retile(**kwargs)
