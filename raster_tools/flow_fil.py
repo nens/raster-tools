@@ -16,10 +16,10 @@ from scipy import ndimage
 import numpy as np
 
 from raster_tools import datasets
+from raster_tools import groups
 from raster_tools import utils
 
 from raster_tools import gdal
-from raster_tools import gdal_array
 
 GTIF = gdal.GetDriverByName(str('gtiff'))
 DTYPE = np.dtype('i8, i8')
@@ -179,23 +179,24 @@ class PitFiller(object):
     def __init__(self, output_path, raster_path, cover_path):
         # paths and source data
         self.output_path = output_path
-        self.raster_dataset = gdal.Open(raster_path)
-        self.cover_dataset = gdal.Open(cover_path)
 
-        # geospatial reference
-        geo_transform = self.raster_dataset.GetGeoTransform()
-        self.geo_transform = utils.GeoTransform(geo_transform)
-        self.projection = self.raster_dataset.GetProjection()
+        # rasters
+        if os.path.isdir(raster_path):
+            raster_datasets = [gdal.Open(os.path.join(raster_path, path))
+                               for path in sorted(os.listdir(raster_path))]
+        else:
+            raster_datasets = [gdal.Open(raster_path)]
+        self.raster_group = groups.Group(*raster_datasets)
+        self.cover_group = groups.Group(gdal.Open(cover_path))
 
-        # data settings
-        band = self.raster_dataset.GetRasterBand(1)
-        data_type = band.DataType
-        no_data_value = band.GetNoDataValue()
-        self.no_data_value = gdal_array.flip_code(data_type)(no_data_value)
+        # properties
+        self.projection = self.raster_group.projection
+        self.geo_transform = self.raster_group.geo_transform
+        self.no_data_value = self.raster_group.no_data_value
 
-    def fill(self, index_feature):
+    def fill(self, feature):
         # target path
-        name = index_feature[str('bladnr')]
+        name = feature[str('bladnr')]
         path = os.path.join(self.output_path,
                             name[:3],
                             '{}.tif'.format(name))
@@ -208,20 +209,22 @@ class PitFiller(object):
         except OSError:
             pass  # no problem
 
-        geometry = index_feature.geometry().Buffer(0)
-        geo_transform = self.geo_transform.shifted(geometry)
+        # geometries
+        inner_geometry = feature.geometry()
+        outer_geometry = inner_geometry.Buffer(100)
+
+        # geo transforms
+        inner_geo_transform = self.geo_transform.shifted(inner_geometry)
+        outer_geo_transform = self.geo_transform.shifted(outer_geometry)
 
         # data
-        window = self.geo_transform.get_window(geometry)
-        values = self.raster_dataset.ReadAsArray(**window)
-        cover = self.cover_dataset.ReadAsArray(**window)
-        mask = (cover == 144)  # inner water
-        no_data_value = self.no_data_value
+        values = self.raster_group.read(outer_geometry)
+        cover = self.cover_group.read(outer_geometry)
+        mask = (cover == 144)  # water
 
         # set buildings to maximum dem before directions
-        cover = self.cover_dataset.ReadAsArray(**window)
-        maximum = np.finfo(values.dtype).max
         building = np.logical_and(cover > 1, cover < 15)
+        maximum = np.finfo(values.dtype).max
         original = values[building]
         values[building] = maximum
 
@@ -232,12 +235,15 @@ class PitFiller(object):
         # put buildings back in place
         values[building] = original
 
+        # cut out
+        slices = outer_geo_transform.get_slices(inner_geometry)
+        values = values['values'][slices][np.newaxis]
+
         # save
-        values = values[np.newaxis]
         options = ['compress=deflate', 'tiled=yes']
         kwargs = {'projection': self.projection,
-                  'geo_transform': geo_transform,
-                  'no_data_value': no_data_value.item()}
+                  'geo_transform': inner_geo_transform,
+                  'no_data_value': self.no_data_value.item()}
 
         with datasets.Dataset(values, **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=options)
