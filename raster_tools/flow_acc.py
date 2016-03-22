@@ -16,6 +16,7 @@ import os
 import numpy as np
 
 from raster_tools import datasets
+from raster_tools import groups
 from raster_tools import utils
 
 from raster_tools import gdal
@@ -87,19 +88,18 @@ def accumulate(values):
 
 
 class Accumulator(object):
-    def __init__(self, output_path, raster_path):
+    def __init__(self, raster_path, output_path):
         # paths and source data
         self.output_path = output_path
-        self.raster_dataset = gdal.Open(raster_path)
+        self.raster_group = groups.Group(gdal.Open(raster_path))
 
         # geospatial reference
-        geo_transform = self.raster_dataset.GetGeoTransform()
-        self.geo_transform = utils.GeoTransform(geo_transform)
-        self.projection = self.raster_dataset.GetProjection()
+        self.geo_transform = self.raster_group.geo_transform
+        self.projection = self.raster_group.projection
 
-    def accumulate(self, index_feature):
+    def accumulate(self, feature):
         # target path
-        name = index_feature[str('bladnr')]
+        name = feature[str('bladnr')]
         path = os.path.join(self.output_path,
                             name[:3],
                             '{}.tif'.format(name))
@@ -112,22 +112,28 @@ class Accumulator(object):
         except OSError:
             pass  # no problem
 
-        geometry = index_feature.geometry().Buffer(0)
-        geo_transform = self.geo_transform.shifted(geometry)
+        # geometries
+        inner_geometry = feature.geometry()
+        outer_geometry = inner_geometry.Buffer(100)
+
+        # geo transforms
+        inner_geo_transform = self.geo_transform.shifted(inner_geometry)
+        outer_geo_transform = self.geo_transform.shifted(outer_geometry)
 
         # data
-        window = self.geo_transform.get_window(geometry)
-        values = self.raster_dataset.ReadAsArray(**window)
+        values = self.raster_group.read(outer_geometry)
 
         # processing
         values = accumulate(values)
 
+        # cut out and convert
+        slices = outer_geo_transform.get_slices(inner_geometry)
+        values = np.log10(values[slices][np.newaxis] + 1).astype('f4')
+
         # save
-        values = np.log10(values[np.newaxis] + 1).astype('f4')
         options = ['compress=deflate', 'tiled=yes']
         kwargs = {'projection': self.projection,
-                  'geo_transform': geo_transform,
-                  'no_data_value': None}
+                  'geo_transform': inner_geo_transform}
 
         with datasets.Dataset(values, **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=options)

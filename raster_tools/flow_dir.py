@@ -16,6 +16,7 @@ from scipy import ndimage
 import numpy as np
 
 from raster_tools import datasets
+from raster_tools import groups
 from raster_tools import utils
 
 from raster_tools import gdal
@@ -168,17 +169,16 @@ class DirectionCalculator(object):
     def __init__(self, output_path, raster_path, cover_path):
         # paths and source data
         self.output_path = output_path
-        self.raster_dataset = gdal.Open(raster_path)
-        self.cover_dataset = gdal.Open(cover_path)
+        self.raster_group = groups.Group(gdal.Open(raster_path))
+        self.cover_group = groups.Group(gdal.Open(cover_path))
 
         # geospatial reference
-        geo_transform = self.raster_dataset.GetGeoTransform()
-        self.geo_transform = utils.GeoTransform(geo_transform)
-        self.projection = self.raster_dataset.GetProjection()
+        self.geo_transform = self.raster_group.geo_transform
+        self.projection = self.raster_group.projection
 
-    def calculate(self, index_feature):
+    def calculate(self, feature):
         # target path
-        name = index_feature[str('bladnr')]
+        name = feature[str('bladnr')]
         path = os.path.join(self.output_path,
                             name[:3],
                             '{}.tif'.format(name))
@@ -191,15 +191,18 @@ class DirectionCalculator(object):
         except OSError:
             pass  # no problem
 
-        geometry = index_feature.geometry().Buffer(0)
-        geo_transform = self.geo_transform.shifted(geometry)
+        # geometries
+        inner_geometry = feature.geometry()
+        outer_geometry = inner_geometry.Buffer(100)
 
-        # data
-        window = self.geo_transform.get_window(geometry)
-        values = self.raster_dataset.ReadAsArray(**window)
+        # geo transforms
+        inner_geo_transform = self.geo_transform.shifted(inner_geometry)
+        outer_geo_transform = self.geo_transform.shifted(outer_geometry)
+
+        values = self.raster_group.read(outer_geometry)
+        cover = self.cover_group.read(outer_geometry)
 
         # set buildings to maximum dem before calculating directions
-        cover = self.cover_dataset.ReadAsArray(**window)
         maximum = np.finfo(values.dtype).max
         building = np.logical_and(cover > 1, cover < 15)
         values[building] = maximum
@@ -210,16 +213,20 @@ class DirectionCalculator(object):
         # make water undefined
         direction[cover == 144] = 0
 
+        # cut out
+        slices = outer_geo_transform.get_slices(inner_geometry)
+        direction = direction[slices][np.newaxis]
+
         # make buildings undefined
         # direction[building] = 0  # roofs do not contribute
 
         # saving
         options = ['compress=deflate', 'tiled=yes']
-        kwargs = {'projection': self.projection,
-                  'geo_transform': geo_transform,
-                  'no_data_value': 0}
+        kwargs = {'no_data_value': 0,
+                  'projection': self.projection,
+                  'geo_transform': inner_geo_transform}
 
-        with datasets.Dataset(direction[np.newaxis], **kwargs) as dataset:
+        with datasets.Dataset(direction, **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=options)
 
 

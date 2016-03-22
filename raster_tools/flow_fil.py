@@ -88,6 +88,8 @@ def _fill_complex_depressions(values, mask=None, unique=False):
 
     Beware that the values array is modified in-place.
     """
+    maximum = np.finfo(values.dtype).max  # detect the buildings
+
     if mask is None:
         mask = np.zeros(values.shape, dtype='b1')
     else:
@@ -123,15 +125,16 @@ def _fill_complex_depressions(values, mask=None, unique=False):
             diff[upwards[0][unknown], upwards[1][unknown]] = True
 
             if unique:
+                # result of get_travelled gives unique indices
                 indices = upwards[0][unknown], upwards[1][unknown]
             else:
+                # unique indices must be attained from the diff
                 indices = diff.nonzero()
 
             mask[indices] = True
 
         # done when all masked
-        all_masked = mask.all()
-        if all_masked:
+        if mask.all():
             return
 
         # determine labeled depressions and surrounding contours
@@ -140,14 +143,29 @@ def _fill_complex_depressions(values, mask=None, unique=False):
         for count, slices in enumerate(ndimage.find_objects(label), 1):
             slices = tuple(slice(s.start - 1, s.stop + 1) for s in slices)
             depress = (label[slices] == count)
+
+            if max(s.stop - s.start for s in slices) >= 200:
+                # depression larger than buffer
+                mask[slices][depress] = True
+                continue
+
             dilated = ndimage.binary_dilation(depress, **kwargs)
 
             # determine contour and mark as starting point for next iteration
             contour = dilated - depress
+
+            # find contour minimum
+            minimum = values[slices][contour].min()
+
+            if minimum == maximum:
+                # depression surrounded by buildings
+                mask[slices][depress] = True
+                continue
+
+            # mark contour as starting point for next iteration
             diff[slices][contour] = True
 
-            # make contour minimum the new lower limit for the depression
-            minimum = values[slices][contour].min()
+            # raise inner depression to contour minimum
             values[slices][dilated] = np.maximum(minimum,
                                                  values[slices][dilated])
 
@@ -237,7 +255,7 @@ class PitFiller(object):
 
         # cut out
         slices = outer_geo_transform.get_slices(inner_geometry)
-        values = values['values'][slices][np.newaxis]
+        values = values[slices][np.newaxis]
 
         # save
         options = ['compress=deflate', 'tiled=yes']
