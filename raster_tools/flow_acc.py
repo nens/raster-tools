@@ -72,9 +72,12 @@ def accumulate(values):
         traveled[1] >= width,   # ... right
     ]), size, traveled[0] * width + traveled[1])
 
+    # initial condition
+    state = np.arange(size)                  # each cell has a quantity
+    flow[flow[flow[state]] == state] = size  # eliminate opposing directions
+    accumulation = np.zeros(size, 'u8')      # this contains the result
+
     # run the flow until nothing changes anymore
-    state = np.arange(size)              # each cell has water
-    accumulation = np.zeros(size, 'u8')  # this contains the result
     while True:
         state = flow[state]                           # flow the water
         state.sort()                                  # sort
@@ -132,7 +135,8 @@ class Accumulator(object):
 
         # save
         options = ['compress=deflate', 'tiled=yes']
-        kwargs = {'projection': self.projection,
+        kwargs = {'no_data_value': 0,
+                  'projection': self.projection,
                   'geo_transform': inner_geo_transform}
 
         with datasets.Dataset(values, **kwargs) as dataset:

@@ -144,14 +144,8 @@ def _fill_complex_depressions(values, mask=None, unique=False):
             slices = tuple(slice(s.start - 1, s.stop + 1) for s in slices)
             depress = (label[slices] == count)
 
-            if max(s.stop - s.start for s in slices) >= 200:
-                # depression larger than buffer
-                mask[slices][depress] = True
-                continue
-
-            dilated = ndimage.binary_dilation(depress, **kwargs)
-
             # determine contour and mark as starting point for next iteration
+            dilated = ndimage.binary_dilation(depress, **kwargs)
             contour = dilated - depress
 
             # find contour minimum
@@ -180,7 +174,7 @@ def fill_complex_depressions(values, mask=None):
     """
     # stage 1: blocks of 100 x 100
     height, width = values.shape
-    for step, offset in (100, 0), (100, 50):
+    for step, offset in (100, 0), (100, 25), (100, 50):
         for y in range(offset, 1 + height - step, step):
             for x in range(offset, 1 + width - step, step):
                 slices = slice(y, y + step), slice(x, x + step)
@@ -189,8 +183,8 @@ def fill_complex_depressions(values, mask=None):
                     values=values[slices],
                     mask=None if mask is None else mask[slices],
                 )
-    # stage 2: complete area
-    _fill_complex_depressions(values=values, mask=mask, unique=True)
+    # stage 2: complete area - this fills way to large depressions
+    # _fill_complex_depressions(values=values, mask=mask, unique=True)
 
 
 class PitFiller(object):

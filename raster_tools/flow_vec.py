@@ -15,6 +15,7 @@ import os
 
 import numpy as np
 
+from raster_tools import groups
 from raster_tools import utils
 
 from raster_tools import gdal
@@ -72,20 +73,30 @@ def vectorize(direction, accumulation):
         traveled[1] >= width,   # ... right
     ]), size, traveled[0] * width + traveled[1])
 
-    for klass in 1, 2, 3, 4, 5:
+    # eliminate opposing directions
+    state = np.arange(size)
+    flow[flow[flow[state]] == state] = size
 
+    for klass in 1, 2, 3, 4, 5:
         # select points that match klass
         points = (accumulation.ravel() >= klass).nonzero()[0]
 
         # determine sources, merges and sinks
-        sources = points[np.logical_and(flow[points] != size,
-                         np.in1d(points, flow[points], invert=True))]
-        merges = (np.bincount(flow[points]) > 1).nonzero()[0][:-1]
-        sinks = points[flow[points] == size]
+        flowed = flow[points]
+        bincount = np.bincount(flowed, minlength=size)[:-1]
+        sources = points[np.logical_and(
+            flowed != size,
+            np.in1d(points, flowed, invert=True),
+        )]
+        merges = np.intersect1d(points, np.where(bincount > 1)[0])
+        sinks = points[np.logical_or(
+            flowed == size,
+            np.in1d(flowed, points, invert=True),
+        )]
 
         # determine starts and stops
-        starts = np.unique(np.concatenate([sources, merges]))
-        stops = set(np.concatenate([merges, sinks]).tolist())  # native set
+        starts = np.union1d(sources, merges)
+        stops = set(np.union1d(merges, sinks).tolist())  # native set
 
         # travel them and yield per section
         for x in starts:
@@ -98,25 +109,24 @@ def vectorize(direction, accumulation):
                 if x in stops:
                     break
             a = np.array(l)
-            yield klass, (a // width + 0.5, a % width + 0.5)
+            yield klass, (a // width + 0.5, a % width + 0.5)  # pixel center
 
 
 class Vectorizer(object):
-    def __init__(self, direction_path, accumulation_path, output_path):
+    def __init__(self, direction_path, accumulation_path, target_path):
         # paths and source data
-        self.direction_dataset = gdal.Open(direction_path)
-        self.accumulation_dataset = gdal.Open(accumulation_path)
-        self.output_path = output_path
+        self.direction_group = groups.Group(gdal.Open(direction_path))
+        self.accumulation_group = groups.Group(gdal.Open(accumulation_path))
+        self.target_path = target_path
 
         # geospatial reference
-        geo_transform = self.direction_dataset.GetGeoTransform()
-        self.geo_transform = utils.GeoTransform(geo_transform)
-        self.projection = self.direction_dataset.GetProjection()
+        self.geo_transform = self.direction_group.geo_transform
+        self.projection = self.direction_group.projection
 
     def vectorize(self, index_feature):
         # target path
         name = index_feature[str('bladnr')]
-        path = os.path.join(self.output_path, name[:3], '{}'.format(name))
+        path = os.path.join(self.target_path, name[:3], '{}'.format(name))
         if os.path.exists(path):
             return
 
@@ -126,13 +136,14 @@ class Vectorizer(object):
         except OSError:
             pass  # no problem
 
-        index_geometry = index_feature.geometry().Buffer(0)
+        index_geometry = index_feature.geometry()
         geo_transform = self.geo_transform.shifted(index_geometry)
 
-        # data
-        window = self.geo_transform.get_window(index_geometry)
-        direction = self.direction_dataset.ReadAsArray(**window)
-        accumulation = self.accumulation_dataset.ReadAsArray(**window)
+        # data with one pixel margin on right and bottom for continuity
+        indices = self.geo_transform.get_indices(index_geometry)
+        indices = indices[0], indices[1], indices[2] + 1, indices[3] + 1
+        direction = self.direction_group.read(indices)
+        accumulation = self.accumulation_group.read(indices)
 
         # processing
         data_source = SHAPE.CreateDataSource(str(path))
@@ -189,7 +200,7 @@ def get_parser():
         help='GDAL accumulation raster dataset',
     )
     parser.add_argument(
-        'output_path',
+        'target_path',
         metavar='OUTPUT',
         help='target folder',
     )
