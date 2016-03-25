@@ -1,7 +1,8 @@
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 """
-Interpolate nodata regions in a raster using recursive aggregation.
+Batch mode of fillnodata script. Assumes using a ceiling dataset and a
+32-pixel aggregation.
 """
 
 from __future__ import print_function
@@ -23,7 +24,7 @@ from raster_tools import gdal
 GTIF = gdal.GetDriverByName(str('gtiff'))
 
 
-def fill(index_path, source_path, border_path, output_path, part):
+def fill(index_path, source_path, ceiling_path, output_path, part):
     """
     """
     # select some or all polygons
@@ -32,7 +33,7 @@ def fill(index_path, source_path, border_path, output_path, part):
         index = index.select(part)
 
     filler = fillnodata.Filler(source_path=source_path,
-                               border_path=border_path)
+                               ceiling_path=ceiling_path)
 
     for feature in index:
         # target path
@@ -92,8 +93,8 @@ def get_parser():
         help='source GDAL raster dataset with voids'
     )
     parser.add_argument(
-        'border_path',
-        metavar='BORDER',
+        'ceiling_path',
+        metavar='CEILING',
         help='Filled aggregated raster that ends the recursive filling.'
     )
     parser.add_argument(

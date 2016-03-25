@@ -1,7 +1,17 @@
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 """
-Recursive filling of raster voids for a single raster.
+This script is the basis for a seamless void-filling procedure for large
+coverages. The main principle is to aggregate the raster per quad of
+pixels and repeat until only one pixel is left, and then zooming back
+in and smoothing at each zoom step.
+
+Optionally a limiting ceiling raster can be supplied to cut the recursion
+at an earlier zomlevel. This should be a preaggregated, void-less
+dataset. This ceiling dataset can be created from the original dataset
+using the aggregate script based on an even tiling (generated with the
+reindex script). The results can then be merged using gdal_merge.py and
+filled using this script.
 """
 
 from __future__ import print_function
@@ -37,7 +47,7 @@ def smooth(values):
     return ndimage.correlate(values, KERNEL)
 
 
-def fill(values, no_data_value, border):
+def fill(values, no_data_value, ceiling):
     """
     Fill must return a filled array. It does so by aggregating, requesting
     a fill for that, and zooming back. After zooming back, it smooths
@@ -50,54 +60,54 @@ def fill(values, no_data_value, border):
 
     # aggregate
     aggregated_shape = values.shape[0] / 2, values.shape[1] / 2
-    if border is not None and border.shape == aggregated_shape:
-        aggregated = {'values': border, 'no_data_value': no_data_value}
+    if ceiling is not None and ceiling.shape == aggregated_shape:
+        aggregated = {'values': ceiling, 'no_data_value': no_data_value}
     else:
         aggregated = utils.aggregate_uneven(values=values,
                                             no_data_value=no_data_value)
 
-    filled = fill(border=border, **aggregated)
+    filled = fill(ceiling=ceiling, **aggregated)
     zoomed = zoom(filled)[:values.shape[0], :values.shape[1]]
     return np.where(mask, smooth(zoomed), values)
 
 
 class Filler(object):
-    def __init__(self, source_path, border_path):
+    def __init__(self, source_path, ceiling_path):
         # source group
         self.source = groups.Group(gdal.Open(source_path))
 
-        # border group
-        if border_path:
-            self.border = groups.Group(gdal.Open(border_path))
+        # ceiling group
+        if ceiling_path:
+            self.ceiling = groups.Group(gdal.Open(ceiling_path))
         else:
-            self.border = None
+            self.ceiling = None
 
     def fill(self, geometry):
         """ Return dictionary with data and no data value of filling. """
         values = self.source.read(geometry)
         no_data_value = self.source.no_data_value
-        if self.border:
-            border = self.border.read(geometry)
-            if (border == self.border.no_data_value).any():
+        if self.ceiling:
+            ceiling = self.ceiling.read(geometry)
+            if (ceiling == self.ceiling.no_data_value).any():
                 # triggers infinite recursion or gives undesired results
                 return {'values': values, 'no_data_value': no_data_value}
         else:
-            border = None
+            ceiling = None
         result = fill(values=values,
-                      border=border,
+                      ceiling=ceiling,
                       no_data_value=no_data_value)
         result[values != no_data_value] = no_data_value
         return {'values': result, 'no_data_value': no_data_value}
 
 
-def fillnodata(source_path, target_path, border_path):
+def fillnodata(source_path, target_path, ceiling_path):
     """
     Fill a single raster.
     """
     source_dataset = gdal.Open(source_path)
     geometry = utils.get_geometry(source_dataset)
 
-    filler = Filler(source_path=source_path, border_path=border_path)
+    filler = Filler(source_path=source_path, ceiling_path=ceiling_path)
     result = filler.fill(geometry)
 
     kwargs = {'projection': source_dataset.GetProjection(),
@@ -125,10 +135,10 @@ def get_parser():
         help='target GDAL raster without voids',
     )
     parser.add_argument(
-        '--border', '-b',
-        metavar='BORDER',
-        dest='border_path',
-        help='preaggregated GDAL border raster without voids',
+        '--ceiling', '-c',
+        metavar='CEILING',
+        dest='ceiling_path',
+        help='preaggregated GDAL ceiling raster without voids',
     )
     return parser
 

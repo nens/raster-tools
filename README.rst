@@ -6,11 +6,25 @@ Rasterizing landuse tables
 For rasterization of landuse tables from a postgres datasource a special
 wrapper command is available at bin/rasterize-landuse, use --help for args.
 
+
+Creating a seamless large-scale void-filled raster
+--------------------------------------------------
+1. Make index with power-of-two dimensions for some extent [reindex] 
+2. Aggregate base dataset to that index for 32x32 pixels [aggregate]
+3. Merge result of 2. into single raster [gdal_merge.py]
+4. Fill result of 3. with fillnodata algorithm [fillnodata]
+5. Combine with result of 3. to single filled dem [gdalwarp]
+6. Fill base data using result of 5. as
+   'ceiling' and result of 1. as index [mfillnodata]
+7. Cut result back into desired tiling using [retile]
+
+
 Dependencies
 ------------
 python-gdal
 python-psycopg2
 python-scipy
+
 
 Post-nensskel setup TODO
 ------------------------
