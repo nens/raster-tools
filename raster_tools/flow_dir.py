@@ -193,7 +193,7 @@ class DirectionCalculator(object):
 
         # geometries
         inner_geometry = feature.geometry()
-        outer_geometry = inner_geometry.Buffer(100)
+        outer_geometry = inner_geometry.Buffer(50)
 
         # geo transforms
         inner_geo_transform = self.geo_transform.shifted(inner_geometry)
