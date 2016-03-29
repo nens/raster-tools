@@ -135,9 +135,9 @@ class Accumulator(object):
 
         # save
         options = ['compress=deflate', 'tiled=yes']
-        kwargs = {'no_data_value': 0,
-                  'projection': self.projection,
-                  'geo_transform': inner_geo_transform}
+        kwargs = {'projection': self.projection,
+                  'geo_transform': inner_geo_transform,
+                  'no_data_value': np.finfo(values.dtype).min}
 
         with datasets.Dataset(values, **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=options)
