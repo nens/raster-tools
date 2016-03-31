@@ -77,7 +77,7 @@ def vectorize(direction, accumulation):
     state = np.arange(size)
     flow[flow[flow[state]] == state] = size
 
-    for klass in 1, 2, 3, 4, 5:
+    for klass in 1, 2, 3, 4, 4.7:
         # select points that match klass
         points = (accumulation.ravel() >= klass).nonzero()[0]
 
@@ -150,7 +150,7 @@ class Vectorizer(object):
         layer_sr = osr.SpatialReference(self.projection)
         layer_name = str(os.path.basename(path))
         layer = data_source.CreateLayer(layer_name, layer_sr)
-        layer.CreateField(ogr.FieldDefn(str('class'), ogr.OFTInteger))
+        layer.CreateField(ogr.FieldDefn(str('class'), ogr.OFTReal))
         layer_defn = layer.GetLayerDefn()
         generator = vectorize(direction=direction, accumulation=accumulation)
         for klass, indices in generator:
