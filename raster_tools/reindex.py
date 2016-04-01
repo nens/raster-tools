@@ -26,7 +26,8 @@ class Checker(object):
     def intersects(self, geometry):
         self.layer.SetSpatialFilter(geometry)
         for feature in self.layer:
-            if geometry.Overlaps(feature.geometry()):
+            intersection = geometry.Intersection(feature.geometry())
+            if intersection.GetGeometryType() == ogr.wkbPolygon:
                 return True
         return False
 
