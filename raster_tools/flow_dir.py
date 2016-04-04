@@ -213,12 +213,12 @@ class DirectionCalculator(object):
         # make water undefined
         direction[cover == 144] = 0
 
+        # make buildings undefined
+        direction[building] = 0
+
         # cut out
         slices = outer_geo_transform.get_slices(inner_geometry)
         direction = direction[slices][np.newaxis]
-
-        # make buildings undefined
-        # direction[building] = 0  # roofs do not contribute
 
         # saving
         options = ['compress=deflate', 'tiled=yes']
