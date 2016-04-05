@@ -90,7 +90,8 @@ class Filler(object):
             ceiling = self.ceiling.read(geometry)
             if (ceiling == self.ceiling.no_data_value).any():
                 # triggers infinite recursion or gives undesired results
-                return {'values': values, 'no_data_value': no_data_value}
+                result = np.full_like(values, no_data_value)
+                return {'values': result, 'no_data_value': no_data_value}
         else:
             ceiling = None
         result = fill(values=values,
