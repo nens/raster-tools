@@ -159,3 +159,41 @@ class ParameterizedLine(object):
             raise ValueError('Masked values in projection.')
 
         return closest.data
+
+
+def array2polygon(array):
+    """
+    Return a polygon geometry.
+
+    This method numpy to prepare a wkb string. Seems only faster for
+    larger polygons, compared to adding points individually.
+    """
+    # 13 bytes for the header, 16 bytes per point
+    nbytes = 13 + 16 * array.shape[0]
+    data = np.empty(nbytes, dtype=np.uint8)
+    # little endian
+    data[0:1] = 1
+    # wkb type, number of rings, number of points
+    data[1:13].view('u4')[:] = (3, 1, array.shape[0])
+    # set the points
+    data[13:].view('f8')[:] = array.ravel()
+    return ogr.CreateGeometryFromWkb(data.tostring())
+
+
+def array2multipoint(array):
+    """
+    Return a 3d multipoint geometry.
+
+    This method numpy to prepare a wkb string. Performance not tested.
+    """
+    npoints = len(array)
+    head = np.empty(9, dtype='u1')
+    head[0] = 0                                             # endianness
+    head[1:5] = 128, 0, 0, 4                                # wkb multipoint
+    head[5:9].view('i4')[:] = np.int32(npoints).byteswap()  # amount of points
+
+    bulk = np.empty((npoints, 29), 'u1')
+    bulk[:, 0] = 0                                          # unknown
+    bulk[:, 1:5] = 128, 0, 0, 1                             # wkb point
+    bulk[:, 5:] = array.astype('f8').view('i8').byteswap().view('u1')
+    return ogr.CreateGeometryFromWkb(head.tostring() + bulk.tostring())

@@ -74,6 +74,6 @@ setup(name='raster-tools',
               'line-up            = raster_tools.line_up:main',
               # pointclouds
               'txt2tif            = raster_tools.txt2tif:main',
-              'roof               = raster_tools.roof.main',
+              'roof               = raster_tools.roof:main',
           ]},
       )
