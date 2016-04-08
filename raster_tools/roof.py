@@ -10,12 +10,14 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
+import collections
 import math
 import os
 import shlex
 import string
 import subprocess
 
+from scipy import spatial
 import numpy as np
 
 # from raster_tools import datasets
@@ -110,15 +112,88 @@ class Fetcher(object):
         return self._clip(points=points, geometry=geometry)
 
 
+def classify(points):
+    columns = collections.defaultdict(list)
+    for i, (x, y, z) in enumerate(points):
+        columns[int(x), int(y)].append(i)
+
+    select = np.zeros(len(points), 'b1')
+    for l in columns.values():
+        z = points[l, 2]  # z values in this patch
+        try:
+            select[l] = [z < z[z.argsort()[8]] + 1]  # within range of min
+        except IndexError:
+            select[l] = True
+    return select
+
+
+def planify(points, select):
+    p = points[select]
+    o = p.min(0)
+    p -= o
+    t = spatial.Delaunay(p[:, :2])
+    s0, s1, s2 = t.simplices.transpose()
+    n = np.cross(p[s1] - p[s0], p[s2] - p[s0])
+    n /= np.linalg.norm(n, axis=1)[:, np.newaxis]
+
+    d = -(n * p[s0]).sum(1)
+
+    q = np.concatenate([n, (d / d.std())[:, np.newaxis]], axis=1)
+
+    tree = spatial.cKDTree(q)
+
+    # query tree and take mean of some region
+    i = tree.query(q, k=20)[0].sum(1).argmin()
+    j = tree.query(q[i], k=10)[1]
+    try:
+        (a, b, c), d = n[j].mean(0), d[j].mean()
+    except IndexError:
+        return np.zeros(len(select), 'b1')
+
+    x, y, z = p.transpose()
+    e = a * x + b * y + c * z + d
+
+    plane = np.zeros(len(select), 'b1')
+    plane[select] = np.abs(e) < 0.2
+    return plane
+
+
+def parse(points, colors):
+    for (x, y, z), (r, g, b) in zip(points, colors):
+        yield '{} {} {} {} {} {}'.format(x, y, z, r, g, b)
+
+
 def roof(index_path, point_path, source_path, target_path):
     fetcher = Fetcher(index_path=index_path, point_path=point_path)
     data_source = ogr.Open(source_path)
     layer = data_source[0]
     for char, feature in zip(string.ascii_letters, layer):
+        # if char not in 'm':
+            # continue
         geometry = feature.geometry()
         points = fetcher.fetch(geometry)
-        text = '\n'.join(map(lambda x: ' '.join(map(str, x)), points))
-        template = 'las2las -stdin -itxt -o {}.laz'
+        colors = np.tile([0, 0, 255], (len(points), 1))
+
+        # remove foliage
+        select = classify(points)
+        colors[select] = 0, 255, 0
+
+        tuples = (
+            (255, 0, 0),
+            (255, 255, 0),
+            (255, 255, 255),
+            (0, 255, 255),
+            (255, 0, 255),
+        )
+
+        for t in tuples:
+            # mark plane
+            plane = planify(points=points, select=select)
+            colors[plane] = t
+            select[plane] = False
+
+        text = '\n'.join(parse(points, colors))
+        template = 'las2las -stdin -itxt -iparse xyzRGB -o {}.laz'
         command = template.format(char)
         process = subprocess.Popen(shlex.split(command),
                                    stdin=subprocess.PIPE)
