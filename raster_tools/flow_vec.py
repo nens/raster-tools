@@ -31,6 +31,11 @@ INDICES = COURSES.nonzero()
 NUMBERS = COURSES[INDICES][np.newaxis, ...]
 OFFSETS = np.array(INDICES).transpose() - 1
 
+CLASSES = ((2.0, 3.0),
+           (3.0, 4.0),
+           (4.0, 4.7),
+           (4.7, 9.9))
+
 
 def get_traveled(courses):
     """ Return indices when travelling along courses. """
@@ -77,22 +82,24 @@ def vectorize(direction, accumulation):
     state = np.arange(size)
     flow[flow[flow[state]] == state] = size
 
-    for klass in 2, 3, 4, 4.7:
+    for lower, upper in CLASSES:
         # select points that match klass
-        points = (accumulation.ravel() >= klass).nonzero()[0]
+        points = (np.logical_and(accumulation.ravel() < upper,
+                                 accumulation.ravel() >= lower)).nonzero()[0]
 
         # determine sources, merges and sinks
         flowed = flow[points]
+        leaving = (flowed == size)
+        promoting = np.logical_and(~leaving,
+                                   np.in1d(flowed, points, invert=True))
         bincount = np.bincount(flowed, minlength=size)[:-1]
+
         sources = points[np.logical_and(
             flowed != size,
             np.in1d(points, flowed, invert=True),
         )]
         merges = np.intersect1d(points, np.where(bincount > 1)[0])
-        sinks = points[np.logical_or(
-            flowed == size,
-            np.in1d(flowed, points, invert=True),
-        )]
+        sinks = np.union1d(points[leaving], flowed[promoting])
 
         # determine starts and stops
         starts = np.union1d(sources, merges)
@@ -109,7 +116,7 @@ def vectorize(direction, accumulation):
                 if x in stops:
                     break
             a = np.array(l)
-            yield klass, (a // width + 0.5, a % width + 0.5)  # pixel center
+            yield lower, (a // width + 0.5, a % width + 0.5)  # pixel center
 
 
 class Vectorizer(object):
