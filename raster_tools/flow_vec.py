@@ -77,7 +77,7 @@ def vectorize(direction, accumulation):
     state = np.arange(size)
     flow[flow[flow[state]] == state] = size
 
-    for klass in 1, 2, 3, 4, 4.7:
+    for klass in 2, 3, 4, 4.7:
         # select points that match klass
         points = (accumulation.ravel() >= klass).nonzero()[0]
 
