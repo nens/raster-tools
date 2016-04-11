@@ -11,6 +11,7 @@ from __future__ import division
 
 import argparse
 import collections
+import itertools
 import math
 import os
 import shlex
@@ -18,9 +19,10 @@ import string
 import subprocess
 
 from scipy import spatial
+from scipy import interpolate
 import numpy as np
 
-# from raster_tools import datasets
+from raster_tools import datasets
 from raster_tools import gdal
 from raster_tools import ogr
 from raster_tools import osr
@@ -29,46 +31,61 @@ from raster_tools import vectors
 """
 
 """
-WIDTH = 0.5
-HEIGHT = 0.5
+A = +0.25
+D = -0.25
 NO_DATA_VALUE = np.finfo('f4').min.item()
-DRIVER = gdal.GetDriverByName(str('gtiff'))
+TIF_DRIVER = gdal.GetDriverByName(str('gtiff'))
+MEM_DRIVER = ogr.GetDriverByName(str('Memory'))
 OPTIONS = ['compress=deflate', 'tiled=yes']
 PROJECTION = osr.GetUserInputAsWKT(str('epsg:28992'))
+SR = osr.SpatialReference(PROJECTION)
 
 
-def rasterize(points):
+def clip(kwargs, geometry):
+        """ Clip kwargs in place. """
+        # do not touch original kwargs
+        kwargs = kwargs.copy()
+        array = kwargs.pop('array')
+        mask = np.ones_like(array, 'u1')
+
+        # create an ogr datasource
+        source = MEM_DRIVER.CreateDataSource('')
+        layer = source.CreateLayer(str(''), SR)
+        defn = layer.GetLayerDefn()
+        feature = ogr.Feature(defn)
+        feature.SetGeometry(geometry)
+        layer.CreateFeature(feature)
+
+        # clip
+        with datasets.Dataset(mask, **kwargs) as dataset:
+            gdal.RasterizeLayer(dataset, [1], layer, burn_values=[0])
+
+        # alter array with result
+        array[mask.astype('b1')] = NO_DATA_VALUE
+
+
+def rasterize(points, classes):
     """ Create array. """
-    xmin, ymin = points[:, :2].min(0)
-    xmax, ymax = points[:, :2].max(0)
+    px, py, pz = points[classes > 0].transpose()
+    x1 = 4 * math.floor(px.min() / 4)
+    y1 = 4 * math.floor(py.min() / 4)
+    x2 = 4 * math.ceil(px.max() / 4)
+    y2 = 4 * math.ceil(py.max() / 4)
 
-    p = math.floor(xmin / WIDTH) * WIDTH
-    q = math.floor(ymax / HEIGHT) * HEIGHT
+    geo_transform = x1, A, 0, y2, 0, D
+    array = np.full((4 * (y2 - y1), 4 * (x2 - x1)), NO_DATA_VALUE, 'f4')
+    grid = tuple(np.mgrid[y2 + D / 2:y1 + D / 2:D,
+                          x1 + A / 2:x2 + A / 2:A][::-1])
 
-    geo_transform = p, WIDTH, 0, q, 0, -HEIGHT
+    for klass in range(1, classes.max() + 1):
+        ix_1d = (classes == klass)
+        if ix_1d.sum() < 5:
+            continue
+        vals = interpolate.griddata(points[ix_1d, :2], points[ix_1d, 2], grid)
+        ix_2d = ~np.isnan(vals)
+        array[ix_2d] = vals[ix_2d]
 
-    indices = np.empty((len(points), 3), 'u4')
-    indices[:, 2] = (points[:, 0] - p) / WIDTH
-    indices[:, 1] = (q - points[:, 1]) / HEIGHT
-
-    order = indices.view('u4,u4,u4').argsort(order=['f1', 'f2'], axis=0)[:, 0]
-    indices = indices[order]
-
-    indices[0, 0] = 0
-    py, px = indices[0, 1:]
-    for i in range(1, len(indices)):
-        same1 = indices[i, 1] == indices[i - 1, 1]
-        same2 = indices[i, 2] == indices[i - 1, 2]
-        if same1 and same2:
-            indices[i, 0] = indices[i - 1, 0] + 1
-        else:
-            indices[i, 0] = 0
-
-    array = np.full(indices.max(0) + 1, NO_DATA_VALUE)
-    array[tuple(indices.transpose())] = points[:, 2][order]
-    array = np.ma.masked_values(array, NO_DATA_VALUE)
-
-    return {'array': array,
+    return {'array': array[np.newaxis],
             'projection': PROJECTION,
             'no_data_value': NO_DATA_VALUE,
             'geo_transform': geo_transform}
@@ -92,8 +109,7 @@ class Fetcher(object):
         multipoint = vectors.array2multipoint(points)
 
         # intersection
-        polygon = vectors.array2polygon(np.array(geometry.GetPoints()))
-        intersection = multipoint.Intersection(polygon)
+        intersection = multipoint.Intersection(geometry)
 
         # to points
         result = np.fromstring(intersection.ExportToWkb()[9:], 'u1')
@@ -117,20 +133,33 @@ def classify(points):
     for i, (x, y, z) in enumerate(points):
         columns[int(x), int(y)].append(i)
 
-    select = np.zeros(len(points), 'b1')
+    select = np.ones(len(points), 'b1')
+
     for l in columns.values():
         z = points[l, 2]  # z values in this patch
+        w = np.ones_like(z, 'b1')
+        
+        # low outliers
+        if len(l) > 1:
+            m = z[z.argsort()[1]]
+        w[z < m - 1.0] = False
+
+        # high outliers
         try:
-            select[l] = [z < z[z.argsort()[8]] + 1]  # within range of min
-        except IndexError:
-            select[l] = True
+            n = z[w].min()
+            w[z > n + 1.0] = False
+        except ValueError:
+            pass
+
+        select[l] = w
+
     return select
 
 
-def planify(points, select):
+def find_some_plane(points, select):
+    """ Find most prominent plane in points. """
     p = points[select]
-    o = p.min(0)
-    p -= o
+    p -= p.min(0)
     t = spatial.Delaunay(p[:, :2])
     s0, s1, s2 = t.simplices.transpose()
     n = np.cross(p[s1] - p[s0], p[s2] - p[s0])
@@ -142,25 +171,26 @@ def planify(points, select):
 
     tree = spatial.cKDTree(q)
 
-    # query tree and take mean of some region
-    i = tree.query(q, k=20)[0].sum(1).argmin()
+    # query tree and take median of some region
+    i = tree.query(q, k=10)[0].sum(1).argmin()
     j = tree.query(q[i], k=10)[1]
     try:
-        (a, b, c), d = n[j].mean(0), d[j].mean()
+        (a, b, c), d = np.median(n[j], 0), np.median(d[j])
     except IndexError:
         return np.zeros(len(select), 'b1')
 
-    x, y, z = p.transpose()
+    x, y, z = points[select].transpose()
     e = a * x + b * y + c * z + d
 
+    # return index to found plane
     plane = np.zeros(len(select), 'b1')
     plane[select] = np.abs(e) < 0.2
     return plane
 
 
-def parse(points, colors):
-    for (x, y, z), (r, g, b) in zip(points, colors):
-        yield '{} {} {} {} {} {}'.format(x, y, z, r, g, b)
+def parse(points, classes):
+    for (x, y, z), c in zip(points, classes):
+        yield '{} {} {} {}'.format(x, y, z, c)
 
 
 def roof(index_path, point_path, source_path, target_path):
@@ -168,36 +198,39 @@ def roof(index_path, point_path, source_path, target_path):
     data_source = ogr.Open(source_path)
     layer = data_source[0]
     for char, feature in zip(string.ascii_letters, layer):
-        # if char not in 'm':
-            # continue
+        if char not in 'n':
+            continue
         geometry = feature.geometry()
+        geometry = vectors.array2polygon(np.array(geometry.GetPoints()))
+
         points = fetcher.fetch(geometry)
-        colors = np.tile([0, 0, 255], (len(points), 1))
+        classes = np.zeros(len(points), 'u1')
 
         # remove foliage
         select = classify(points)
-        colors[select] = 0, 255, 0
+        classes[select] = 1
 
-        tuples = (
-            (255, 0, 0),
-            (255, 255, 0),
-            (255, 255, 255),
-            (0, 255, 255),
-            (255, 0, 255),
-        )
-
-        for t in tuples:
+        klass = itertools.count(2)
+        while True:
             # mark plane
-            plane = planify(points=points, select=select)
-            colors[plane] = t
+            plane = find_some_plane(points=points, select=select)
+            classes[plane] = next(klass)
             select[plane] = False
+            if select.sum() < 10 or plane.sum() < 10:
+                break
 
-        text = '\n'.join(parse(points, colors))
-        template = 'las2las -stdin -itxt -iparse xyzRGB -o {}.laz'
+        # save classified cloud
+        text = '\n'.join(parse(points, classes))
+        template = 'las2las -stdin -itxt -iparse xyzc -o {}.laz'
         command = template.format(char)
         process = subprocess.Popen(shlex.split(command),
                                    stdin=subprocess.PIPE)
         process.communicate(text)
+
+        kwargs = rasterize(points=points, classes=classes)
+        with datasets.Dataset(**kwargs) as dataset:
+            clip(kwargs=kwargs, geometry=geometry)
+            TIF_DRIVER.CreateCopy(char + '.tif', dataset, options=OPTIONS)
         print(char)
 
 
