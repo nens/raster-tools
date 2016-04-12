@@ -10,8 +10,6 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
-import collections
-import itertools
 import math
 import os
 import shlex
@@ -129,68 +127,30 @@ class Fetcher(object):
 
 
 def classify(points):
-    columns = collections.defaultdict(list)
-    for i, (x, y, z) in enumerate(points):
-        columns[int(x), int(y)].append(i)
+    """
+    Select any location with enough points in a sphere.
+    """
+    size = len(points)
+    points_2d = points[:, :2]
+    tree = spatial.cKDTree(points_2d)
+    index = tree.query(points_2d, k=8, distance_upper_bound=1)[1]
 
-    select = np.ones(len(points), 'b1')
+    classes = np.zeros(len(points), 'u1')
 
-    for l in columns.values():
-        z = points[l, 2]  # z values in this patch
-        w = np.ones_like(z, 'b1')
-        
-        # low outliers
-        if len(l) > 1:
-            m = z[z.argsort()[1]]
-        w[z < m - 1.0] = False
+    valid = (index != size).all(1)
+    classes[valid] = 1
 
-        # high outliers
-        try:
-            n = z[w].min()
-            w[z > n + 1.0] = False
-        except ValueError:
-            pass
+    this = points[valid, 2]
+    others = points[index[valid], 2]
+    crit = np.logical_and(this > others.min(1), this < others.mean() + 0.5)
+    classes[valid] = np.where(crit, 2, classes[valid])
 
-        select[l] = w
-
-    return select
+    return classes
 
 
-def find_some_plane(points, select):
-    """ Find most prominent plane in points. """
-    p = points[select]
-    p -= p.min(0)
-    t = spatial.Delaunay(p[:, :2])
-    s0, s1, s2 = t.simplices.transpose()
-    n = np.cross(p[s1] - p[s0], p[s2] - p[s0])
-    n /= np.linalg.norm(n, axis=1)[:, np.newaxis]
-
-    d = -(n * p[s0]).sum(1)
-
-    q = np.concatenate([n, (d / d.std())[:, np.newaxis]], axis=1)
-
-    tree = spatial.cKDTree(q)
-
-    # query tree and take median of some region
-    i = tree.query(q, k=10)[0].sum(1).argmin()
-    j = tree.query(q[i], k=10)[1]
-    try:
-        (a, b, c), d = np.median(n[j], 0), np.median(d[j])
-    except IndexError:
-        return np.zeros(len(select), 'b1')
-
-    x, y, z = points[select].transpose()
-    e = a * x + b * y + c * z + d
-
-    # return index to found plane
-    plane = np.zeros(len(select), 'b1')
-    plane[select] = np.abs(e) < 0.2
-    return plane
-
-
-def parse(points, classes):
-    for (x, y, z), c in zip(points, classes):
-        yield '{} {} {} {}'.format(x, y, z, c)
+def parse(points, colors):
+    for (x, y, z), (r, g, b) in zip(points, colors):
+        yield '{} {} {} {} {} {}'.format(x, y, z, r, g, b)
 
 
 def roof(index_path, point_path, source_path, target_path):
@@ -198,39 +158,33 @@ def roof(index_path, point_path, source_path, target_path):
     data_source = ogr.Open(source_path)
     layer = data_source[0]
     for char, feature in zip(string.ascii_letters, layer):
-        if char not in 'n':
-            continue
+        # if char not in 'mn':
+            # continue
         geometry = feature.geometry()
         geometry = vectors.array2polygon(np.array(geometry.GetPoints()))
 
         points = fetcher.fetch(geometry)
         classes = np.zeros(len(points), 'u1')
 
-        # remove foliage
-        select = classify(points)
-        classes[select] = 1
-
-        klass = itertools.count(2)
-        while True:
-            # mark plane
-            plane = find_some_plane(points=points, select=select)
-            classes[plane] = next(klass)
-            select[plane] = False
-            if select.sum() < 10 or plane.sum() < 10:
-                break
+        # classify
+        classes = classify(points)
+        a, b = 0, 255
+        colors = np.array([[b, a, a],
+                           [a, b, a],
+                           [a, a, b]], 'u1')[classes]
 
         # save classified cloud
-        text = '\n'.join(parse(points, classes))
-        template = 'las2las -stdin -itxt -iparse xyzc -o {}.laz'
+        text = '\n'.join(parse(points, colors))
+        template = 'las2las -stdin -itxt -iparse xyzRGB -o {}.laz'
         command = template.format(char)
         process = subprocess.Popen(shlex.split(command),
                                    stdin=subprocess.PIPE)
         process.communicate(text)
 
-        kwargs = rasterize(points=points, classes=classes)
-        with datasets.Dataset(**kwargs) as dataset:
-            clip(kwargs=kwargs, geometry=geometry)
-            TIF_DRIVER.CreateCopy(char + '.tif', dataset, options=OPTIONS)
+        # kwargs = rasterize(points=points, classes=classes)
+        # with datasets.Dataset(**kwargs) as dataset:
+            # clip(kwargs=kwargs, geometry=geometry)
+            # TIF_DRIVER.CreateCopy(char + '.tif', dataset, options=OPTIONS)
         print(char)
 
 
