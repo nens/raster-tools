@@ -116,7 +116,7 @@ def vectorize(direction, accumulation):
                 if x in stops:
                     break
             a = np.array(l)
-            yield lower, (a // width + 0.5, a % width + 0.5)  # pixel center
+            yield lower, (a // width - 0.5, a % width - 0.5)  # pixel center
 
 
 class Vectorizer(object):
@@ -146,9 +146,12 @@ class Vectorizer(object):
         index_geometry = index_feature.geometry()
         geo_transform = self.geo_transform.shifted(index_geometry)
 
-        # data with one pixel margin on right and bottom for continuity
+        # data with one pixel margin on all sides
         indices = self.geo_transform.get_indices(index_geometry)
-        indices = indices[0], indices[1], indices[2] + 1, indices[3] + 1
+        indices = (indices[0] - 1,
+                   indices[1] - 1,
+                   indices[2] + 1,
+                   indices[3] + 1)
         direction = self.direction_group.read(indices)
         accumulation = self.accumulation_group.read(indices)
 

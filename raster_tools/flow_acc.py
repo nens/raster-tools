@@ -22,7 +22,6 @@ from raster_tools import utils
 from raster_tools import gdal
 
 GTIF = gdal.GetDriverByName(str('gtiff'))
-DTYPE = np.dtype('i8, i8')
 
 COURSES = np.array([(64, 128, 1),
                     (32,   0, 2),

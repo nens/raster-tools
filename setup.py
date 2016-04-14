@@ -55,6 +55,7 @@ setup(name='raster-tools',
               'flow-dir           = raster_tools.flow_dir:main',
               'flow-acc           = raster_tools.flow_acc:main',
               'flow-vec           = raster_tools.flow_vec:main',
+              'flow-rst           = raster_tools.flow_rst:main',
               # modification
               'mfillnodata        = raster_tools.mfillnodata:main',
               'fillnodata         = raster_tools.fillnodata:main',

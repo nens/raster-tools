@@ -1,6 +1,13 @@
 raster-tools
 ==========================================
 
+Dependencies
+------------
+python-gdal
+python-psycopg2
+python-scipy
+
+
 Rasterizing landuse tables
 --------------------------
 For rasterization of landuse tables from a postgres datasource a special
@@ -19,11 +26,14 @@ Creating a seamless large-scale void-filled raster
 7. Cut result back into desired tiling using [retile]
 
 
-Dependencies
-------------
-python-gdal
-python-psycopg2
-python-scipy
+Creating streamlines
+--------------------
+
+flow-fil index raster cover output/f
+flow-dir index output/f/all.vrt cover output/d              # fill depressions
+flow-acc index output/d/all.vrt output/a                    # accumulate
+flow-vec index output/d/all.vrt output/a/all.vrt output/v   # makes features
+flow-rst index output/v/all.vrt output/r                    # features to tifs
 
 
 Post-nensskel setup TODO
