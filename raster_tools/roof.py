@@ -142,8 +142,13 @@ def classify(points):
 
     this = points[valid, 2]
     others = points[index[valid], 2]
-    crit = np.logical_and(this > others.min(1), this < others.mean() + 0.5)
-    classes[valid] = np.where(crit, 2, classes[valid])
+
+    # criteria
+    crit2 = this < np.percentile(others, 15, 1)
+    crit3 = this < others.min(1) + 1
+    # crit = np.logical_and(crit1, crit2)
+    classes[valid] = np.where(crit2, 2, classes[valid])
+    classes[valid] = np.where(~crit3, 3, classes[valid])
 
     return classes
 
@@ -158,8 +163,8 @@ def roof(index_path, point_path, source_path, target_path):
     data_source = ogr.Open(source_path)
     layer = data_source[0]
     for char, feature in zip(string.ascii_letters, layer):
-        # if char not in 'mn':
-            # continue
+        if char not in 'mn':
+            continue
         geometry = feature.geometry()
         geometry = vectors.array2polygon(np.array(geometry.GetPoints()))
 
@@ -171,7 +176,8 @@ def roof(index_path, point_path, source_path, target_path):
         a, b = 0, 255
         colors = np.array([[b, a, a],
                            [a, b, a],
-                           [a, a, b]], 'u1')[classes]
+                           [a, a, b],
+                           [b, a, b]], 'u1')[classes]
 
         # save classified cloud
         text = '\n'.join(parse(points, colors))
