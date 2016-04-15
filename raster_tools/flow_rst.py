@@ -26,9 +26,9 @@ GTIF = gdal.GetDriverByName(str('gtiff'))
 OPTIONS = ['compress=deflate', 'tiled=yes']
 
 
-def get_geo_transform(geometry, cellsize=(0.1, -0.1)):
+def get_geo_transform(geometry):
     """ Return geotransform. """
-    a, b, c, d = cellsize[0], 0.0, 0.0, cellsize[1]
+    a, b, c, d = 0.5 / 3, 0.0, 0.0, -0.5 / 3
     x1, x2, y1, y2 = geometry.GetEnvelope()
     return x1, a, b, y2, c, d
 
@@ -63,7 +63,7 @@ def rasterize(feature, source_dir, target_dir):
 
     with datasets.Dataset(**kwargs) as dataset:
         for value, attribute in enumerate([2, 3, 4, 4.7], 2):
-            layer.SetAttributeFilter(str('class={}').format(value))
+            layer.SetAttributeFilter(str('class={}').format(attribute))
             gdal.RasterizeLayer(dataset, [1], layer, burn_values=[value])
 
         GTIF.CreateCopy(target_path, dataset, options=OPTIONS)
