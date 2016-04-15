@@ -16,8 +16,11 @@ import shlex
 import string
 import subprocess
 
-from scipy import spatial
 from scipy import interpolate
+from scipy import sparse
+from scipy import spatial
+from scipy.sparse import csgraph
+
 import numpy as np
 
 from raster_tools import datasets
@@ -62,31 +65,35 @@ def clip(kwargs, geometry):
         array[mask.astype('b1')] = NO_DATA_VALUE
 
 
-def rasterize(points, classes):
+def rasterize(geometry, points):
     """ Create array. """
-    px, py, pz = points[classes > 0].transpose()
-    x1 = 4 * math.floor(px.min() / 4)
-    y1 = 4 * math.floor(py.min() / 4)
-    x2 = 4 * math.ceil(px.max() / 4)
-    y2 = 4 * math.ceil(py.max() / 4)
+    envelope = geometry.GetEnvelope()
+    # px, py, pz = points.transpose()
+    x1 = 4 * math.floor(envelope[0] / 4)
+    y1 = 4 * math.floor(envelope[2] / 4)
+    x2 = 4 * math.ceil(envelope[1] / 4)
+    y2 = 4 * math.ceil(envelope[3] / 4)
 
     geo_transform = x1, A, 0, y2, 0, D
     array = np.full((4 * (y2 - y1), 4 * (x2 - x1)), NO_DATA_VALUE, 'f4')
     grid = tuple(np.mgrid[y2 + D / 2:y1 + D / 2:D,
                           x1 + A / 2:x2 + A / 2:A][::-1])
 
-    for klass in range(1, classes.max() + 1):
-        ix_1d = (classes == klass)
-        if ix_1d.sum() < 5:
-            continue
-        vals = interpolate.griddata(points[ix_1d, :2], points[ix_1d, 2], grid)
-        ix_2d = ~np.isnan(vals)
-        array[ix_2d] = vals[ix_2d]
+    # interpolate
+    args = points[:, :2], points[:, 2], grid
+    linear = interpolate.griddata(*args, method='linear')
+    nearest = interpolate.griddata(*args, method='nearest')
+    array = np.where(np.isnan(linear), nearest, linear).astype('f4')
 
-    return {'array': array[np.newaxis],
-            'projection': PROJECTION,
-            'no_data_value': NO_DATA_VALUE,
-            'geo_transform': geo_transform}
+    # clip and return
+    kwargs = {
+        'array': array[np.newaxis],
+        'projection': PROJECTION,
+        'no_data_value': NO_DATA_VALUE,
+        'geo_transform': geo_transform,
+    }
+    clip(kwargs=kwargs, geometry=geometry)
+    return kwargs
 
 
 class Fetcher(object):
@@ -131,25 +138,32 @@ def classify(points):
     Select any location with enough points in a sphere.
     """
     size = len(points)
-    points_2d = points[:, :2]
-    tree = spatial.cKDTree(points_2d)
-    index = tree.query(points_2d, k=8, distance_upper_bound=1)[1]
+    if size < 900:
+        # this better be some (local) density
+        return np.ones(size, 'u1')
 
-    classes = np.zeros(len(points), 'u1')
+    # use spatial to find near neighbours
+    links = 4    # connect to how many points
+    limit = 0.5  # connect only within distance
+    tree = spatial.cKDTree(points)
+    dist, index = tree.query(points, k=links)
 
-    valid = (index != size).all(1)
-    classes[valid] = 1
+    # determine valid links
+    start = np.arange(size).repeat(links)
+    stop = index.ravel()
+    rdist = dist.ravel()
+    select = np.logical_and(rdist < limit, start != stop)
 
-    this = points[valid, 2]
-    others = points[index[valid], 2]
+    # create sparse matrix and find components
+    data = np.ones(links * size, 'b1')
+    matrix = sparse.csr_matrix(
+        (data[select], (start[select], stop[select])), shape=(size, size),
+    )
+    comps, label = csgraph.connected_components(matrix, directed=False)
 
-    # criteria
-    crit2 = this < np.percentile(others, 15, 1)
-    crit3 = this < others.min(1) + 1
-    # crit = np.logical_and(crit1, crit2)
-    classes[valid] = np.where(crit2, 2, classes[valid])
-    classes[valid] = np.where(~crit3, 3, classes[valid])
-
+    count = np.bincount(label)
+    classes = np.zeros(size, 'u1')
+    classes[label == count.argmax()] = 1
     return classes
 
 
@@ -163,13 +177,12 @@ def roof(index_path, point_path, source_path, target_path):
     data_source = ogr.Open(source_path)
     layer = data_source[0]
     for char, feature in zip(string.ascii_letters, layer):
-        if char not in 'mn':
-            continue
+        # if char not in 'mn':
+            # continue
         geometry = feature.geometry()
         geometry = vectors.array2polygon(np.array(geometry.GetPoints()))
 
         points = fetcher.fetch(geometry)
-        classes = np.zeros(len(points), 'u1')
 
         # classify
         classes = classify(points)
@@ -187,11 +200,11 @@ def roof(index_path, point_path, source_path, target_path):
                                    stdin=subprocess.PIPE)
         process.communicate(text)
 
-        # kwargs = rasterize(points=points, classes=classes)
-        # with datasets.Dataset(**kwargs) as dataset:
-            # clip(kwargs=kwargs, geometry=geometry)
-            # TIF_DRIVER.CreateCopy(char + '.tif', dataset, options=OPTIONS)
-        print(char)
+        points = points[classes.astype('b1')]
+        kwargs = rasterize(points=points, geometry=geometry)
+        with datasets.Dataset(**kwargs) as dataset:
+            TIF_DRIVER.CreateCopy(char + '.tif', dataset, options=OPTIONS)
+        print(char, len(points))
 
 
 def get_parser():
