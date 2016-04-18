@@ -73,6 +73,7 @@ setup(name='raster-tools',
               # modeling
               'extract            = raster_tools.extract:main',
               'line-up            = raster_tools.line_up:main',
+              'vselect            = raster_tools.vselect:main',
               # pointclouds
               'txt2tif            = raster_tools.txt2tif:main',
               'roof               = raster_tools.roof:main',
