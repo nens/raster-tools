@@ -119,7 +119,7 @@ class PostgisSource(object):
             geometry_column=geometry_column,
         )
 
-    def get_data_source(self, **kwargs):
+    def get_data_source(self, name='', **kwargs):
         """ Return data as ogr data source. """
         data = self.get_data(**kwargs)
         geometry_column = data['geometry_column']
@@ -133,7 +133,7 @@ class PostgisSource(object):
             spatial_ref.ImportFromEPSG(28992)
 
         # layer definition
-        layer = data_source.CreateLayer(b'', spatial_ref)
+        layer = data_source.CreateLayer(str(name), spatial_ref)
         for n, t in zip(data['all_columns'], data['data_types']):
             if n == geometry_column:
                 continue
