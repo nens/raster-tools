@@ -58,20 +58,28 @@ class PostgisSource(object):
     """
 
     SQL_DATA_SOURCE = """
-        SELECT DISTINCT ON ({geometry_column})
+        SELECT
             {columns}
         FROM
             {schema}.{name}
         WHERE
-            {name}.{geometry_column} && ST_GeomFromWKB({wkb})
-            {where}
+            {geom} && {request} AND ST_Intersects({geom}, {request})
     """
 
     def __init__(self, *args, **kwargs):
         """ """
         self.connection = psycopg2.connect(*args, **kwargs)
 
-    def get_data(self, table, geometry, where=''):
+    def _get_srid(self, geometry):
+        sr = geometry.GetSpatialReference()
+        key = str('GEOGCS') if sr.IsGeographic() else str('PROJCS')
+        srid = sr.GetAuthorityCode(key)
+        if srid is None:
+            print('Geometry spatial reference lacks authority code.')
+            exit()
+        return srid
+
+    def _get_data(self, table, geometry):
         """ Return a section of a table as an ogr data source. """
         schema, name = table.split('.')
         cursor = self.connection.cursor()
@@ -82,7 +90,7 @@ class PostgisSource(object):
             name=name,
         )
         cursor.execute(sql)
-        geometry_column, srid = cursor.fetchall()[0]
+        geom, srid = cursor.fetchall()[0]
 
         # get data types
         sql = self.SQL_DATA_TYPE.format(
@@ -90,64 +98,68 @@ class PostgisSource(object):
             name=name,
         )
         cursor.execute(sql)
-        all_columns, data_types = zip(*cursor.fetchall())
+        column_names, data_types = zip(*cursor.fetchall())
+        columns = str(',').join(column_names)
 
-        # get records
-        columns = ','.join(['ST_AsBinary(ST_Force2D({}))'.format(c)
-                            if c == geometry_column
-                            else c
-                            for c in all_columns])
+        # request
+        template = 'ST_Transform(ST_SetSRID(ST_GeomFromWKB({}), {}), {})'
+        wkb = psycopg2.Binary(geometry.ExportToWkb())
+        _srid = self._get_srid(geometry)
+        request = template.format(wkb, _srid, srid)
+
+        replace = 'ST_AsBinary(ST_Transform({}, {}))'.format(geom, _srid)
+        columns = ','.join(column_names).replace(geom, replace)
+
+        # get data
         sql = self.SQL_DATA_SOURCE.format(
+            geom=geom,
             name=name,
-            where=where,
             schema=schema,
             columns=columns,
-            geometry_column=geometry_column,
-            wkb=psycopg2.Binary(geometry.ExportToWkb()),
+            request=request,
         )
-
         cursor.execute(sql)
         records = cursor.fetchall()
         cursor.close()
 
         return dict(
+            geom=geom,
             srid=srid,
             records=records,
             data_types=data_types,
-            all_columns=all_columns,
+            column_names=column_names,
             description=cursor.description,
-            geometry_column=geometry_column,
         )
 
     def get_data_source(self, name='', **kwargs):
         """ Return data as ogr data source. """
-        data = self.get_data(**kwargs)
-        geometry_column = data['geometry_column']
+        data = self._get_data(**kwargs)
+        geom = data['geom']
 
         # source and layer
         data_source = DRIVER_OGR_MEMORY.CreateDataSource('')
-        spatial_ref = osr.SpatialReference()
-        try:
-            spatial_ref.ImportFromEPSG(data['srid'])
-        except RuntimeError:
-            spatial_ref.ImportFromEPSG(28992)
+        spatial_ref = kwargs['geometry'].GetSpatialReference()
 
         # layer definition
         layer = data_source.CreateLayer(str(name), spatial_ref)
-        for n, t in zip(data['all_columns'], data['data_types']):
-            if n == geometry_column:
+        for n, t in zip(data['column_names'], data['data_types']):
+            if n == geom:
                 continue
             layer.CreateField(ogr.FieldDefn(n, self.OGR_TYPES[t]))
         layer_defn = layer.GetLayerDefn()
 
         # data insertion
+        g = data['column_names'].index(geom)
         for r in data['records']:
+            # geometry
+            geometry = ogr.CreateGeometryFromWkb(bytes(r[g]))
             feature = ogr.Feature(layer_defn)
-            for k, v in zip(data['all_columns'], r):
-                if k == geometry_column:
-                    geometry = ogr.CreateGeometryFromWkb(bytes(v))
-                    feature.SetGeometry(geometry)
-                else:
-                    feature[k] = v
+            feature.SetGeometry(geometry)
+
+            # attributes
+            for i, (n, v) in enumerate(zip(data['column_names'], r)):
+                if i == g:
+                    continue
+                feature[n] = v
             layer.CreateFeature(feature)
         return data_source
