@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 """
-Select some vectors from some database.
+Select some vectors from a posgis database, based on an area of interest
+defined in a shape file.
 """
 
 from __future__ import print_function
@@ -15,7 +16,6 @@ import os
 from raster_tools import gdal
 from raster_tools import ogr
 from raster_tools import postgis
-# from raster_tools import osr
 
 DRIVER_OGR_MEMORY = ogr.GetDriverByName(str('Memory'))
 DRIVER_OGR_SHAPE = ogr.GetDriverByName(str('ESRI Shapefile'))
@@ -88,18 +88,20 @@ def get_parser():
     """ Return argument parser. """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('dbname', metavar='DATABASE',
-                        help='Name of the database')
+                        help='name of postgis database')
     parser.add_argument('table', metavar='TABLE',
-                        help='Table name, including schema (e.g. public.bag)')
+                        help='postgis table [my_schema.]mytable')
     parser.add_argument('source_path', metavar='SELECT',
-                        help='Path to raster index shapefile')
+                        help='path to shapefile defining selection')
     parser.add_argument('target_path', metavar='TARGET',
-                        help='Target shapefile')
-    parser.add_argument('-a', '--attribute', default='name')
+                        help='where to save the results')
+    parser.add_argument('-a', '--attribute', default='name',
+                        help='attribute for naming result shapefiles')
+    parser.add_argument('-c', '--clip', action='store_true',
+                        help='clip geometries that extend outside selection')
     parser.add_argument('-u', '--user'),
     parser.add_argument('-p', '--password'),
     parser.add_argument('-s', '--host', default='localhost')
-    parser.add_argument('-c', '--clip', action='store_true'),
     return parser
 
 
