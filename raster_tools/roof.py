@@ -176,12 +176,16 @@ def roof(index_path, point_path, source_path, target_path):
     fetcher = Fetcher(index_path=index_path, point_path=point_path)
     data_source = ogr.Open(source_path)
     layer = data_source[0]
+
+    try:
+        os.mkdir(target_path)
+    except OSError:
+        pass
+
     for char, feature in zip(string.ascii_letters, layer):
         # if char not in 'mn':
             # continue
         geometry = feature.geometry()
-        geometry = vectors.array2polygon(np.array(geometry.GetPoints()))
-
         points = fetcher.fetch(geometry)
 
         # classify
@@ -194,16 +198,19 @@ def roof(index_path, point_path, source_path, target_path):
 
         # save classified cloud
         text = '\n'.join(parse(points, colors))
-        template = 'las2las -stdin -itxt -iparse xyzRGB -o {}.laz'
-        command = template.format(char)
+        laz_path = os.path.join(target_path, char + '.laz')
+        template = 'las2las -stdin -itxt -iparse xyzRGB -o {}'
+        command = template.format(laz_path)
         process = subprocess.Popen(shlex.split(command),
                                    stdin=subprocess.PIPE)
         process.communicate(text)
 
+        # save tif
+        tif_path = os.path.join(target_path, char + '.tif')
         points = points[classes.astype('b1')]
         kwargs = rasterize(points=points, geometry=geometry)
         with datasets.Dataset(**kwargs) as dataset:
-            TIF_DRIVER.CreateCopy(char + '.tif', dataset, options=OPTIONS)
+            TIF_DRIVER.CreateCopy(tif_path, dataset, options=OPTIONS)
         print(char, len(points))
 
 
