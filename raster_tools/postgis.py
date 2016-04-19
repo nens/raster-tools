@@ -23,17 +23,21 @@ osr.UseExceptions()
 class PostgisSource(object):
 
     OGR_TYPES = {
-        'real': ogr.OFTReal,
-        'numeric': ogr.OFTReal,
+        # boolean
         'boolean': ogr.OFTBinary,
+        # integer
         'bigint': ogr.OFTInteger,
         'integer': ogr.OFTInteger,
+        # real
+        'real': ogr.OFTReal,
+        'numeric': ogr.OFTReal,
         'double precision': ogr.OFTReal,
+        # string
+        'date': ogr.OFTString,
         'text': ogr.OFTString,
+        'USER-DEFINED': ogr.OFTString,
         'character varying': ogr.OFTString,
         'timestamp without time zone': ogr.OFTString,
-        'date': ogr.OFTString,
-        'USER-DEFINED': ogr.OFTString,
     }
 
     SQL_GEOMETRY_COLUMN = """
