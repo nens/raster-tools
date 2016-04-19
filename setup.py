@@ -76,6 +76,7 @@ setup(name='raster-tools',
               'vselect            = raster_tools.vselect:main',
               # pointclouds
               'txt2tif            = raster_tools.txt2tif:main',
+              'pol2laz            = raster_tools.pol2laz:main',
               'roof               = raster_tools.roof:main',
           ]},
       )
