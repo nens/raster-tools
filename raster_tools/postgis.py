@@ -28,6 +28,8 @@ class PostgisSource(object):
         'boolean': ogr.OFTBinary,
         'bigint': ogr.OFTInteger,
         'integer': ogr.OFTInteger,
+        'double precision': ogr.OFTReal,
+        'text': ogr.OFTString,
         'character varying': ogr.OFTString,
         'timestamp without time zone': ogr.OFTString,
         'date': ogr.OFTString,
