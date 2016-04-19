@@ -87,7 +87,11 @@ class PostgisSource(object):
 
     def _get_data(self, table, geometry):
         """ Return a section of a table as an ogr data source. """
-        schema, name = table.split('.')
+        try:
+            schema, name = table.split('.')
+        except ValueError:
+            schema, name = 'public', table
+
         cursor = self.connection.cursor()
 
         # get geometry column and srid
