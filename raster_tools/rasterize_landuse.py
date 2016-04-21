@@ -16,24 +16,24 @@ from raster_tools import rasterize
 
 
 TABLES = ','.join([
-    'top10_bermen',
-    'cbs_gebieden',
-    'top10_spoor',
-    'sportvelden_nl',
-    'top10_bos',
-    'parkeerterreinen_nl',
-    'brp_gewassen',
-    'top10_gras',
-    'top10_waterlopen_buffer',
-    'top10_water',
-    'top10_wegen',
-    'top10_gebouw_vlak',
-    'bag_current_ex_functie',
-    'bag_current',
-    'bag_kassen',
+    'utrecht_top10_bermen',
+    'utrecht_cbs_gebieden',
+    'utrecht_top10_spoor',
+    'utrecht_osm_sportvelden',
+    'utrecht_top10_bos',
+    'utrecht_osm_parkeerterreinen',
+    'utrecht_brp_gewassen',
+    'utrecht_top10_gras',
+    'utrecht_top10_waterlopen_buffer',
+    'utrecht_top10_water',
+    'utrecht_top10_wegen',
+    'utrecht_top10_gebouw_vlak',
+    'utrecht_bag_current_ex_functie',
+    'utrecht_bag',
+    'utrecht_top10_kassen',
 ])
 
-SCHEMA = 'data_verwerkt'
+SCHEMA = 'data_tmp'
 
 
 COLUMNS = {
@@ -84,9 +84,9 @@ def get_parser():
     parser.add_argument('dbname',
                         metavar='DBNAME',
                         help='Path to ogr source')
-    parser.add_argument('--host')
-    parser.add_argument('--user')
-    parser.add_argument('--password')
+    parser.add_argument('-s', '--host')
+    parser.add_argument('-u', '--user')
+    parser.add_argument('-p', '--password')
     return parser
 
 
