@@ -16,21 +16,21 @@ from raster_tools import rasterize
 
 
 TABLES = ','.join([
-    'utrecht_top10_bermen',
-    'utrecht_cbs_gebieden',
-    'utrecht_top10_spoor',
-    'utrecht_osm_sportvelden',
-    'utrecht_top10_bos',
-    'utrecht_osm_parkeerterreinen',
-    'utrecht_brp_gewassen',
-    'utrecht_top10_gras',
-    'utrecht_top10_waterlopen_buffer',
-    'utrecht_top10_water',
-    'utrecht_top10_wegen',
-    'utrecht_top10_gebouw_vlak',
-    'utrecht_bag_current_ex_functie',
-    'utrecht_bag',
-    'utrecht_top10_kassen',
+    'top10_bermen',
+    'cbs_gebieden',
+    'top10_spoor',
+    'osm_sportvelden',
+    'top10_bos',
+    'osm_parkeerterreinen',
+    'brp_gewassen',
+    'top10_gras',
+    'top10_waterlopen_buffer',
+    'top10_water',
+    'top10_wegen',
+    'top10_gebouw_vlak',
+    'bag_ex_functie',
+    'bag',
+    'top10_kassen',
 ])
 
 SCHEMA = 'data_tmp'
