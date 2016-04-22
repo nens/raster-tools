@@ -3,6 +3,14 @@
 """
 Select some vectors from a posgis database, based on an area of interest
 defined in a shape file.
+
+Note that the database geometry must have an SRID defined:
+
+    SELECT UpdateGeometrySRID('ahn2','geom',28992);
+
+And the querying shapefile must have an SRID defined, too:
+
+    gdalsrsinfo epsg:28992 -o wkt > myshape.prj
 """
 
 from __future__ import print_function
@@ -86,7 +94,10 @@ def command(source_path, **kwargs):
 
 def get_parser():
     """ Return argument parser. """
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument('dbname', metavar='DATABASE',
                         help='name of postgis database')
     parser.add_argument('table', metavar='TABLE',
