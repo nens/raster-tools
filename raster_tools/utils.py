@@ -41,24 +41,25 @@ def get_geometry(dataset):
     return geometry
 
 
-def aggregate(values, no_data_value):
+def aggregate(values, no_data_value, func='mean'):
     """
     Return aggregated array.
 
     Arrays with uneven dimension sizes will raise an exception.
     """
-    result = np.ma.masked_values(
+    func = getattr(np.ma, func)
+    result = func(np.ma.masked_values(
         np.dstack([values[0::2, 0::2],
                    values[0::2, 1::2],
                    values[1::2, 0::2],
                    values[1::2, 1::2]]), no_data_value,
-    ).mean(2).astype(values.dtype).filled(no_data_value)
+    ), 2).astype(values.dtype).filled(no_data_value)
     return {'values': result, 'no_data_value': no_data_value}
 
 
-def aggregate_uneven(values, no_data_value):
+def aggregate_uneven(values, no_data_value, func='mean'):
     """ Pad, fold, return. """
-    kwargs = {'no_data_value': no_data_value}
+    kwargs = {'no_data_value': no_data_value, 'func': func}
 
     s1, s2 = values.shape
     p1, p2 = s1 % 2, s2 % 2  # required padding to make even-sized

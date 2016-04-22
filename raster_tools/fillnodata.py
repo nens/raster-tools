@@ -63,7 +63,8 @@ def fill(values, no_data_value, ceiling):
     if ceiling is not None and ceiling.shape == aggregated_shape:
         aggregated = {'values': ceiling, 'no_data_value': no_data_value}
     else:
-        aggregated = utils.aggregate_uneven(values=values,
+        aggregated = utils.aggregate_uneven(func='mean',
+                                            values=values,
                                             no_data_value=no_data_value)
 
     filled = fill(ceiling=ceiling, **aggregated)

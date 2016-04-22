@@ -110,7 +110,9 @@ class Aggregator(object):
             return
 
         # aggregate repeatedly
-        kwargs = {'values': values, 'no_data_value': no_data_value}
+        kwargs = {'func': 'mean',
+                  'values': values,
+                  'no_data_value': no_data_value}
         for _ in range(self.iterations):
             kwargs = utils.aggregate(**kwargs)
 
