@@ -53,7 +53,7 @@ class Selector(object):
         for f in l:
             g = f.geometry()
             c = g.Intersection(geometry)
-            if c.GetGeometryType() == COMPATIBLE[g.GetGeometryType()]:
+            if c.GetGeometryType() in COMPATIBLE[g.GetGeometryType()]:
                 f.SetGeometryDirectly(c)
                 l.SetFeature(f)
             else:
