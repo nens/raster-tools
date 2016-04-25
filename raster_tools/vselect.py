@@ -28,6 +28,14 @@ from raster_tools import postgis
 DRIVER_OGR_MEMORY = ogr.GetDriverByName(str('Memory'))
 DRIVER_OGR_SHAPE = ogr.GetDriverByName(str('ESRI Shapefile'))
 
+COMPATIBLE = {1: (1, 4),
+              2: (2, 5),
+              3: (3, 6),
+              4: (1, 4),
+              5: (2, 5),
+              6: (3, 6)}
+
+
 gdal.PushErrorHandler(b'CPLQuietErrorHandler')
 
 
@@ -45,7 +53,7 @@ class Selector(object):
         for f in l:
             g = f.geometry()
             c = g.Intersection(geometry)
-            if c.GetGeometryType() == g.GetGeometryType():
+            if c.GetGeometryType() == COMPATIBLE[g.GetGeometryType()]:
                 f.SetGeometryDirectly(c)
                 l.SetFeature(f)
             else:
