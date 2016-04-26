@@ -33,7 +33,7 @@ flow-fil index raster cover output/f
 flow-dir index output/f/all.vrt cover output/d              # fill depressions
 flow-acc index output/d/all.vrt output/a                    # accumulate
 flow-vec index output/d/all.vrt output/a/all.vrt output/v   # makes features
-flow-rst index output/v/all.vrt output/r                    # features to tifs
+flow-rst index output/v output/r                            # features to tifs
 
 
 Post-nensskel setup TODO
