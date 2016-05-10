@@ -19,21 +19,21 @@ TABLES = ','.join([
     'top10_bermen',
     'cbs_gebieden',
     'top10_spoor',
-    'osm_sportvelden',
+    'osm_sportvelden_nl',
     'top10_bos',
-    'osm_parkeerterreinen',
+    'osm_parkeerterreinen_nl',
     'brp_gewassen',
     'top10_gras',
     'top10_waterlopen_buffer',
-    'top10_water',
+    'cbs_top10_water',
     'top10_wegen',
-    'top10_gebouw_vlak',
-    'bag_ex_functie',
-    'bag',
+    'top10_transformator_tank',
+    'bag_current_ex_functie',
+    'bag_current',
     'top10_kassen',
 ])
 
-SCHEMA = 'data_tmp'
+SCHEMA = 'data_verwerkt'
 
 
 COLUMNS = {
