@@ -2,6 +2,10 @@
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 """
 Aggregate recursively by taking the mean of quads.
+
+TODO
+- distinguish between shallow and deep depressions
+- fix stepping and offsetting in the complex filling step
 """
 
 from __future__ import print_function
@@ -183,7 +187,7 @@ def fill_complex_depressions(values, mask=None):
                     values=values[slices],
                     mask=None if mask is None else mask[slices],
                 )
-    # stage 2: complete area - this fills way to large depressions
+    # stage 2: complete area - this fills way too large depressions
     # _fill_complex_depressions(values=values, mask=mask, unique=True)
 
 
