@@ -152,7 +152,7 @@ def command(index_path, source_path, target_dir, attribute):
     for count, index_feature in enumerate(index_layer, 1):
         leaf_number = index_feature[b'BLADNR']
         target_path = os.path.join(
-            target_dir, leaf_number[1:4], leaf_number + '.tif',
+            target_dir, leaf_number[0:3], leaf_number + '.tif',
         )
         if os.path.exists(target_path):
             gdal.TermProgress_nocb(count / total)
@@ -200,7 +200,7 @@ def command(index_path, source_path, target_dir, attribute):
                 # save no data tif for inspection
                 ndv_target_path = os.path.join(target_dir,
                                                'no_data',
-                                               leaf_number[1:4],
+                                               leaf_number[0:3],
                                                leaf_number + '.tif')
                 try:
                     os.makedirs(os.path.dirname(ndv_target_path))
