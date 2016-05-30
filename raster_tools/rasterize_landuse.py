@@ -16,7 +16,7 @@ from raster_tools import rasterize
 
 
 TABLES = ','.join([
-    'top10_bermen',
+    # 'top10_bermen',
     'cbs_gebieden',
     'top10_spoor',
     'osm_sportvelden_nl',
