@@ -12,11 +12,22 @@ import collections
 import csv
 import logging
 import os
-import Queue
 import sys
 import threading
-import urllib
-import urlparse
+
+try:
+    from urllib.request import urlopen
+    from urllib.parse import urlencode
+    from urllib.parse import urljoin
+except ImportError:
+    from urllib import urlopen
+    from urlparse import urljoin
+    from urllib import urlencode
+
+try:
+    import queue as queues
+except ImportError:
+    import Queue as queues
 
 from osgeo import gdal
 from osgeo import gdalnumeric as np
@@ -35,10 +46,16 @@ VERSION = 20
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
 
-DRIVER_OGR_MEMORY = ogr.GetDriverByName(b'Memory')
-DRIVER_OGR_SHAPE = ogr.GetDriverByName(b'ESRI Shapefile')
-DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
-DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
+DRIVER_OGR_MEMORY = ogr.GetDriverByName(str('Memory'))
+DRIVER_OGR_SHAPE = ogr.GetDriverByName(str('ESRI Shapefile'))
+DRIVER_GDAL_MEM = gdal.GetDriverByName(str('mem'))
+DRIVER_GDAL_GTIFF = gdal.GetDriverByName(str('gtiff'))
+DTYPES = {'u1': gdal.GDT_Byte,
+          'u2': gdal.GDT_UInt16,
+          'u4': gdal.GDT_UInt32,
+          'i2': gdal.GDT_Int16,
+          'i4': gdal.GDT_Int32,
+          'f4': gdal.GDT_Float32}
 
 POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 
@@ -79,9 +96,7 @@ class Layers(Operation):
         self.outputs = [self.name]
         self.inputs = {self.name: {'layers': layers, 'time': time}}
 
-        self.data_type = {
-            self.name: dict(f4=gdal.GDT_Float32)[dtype],
-        }
+        self.data_type = {self.name: DTYPES[dtype]}
 
         if fillvalue is None:
             if dtype[0] == 'f':
@@ -208,7 +223,7 @@ class ThreeDi(Operation):
         max_infil = [None] * 256
         # fill
         with open(path) as soil_file:
-            reader = csv.DictReader(soil_file, delimiter=b';')
+            reader = csv.DictReader(soil_file, delimiter=str(';'))
             for record in reader:
                 try:
                     code = int(record['Code'])
@@ -250,7 +265,7 @@ class ThreeDi(Operation):
         permeability = [None] * 256
         # fill
         with open(path) as landuse_file:
-            reader = csv.DictReader(landuse_file, delimiter=b';')
+            reader = csv.DictReader(landuse_file, delimiter=str(';'))
             for record in reader:
                 try:
                     code = int(record['Code'])
@@ -565,7 +580,7 @@ class Preparation(object):
     def _create_index(self):
         """ Create index object to take block geometries from. """
         return Index(
-            dataset=self.datasets.values()[0],
+            dataset=next(iter(self.datasets.values())),
             geometry=self.geometry,
             resume=self.resume,
         )
@@ -616,7 +631,7 @@ class Index(object):
         # rasterize where geometry is
         datasource = DRIVER_OGR_MEMORY.CreateDataSource('')
         sr = geometry.GetSpatialReference()
-        layer = datasource.CreateLayer(b'geometry', sr)
+        layer = datasource.CreateLayer(str('geometry'), sr)
         layer_defn = layer.GetLayerDefn()
         feature = ogr.Feature(layer_defn)
         feature.SetGeometry(geometry)
@@ -695,8 +710,8 @@ class Source(object):
                       'compress': 'deflate',
                       'request': 'getgeotiff'}
         return '{path}?{pars}'.format(
-            path=urlparse.urljoin(self.server, 'data'),
-            pars=urllib.urlencode(parameters),
+            path=urljoin(self.server, 'data'),
+            pars=urlencode(parameters),
         )
 
     def get_chunks(self, block):
@@ -718,7 +733,7 @@ class Chunk():
         parameters = {'geom': block.tile.polygon,
                       'width': block.tile.width,
                       'height': block.tile.height}
-        self.url = '{}&{}'.format(url, urllib.urlencode(parameters))
+        self.url = '{}&{}'.format(url, urlencode(parameters))
         self.key = '{}_{}'.format(name, block.tile.serial)
         self.name = name
         self.block = block
@@ -727,8 +742,8 @@ class Chunk():
         """ Load url into gdal dataset. """
         # retrieve file into gdal vsimem system
         vsi_path = '/vsimem/{}'.format(self.key)
-        vsi_file = gdal.VSIFOpenL(str(vsi_path), b'w')
-        url_file = urllib.urlopen(self.url)
+        vsi_file = gdal.VSIFOpenL(str(vsi_path), str('w'))
+        url_file = urlopen(self.url)
         size = int(url_file.info().get('content-length'))
         gdal.VSIFWriteL(url_file.read(), size, 1, vsi_file)
         gdal.VSIFCloseL(vsi_file)
@@ -795,7 +810,8 @@ class Block(object):
         wkt = dataset.GetProjection()
         no_data_value = dataset.GetRasterBand(1).GetNoDataValue()
         datasource = DRIVER_OGR_MEMORY.CreateDataSource('')
-        layer = datasource.CreateLayer(b'blocks', osr.SpatialReference(wkt))
+        sr = osr.SpatialReference(wkt)
+        layer = datasource.CreateLayer(str('blocks'), sr)
         layer_defn = layer.GetLayerDefn()
         feature = ogr.Feature(layer_defn)
         feature.SetGeometry(self.geometry)
@@ -877,7 +893,7 @@ def extract(preparation):
     total = len(target)
     gdal.TermProgress_nocb(0)
     batch = (c for b in target for c in b)
-    queue = Queue.Queue(maxsize=8)
+    queue = queues.Queue(maxsize=8)
     kwargs = {'queue': queue, 'batch': batch}
 
     thread1 = threading.Thread(target=filler, kwargs=kwargs)
@@ -904,12 +920,12 @@ def check_version():
     """
     Check if this is the highest available version of the script.
     """
-    url_file = urllib.urlopen(GITHUB_URL)
-    lines = url_file.readlines()
+    url_file = urlopen(GITHUB_URL)
+    lines = url_file.read().decode('utf-8').split('\n')
     url_file.close()
 
     for l in lines:
-        if l.startswith('VERSION ='):
+        if str(l).startswith('VERSION ='):
             remote_version = int(l.split('=')[-1].strip())
             break
     if remote_version > VERSION:
