@@ -3,8 +3,8 @@
 Perform zonal calculation on the r, g and b bands
 of aerial imagery datasets. Examples of usage:
 
-    $ rgb-zonal borders.shp image.tif output.shp '(r + g + b).mean()'
-    $ rgb-zonal borders.shp image.tif output.shp 'np.median(g)'
+    $ rgb-zonal image.tif borders.shp output.shp '(r + g + b).mean()'
+    $ rgb-zonal image.tif borders.shp output.shp 'np.median(g)'
 """
 
 from __future__ import print_function
