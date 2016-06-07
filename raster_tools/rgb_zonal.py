@@ -33,14 +33,14 @@ def get_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        'source_path',
-        metavar='SOURCE',
-        help='Path to shape with source features.',
-    )
-    parser.add_argument(
         'image_path',
         metavar='IMAGE',
         help='Path to GDAL dataset containing RGB data.',
+    )
+    parser.add_argument(
+        'source_path',
+        metavar='SOURCE',
+        help='Path to shape with source features.',
     )
     parser.add_argument(
         'target_path',
@@ -59,7 +59,7 @@ def get_parser():
     return parser
 
 
-def command(source_path, image_path, target_path, calculation, part):
+def command(image_path, source_path, target_path, calculation, part):
     """ Main """
     source_features = utils.PartialDataSource(source_path)
     if part is not None:
@@ -74,13 +74,13 @@ def command(source_path, image_path, target_path, calculation, part):
     )
 
     for source_feature in source_features:
+        geometry = source_feature.geometry()
 
         # skip large areas
-        if source_feature[str('area')] > 1000:
+        if geometry.GetArea() > 1000:
             continue
 
         # retrieve raster data
-        geometry = source_feature.geometry()
         try:
             data, mask = image.read(geometry)
         except RuntimeError:
