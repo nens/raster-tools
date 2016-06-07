@@ -78,5 +78,7 @@ setup(name='raster-tools',
               'txt2tif            = raster_tools.txt2tif:main',
               'pol2laz            = raster_tools.pol2laz:main',
               'roof               = raster_tools.roof:main',
+              # analysis
+              'rgb-zonal          = raster_tools.rgb_zonal:main',
           ]},
       )

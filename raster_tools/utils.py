@@ -7,6 +7,7 @@ from __future__ import absolute_import
 from __future__ import division
 
 import logging
+import os
 
 import numpy as np
 
@@ -186,3 +187,43 @@ class PartialDataSource(object):
         for count, fid in enumerate(range(start, stop), 1):
             yield self.layer[fid]
             gdal.TermProgress_nocb(count / total)
+
+
+class TargetDataSource(object):
+    """ Wrap a shapefile, copied from raster-analysis. """
+    def __init__(self, path, template_path, attributes):
+        # read template
+        template_data_source = ogr.Open(template_path)
+        template_layer = template_data_source[0]
+        template_sr = template_layer.GetSpatialRef()
+
+        # create or replace shape
+        driver = ogr.GetDriverByName(b'ESRI Shapefile')
+        self.dataset = driver.CreateDataSource(str(path))
+        layer_name = os.path.basename(path)
+        self.layer = self.dataset.CreateLayer(layer_name, template_sr)
+
+        # Copy field definitions, remember names
+        existing = []
+        layer_defn = template_layer.GetLayerDefn()
+        for i in range(layer_defn.GetFieldCount()):
+            field_defn = layer_defn.GetFieldDefn(i)
+            existing.append(field_defn.GetName().lower())
+            self.layer.CreateField(field_defn)
+
+        # Add extra fields
+        for attribute in attributes:
+            if attribute.lower() in existing:
+                raise NameError(('field named "{}" already '
+                                 'exists in template').format(attribute))
+
+            self.layer.CreateField(ogr.FieldDefn(str(attribute), ogr.OFTReal))
+        self.layer_defn = self.layer.GetLayerDefn()
+
+    def append(self, geometry, attributes):
+        """ Append geometry and attributes as new feature. """
+        feature = ogr.Feature(self.layer_defn)
+        feature.SetGeometry(geometry)
+        for key, value in attributes.items():
+            feature[str(key)] = value
+        self.layer.CreateFeature(feature)
