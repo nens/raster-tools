@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 """
-Aggregate recursively by taking the mean of quads.
+Calculate unique flow directions for pixels in a digital elevation model.
 """
 
 from __future__ import print_function
@@ -20,7 +20,6 @@ from raster_tools import groups
 from raster_tools import utils
 
 from raster_tools import gdal
-# from raster_tools import gdal_array
 
 GTIF = gdal.GetDriverByName(str('gtiff'))
 DTYPE = np.dtype('i8, i8')

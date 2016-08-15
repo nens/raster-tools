@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 """
 Accumulate flow.
@@ -48,33 +47,38 @@ def get_traveled(courses):
     return tuple(target.transpose())             # return tuple
 
 
-def accumulate(values):
+def accumulate(direction):
     """
     Accumulate flow.
 
-    Key principle is the flow array, that relates the source cell A to
-    the target cell B as B = flow[A].
+    The direction array values is used to derive a flow array. The flow
+    array relates the indices A of sources cells to the indices B of
+    target cells as B = flow[A].
+
+    The state array represents a a quantity of fluid. The size of the
+    array corresponds to the quantity of fluid, whereas the values
+    correspond to the locations of the fluid units.
     """
     # construct a mapping array for the flow
-    size = values.size
-    height, width = values.shape
-    traveled = get_traveled(values)
+    size = direction.size
+    height, width = direction.shape
+    traveled = get_traveled(direction)
 
     # construct the flow array
     flow = np.empty(size + 1, dtype='i8')
     flow[-1] = size
     flow[:size] = np.where(np.logical_or.reduce([
-        values.ravel() == 0,    # undefined cells
-        traveled[0] < 0,        # flow-off to the top
-        traveled[0] >= height,  # ... bottom
-        traveled[1] < 0,        # ... left
-        traveled[1] >= width,   # ... right
+        direction.ravel() == 0,    # undefined cells
+        traveled[0] < 0,           # flow-off to the top
+        traveled[0] >= height,     # ... bottom
+        traveled[1] < 0,           # ... left
+        traveled[1] >= width,      # ... right
     ]), size, traveled[0] * width + traveled[1])
 
     # initial condition
-    state = np.arange(size)                  # each cell has a quantity
-    flow[flow[flow[state]] == state] = size  # eliminate opposing directions
-    accumulation = np.zeros(size, 'u8')      # this contains the result
+    state = np.arange(size)                       # each cell has a quantity
+    flow[:-1][flow[flow[state]] == state] = size  # eliminate opposing dirs
+    accumulation = np.zeros(size, 'u8')           # this contains the result
 
     # run the flow until nothing changes anymore
     while True:
@@ -84,7 +88,8 @@ def accumulate(values):
         left = state.size
         if not left:
             break
-        accumulation += np.bincount(state, minlength=size)  # count current
+        current_quantity = np.bincount(state, minlength=size)
+        accumulation += current_quantity.astype('u8')
 
     return accumulation.reshape(height, width)
 
@@ -116,29 +121,29 @@ class Accumulator(object):
 
         # geometries
         inner_geometry = feature.geometry()
-        outer_geometry = inner_geometry.Buffer(200)
+        outer_geometry = inner_geometry.Buffer(50)
 
         # geo transforms
         inner_geo_transform = self.geo_transform.shifted(inner_geometry)
         outer_geo_transform = self.geo_transform.shifted(outer_geometry)
 
         # data
-        values = self.raster_group.read(outer_geometry)
+        direction = self.raster_group.read(outer_geometry)
 
         # processing
-        values = accumulate(values)
+        accu = accumulate(direction)
 
         # cut out and convert
         slices = outer_geo_transform.get_slices(inner_geometry)
-        values = np.log10(values[slices][np.newaxis] + 1).astype('f4')
+        acculog = np.log10(accu[slices][np.newaxis] + 1).astype('f4')
 
         # save
         options = ['compress=deflate', 'tiled=yes']
         kwargs = {'projection': self.projection,
                   'geo_transform': inner_geo_transform,
-                  'no_data_value': np.finfo(values.dtype).min.item()}
+                  'no_data_value': np.finfo(acculog.dtype).min.item()}
 
-        with datasets.Dataset(values, **kwargs) as dataset:
+        with datasets.Dataset(acculog, **kwargs) as dataset:
             GTIF.CreateCopy(path, dataset, options=options)
 
 
@@ -170,7 +175,7 @@ def get_parser():
     parser.add_argument(
         'raster_path',
         metavar='RASTER',
-        help='source GDAL raster dataset with voids'
+        help='source GDAL raster dataset with directions.'
     )
     parser.add_argument(
         'output_path',
