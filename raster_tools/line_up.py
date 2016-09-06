@@ -51,10 +51,9 @@ def get_carpet(parameterized_line, distance, step):
     """
     Return M x N x 2 numpy array.
 
-    It contains the first point of the first line, the centers, and
-    the last point of the last line of the ParameterizedLine, but
-    perpendicularly repeated by step along the normals to the segments
-    of the ParameterizedLine, until distance is reached.
+    It contains the centers of the ParameterizedLine, but perpendicularly
+    repeated by step along the normals to the segments of the
+    ParameterizedLine, until distance is reached.
     """
     # length must be uneven, and no less than 2 * distance / step + 1
     steps = math.ceil(distance / step)
@@ -64,14 +63,8 @@ def get_carpet(parameterized_line, distance, step):
     rvectors = vectors.rotate(parameterized_line.vectors, 270)
     nvectors = vectors.normalize(rvectors)
 
-    # extend vectors and centers
-    evectors = np.concatenate([[nvectors[0]], nvectors[:], [nvectors[-1]]])
-    ecenters = np.concatenate([[parameterized_line.points[0]],
-                               parameterized_line.centers[:],
-                               [parameterized_line.points[-1]]])
-
-    offsets_2d = evectors.reshape(-1, 1, 2) * offsets_1d.reshape(1, -1, 1)
-    points = offsets_2d + ecenters.reshape(-1, 1, 2)
+    offsets_2d = nvectors.reshape(-1, 1, 2) * offsets_1d.reshape(1, -1, 1)
+    points = offsets_2d + parameterized_line.centers.reshape(-1, 1, 2)
 
     return points
 
@@ -80,33 +73,43 @@ def average_result(amount, inverse, lines, centers, values):
     """
     Return dictionary of numpy arrays.
 
-    Points and values are averaged in groups of amount, but lines are
+    Centers and values are averaged in groups of amount, but lines are
     converted per group to a line from the start point of the first line
     in the group to the end point of the last line in the group.
     """
+    # limit amount to sample size
+    sample = values.size
+    if amount > sample:
+        amount = sample
+
+    # determine the number of groups
+    groups = -(-sample // amount)
+
+    # determine indices to pick the result lines from the original lines
+    indices = (
+        (np.arange(0,
+                   sample,
+                   amount).reshape(-1, 1) + [0, amount - 1]).ravel(),
+        (np.zeros((groups, 2), 'i8') + [0, 1]).ravel(),
+    )
+    indices[0][-1] = sample - 1  # last group may not be totally filled
+
+    # calculate centers by averaging
+    ma_centers = np.ma.masked_all((amount * groups, 2), dtype=centers.dtype)
+    ma_centers[:sample] = centers
+    ma_centers.shape = groups, amount, 2
+
+    # calculate values by chosen aggregation minimum or maximum (if inverse)
     extremum = np.max if inverse else np.min
+    ma_values = np.ma.masked_all(amount * groups, dtype=values.dtype)
+    ma_values[:sample] = values
+    ma_values.shape = groups, amount
 
-    # determine the size needed to fit an integer multiple of amount
-    oldsize = values.size
-    newsize = int(np.ceil(values.size / amount) * amount)
+    result = {'values': extremum(ma_values, 1),
+              'centers': ma_centers.mean(1).data,
+              'lines': lines[indices].reshape(groups, 2, 2)}
 
-    # determine lines
-    ma_lines = np.ma.array(np.empty((newsize, 2, 2)), mask=True)
-    ma_lines[:oldsize] = lines
-    ma_lines[oldsize:] = lines[-1]  # Repeat last line
-    result_lines = np.array([
-        ma_lines.reshape(-1, amount, 2, 2)[:, 0, 0],
-        ma_lines.reshape(-1, amount, 2, 2)[:, -1, 1],
-    ]).transpose(1, 0, 2)
-
-    # calculate points and values by averaging
-    ma_centers = np.ma.array(np.empty((newsize, 2)), mask=True)
-    ma_centers[:oldsize] = centers
-    ma_values = np.ma.array(np.empty(newsize), mask=True)
-    ma_values[:oldsize] = values
-    return dict(lines=result_lines,
-                values=extremum(ma_values.reshape(-1, amount), 1),
-                centers=ma_centers.reshape(-1, amount, 2).mean(1))
+    return result
 
 
 class Dataset(object):
@@ -211,7 +214,7 @@ class BaseProcessor(object):
                                 distance=self.distance,
                                 parameterized_line=pline2)
         else:
-            points = pline2.points.reshape(-1, 1, 2)
+            points = pline2.centers.reshape(-1, 1, 2)
 
         # determine float indices
         x, y = points.transpose()
