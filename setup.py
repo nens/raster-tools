@@ -79,6 +79,7 @@ setup(name='raster-tools',
               'pol2laz            = raster_tools.pol2laz:main',
               'roof               = raster_tools.roof:main',
               # analysis
+              'zonal          = raster_tools.zonal:main',
               'rgb-zonal          = raster_tools.rgb_zonal:main',
           ]},
       )
