@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Calculate zonal statistics of raster store for a shapefile.
+Calculate zonal statistics of raster for geometries in a shapefile. The
+following stats from the numpy library can be used: min, max, mean,
+median, std, var, ptp, etc. A number of additional statistics can be
+calculated with this script:
 
-Special stats worth mentioning are 'count' (the amount of pixels
-with data), 'size' (the total amount of pixels) and 'p<n>' (the
-n-percentile). If the statistic is unsuitable as field name in the target
-shape, a different field name can be specified like "myfield:count"
-instead of simply "count".
+- p<n>: the n-percentile of the array, for example p75
+- size: the amount of pixels selected by the feature's geometry
+- count: the amount of those pixels containing data (as opposed to nodata)
+
+If the statistic is unsuitable as field name in the target shape, a
+different field name can be specified like "the_mean:mean" instead of
+simply "mean".
 """
 
 from __future__ import print_function
@@ -15,44 +20,15 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
-import logging
-import math
 import re
 
 import numpy as np
 
 from raster_tools import gdal
 
-from raster_tools import utils
 from raster_tools import groups
 from raster_tools import datasets
-from raster_tools import data_sources
-
-logger = logging.getLogger(__name__)
-
-POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
-
-
-def get_masked(values, no_data_value, copy=False):
-    """ Return values as masked array. """
-    kind = values.dtype.type
-    masked = np.ma.masked_values if kind == 'f' else np.ma.masked_equal
-    return masked(values, no_data_value, copy=copy)
-
-
-def get_kwargs(geometry):
-    """ Return get_data_kwargs based on ahn2 resolution. """
-    name = geometry.GetGeometryName()
-    if name == 'POINT':
-        return {}
-    if name == 'LINESTRING':
-        size = int(math.ceil(geometry.Length() / 0.5))
-        return {'size': size}
-    if name == 'POLYGON':
-        x1, x2, y1, y2 = geometry.GetEnvelope()
-        width = int(math.ceil((x2 - x1) / 0.5))
-        height = int(math.ceil((y2 - y1) / 0.5))
-        return {'width': width, 'height': height}
+from raster_tools import datasources
 
 
 class Analyzer(object):
@@ -84,11 +60,11 @@ class Analyzer(object):
 
         # keep convenient group properties available
         self.geo_transform = self.group.geo_transform
-        self.no_data_value = self.group.no_data_value
+        self.no_data_value = self.group.no_data_value.item()
 
         # these kwargs are constant for the whole group
         self.kwargs = {'projection': self.group.projection,
-                       'no_data_value': self.group.no_data_value}
+                       'no_data_value': self.no_data_value}
 
     def read(self, geometry):
         """
@@ -100,39 +76,52 @@ class Analyzer(object):
         i.e., whose value does not correspond to the no_data_value.
         """
         # determine kwargs to use with GDAL datasets
-        kwargs = {'geo_transform': self.geo_transform.shift(geometry)}
+        kwargs = {'geo_transform': self.geo_transform.shifted(geometry)}
         kwargs.update(self.kwargs)
 
         # read the data for array
         array_2d = self.group.read(geometry)
 
         # prepare a mask to select elements that are within geometry
-        select = np.zeros(array_2d.shape, dtype='u1')
-        with data_sources.Layer(geometry) as layer:
-            with datasets.Dataset(select[np.newaxis], **kwargs) as dataset:
+        select_2d = np.zeros(array_2d.shape, dtype='u1')
+        with datasources.Layer(geometry) as layer:
+            with datasets.Dataset(select_2d[np.newaxis], **kwargs) as dataset:
                 gdal.RasterizeLayer(dataset, [1], layer, burn_values=[1])
 
         # select those elements
-        array = array_2d[select.astype('b1')]
+        array_1d = array_2d[select_2d.astype('b1')]
 
         # determine data or no data
-        if array_2d.dtype.kind == 'f':
-            data = ~np.isclose(array, self.no_data_value)
+        if array_1d.dtype.kind == 'f':
+            select_1d = ~np.isclose(array_1d, self.no_data_value)
         else:
-            data = ~np.equal(array, self.no_data_value)
+            select_1d = ~np.equal(array_1d, self.no_data_value)
 
-        return array, data
+        return {'array': array_1d[select_1d], 'size': array_1d.size}
 
     def analyze(self, feature):
         """ Return attributes to write to the result. """
         # retrieve raster data
         geometry = feature.geometry()
-        array, data = self.read(geometry)
+        data = self.read(geometry)
+        array = data['array']
+        size = data['size']
 
         # apppend statistics
         attributes = feature.items()
         for column, (action, args) in self.actions.items():
-            attributes[column] = getattr(np, action)(array, *args)
+            if action == 'count':
+                attributes[column] = array.size
+            elif action == 'size':
+                attributes[column] = size
+            else:
+                try:
+                    value = getattr(np, action)(array, *args)
+                    attributes[column] = round(value.item(), 16)
+                except (ValueError, IndexError) as error:
+                    template = 'Error getting statistic {} on feature {}: {}'
+                    print(template.format(action, feature.GetFID(), error))
+                    attributes[column] = np.nan
 
         return {'geometry': geometry, 'attributes': attributes}
 
@@ -140,7 +129,7 @@ class Analyzer(object):
 def command(source_path, target_path, raster_paths, statistics, part):
     """ Main """
     # open source datasource
-    source = utils.PartialDataSource(source_path)
+    source = datasources.PartialDataSource(source_path)
     if part is not None:
         source = source.select(part)
 
@@ -148,11 +137,15 @@ def command(source_path, target_path, raster_paths, statistics, part):
                         raster_paths=raster_paths)
 
     # create target datasource
-    target = utils.TargetDataSource(path=target_path,
-                                    template_path=source_path,
-                                    attributes=analyzer.actions)
+    target = datasources.TargetDataSource(path=target_path,
+                                          template_path=source_path,
+                                          attributes=analyzer.actions)
 
     for feature in source:
+        geometry = feature.geometry()
+        # print(feature.GetFID())
+        if geometry.Area() > 1000000:
+            continue
         target.append(**analyzer.analyze(feature))
     return 0
 
@@ -160,7 +153,8 @@ def command(source_path, target_path, raster_paths, statistics, part):
 def get_parser():
     """ Return argument parser. """
     parser = argparse.ArgumentParser(
-        description=__doc__
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         'source_path',

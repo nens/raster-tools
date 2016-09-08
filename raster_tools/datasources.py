@@ -15,8 +15,8 @@ from raster_tools import ogr
 class PartialDataSource(object):
     """ Wrap a shapefile. """
     def __init__(self, path):
-        self.dataset = ogr.Open(path)
-        self.layer = self.dataset[0]
+        self.data_source = ogr.Open(path)
+        self.layer = self.data_source[0]
 
     def __iter__(self):
         total = len(self)
@@ -55,7 +55,7 @@ class TargetDataSource(object):
         layer_name = os.path.basename(path)
         self.layer = self.dataset.CreateLayer(layer_name, template_sr)
 
-        # Copy field definitions, remember names
+        # copy field definitions, remember names
         existing = []
         layer_defn = template_layer.GetLayerDefn()
         for i in range(layer_defn.GetFieldCount()):
@@ -63,13 +63,15 @@ class TargetDataSource(object):
             existing.append(field_defn.GetName().lower())
             self.layer.CreateField(field_defn)
 
-        # Add extra fields
+        # add extra fields
         for attribute in attributes:
             if attribute.lower() in existing:
                 raise NameError(('field named "{}" already '
                                  'exists in template').format(attribute))
-
-            self.layer.CreateField(ogr.FieldDefn(str(attribute), ogr.OFTReal))
+            field_defn = ogr.FieldDefn(str(attribute), ogr.OFTReal)
+            field_defn.SetWidth(256)
+            field_defn.SetPrecision(16)
+            self.layer.CreateField(field_defn)
         self.layer_defn = self.layer.GetLayerDefn()
 
     def append(self, geometry, attributes):
@@ -88,10 +90,10 @@ class Layer(object):
         ...     # do ogr things.
     """
     def __init__(self, geometry):
-        driver = ogr.GetDriverByName('Memory')
-        data_source = driver.CreateDataSource('')
+        driver = ogr.GetDriverByName(str('Memory'))
+        self.data_source = driver.CreateDataSource('')
         sr = geometry.GetSpatialReference()
-        self.layer = data_source.CreateLayer(str(''), sr)
+        self.layer = self.data_source.CreateLayer(str(''), sr)
         layer_defn = self.layer.GetLayerDefn()
         feature = ogr.Feature(layer_defn)
         feature.SetGeometry(geometry)
@@ -100,5 +102,5 @@ class Layer(object):
     def __enter__(self):
         return self.layer
 
-    # def __exit__(self, exc_type, exc_value, traceback):
-        # pass
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass
