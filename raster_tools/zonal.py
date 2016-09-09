@@ -76,11 +76,12 @@ class Analyzer(object):
         i.e., whose value does not correspond to the no_data_value.
         """
         # determine kwargs to use with GDAL datasets
-        kwargs = {'geo_transform': self.geo_transform.shifted(geometry)}
+        kwargs = {'geo_transform': self.geo_transform.shifted(geometry,
+                                                              inflate=True)}
         kwargs.update(self.kwargs)
 
         # read the data for array
-        array_2d = self.group.read(geometry)
+        array_2d = self.group.read(geometry, inflate=True)
 
         # prepare a mask to select elements that are within geometry
         select_2d = np.zeros(array_2d.shape, dtype='u1')
@@ -114,6 +115,8 @@ class Analyzer(object):
                 attributes[column] = array.size
             elif action == 'size':
                 attributes[column] = size
+            elif not array.size:
+                attributes[column] = np.nan
             else:
                 try:
                     value = getattr(np, action)(array, *args)
@@ -142,12 +145,7 @@ def command(source_path, target_path, raster_paths, statistics, part):
                                           attributes=analyzer.actions)
 
     for feature in source:
-        geometry = feature.geometry()
-        # print(feature.GetFID())
-        if geometry.Area() > 1000000:
-            continue
         target.append(**analyzer.analyze(feature))
-    return 0
 
 
 def get_parser():
@@ -190,4 +188,4 @@ def get_parser():
 
 def main():
     """ Call command with args from parser. """
-    return command(**vars(get_parser().parse_args()))
+    command(**vars(get_parser().parse_args()))

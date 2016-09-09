@@ -69,8 +69,8 @@ class TargetDataSource(object):
                 raise NameError(('field named "{}" already '
                                  'exists in template').format(attribute))
             field_defn = ogr.FieldDefn(str(attribute), ogr.OFTReal)
-            field_defn.SetWidth(256)
-            field_defn.SetPrecision(16)
+            field_defn.SetWidth(255)
+            field_defn.SetPrecision(15)
             self.layer.CreateField(field_defn)
         self.layer_defn = self.layer.GetLayerDefn()
 
