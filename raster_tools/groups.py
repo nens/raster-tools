@@ -67,11 +67,13 @@ class Group(object):
         self.no_data_values = [m.no_data_value for m in metas]
         self.datasets = datasets
 
-    def read(self, bounds):
+    def read(self, bounds, inflate=False):
         """
         Return numpy array.
 
-        bounds: x1, y1, x2, y2 pixel window specifcation, or an ogr geometry
+        :param bounds: x1, y1, x2, y2 window in pixels, or an ogr geometry
+        :param inflate: inflate envelope to grid, to make sure that
+            the entire geometry is contained in resulting indices.
 
         If the bounds fall outside the dataset, the result is padded
         with no data values.
@@ -80,7 +82,8 @@ class Group(object):
         try:
             x1, y1, x2, y2 = bounds
         except ValueError:
-            x1, y1, x2, y2 = self.geo_transform.get_indices(bounds)
+            x1, y1, x2, y2 = self.geo_transform.get_indices(bounds,
+                                                            inflate=inflate)
 
         # overlapping bounds
         w, h = self.width, self.height

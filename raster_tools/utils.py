@@ -7,6 +7,7 @@ from __future__ import absolute_import
 from __future__ import division
 
 import logging
+import math
 import os
 
 import numpy as np
@@ -90,14 +91,16 @@ class GeoTransform(tuple):
         """First argument must be a 6-tuple defining a geotransform."""
         super(GeoTransform, self).__init__(geo_transform_tuple)
 
-    def shifted(self, geometry):
+    def shifted(self, geometry, inflate=False):
         """
         Return shifted geo transform.
 
         :param geometry: geometry to match
+        :param inflate: inflate to nearest top-left grid intersection.
         """
         values = list(self)
-        values[0], x2, y1, values[3] = geometry.GetEnvelope()
+        index = self.get_indices(geometry, inflate=inflate)[1::-1]
+        values[0], values[3] = self.get_coordinates(index)
         return self.__class__(values)
 
     def scaled(self, f):
@@ -120,11 +123,13 @@ class GeoTransform(tuple):
         i, j = indices
         return p + a * j + b * i, q + c * j + d * i
 
-    def get_indices(self, geometry):
+    def get_indices(self, geometry, inflate=False):
         """
         Return array indices tuple for geometry.
 
         :param geometry: geometry to subselect
+        :param inflate: inflate envelope to grid, to make sure that
+            the entire geometry is contained in resulting indices.
         """
         # spatial coordinates
         x1, x2, y1, y2 = geometry.GetEnvelope()
@@ -134,10 +139,12 @@ class GeoTransform(tuple):
         e, f, g, h = get_inverse(a, b, c, d)
 
         # apply to envelope corners
-        X1 = int(round(e * (x1 - p) + f * (y2 - q)))
-        Y1 = int(round(g * (x1 - p) + h * (y2 - q)))
-        X2 = int(round(e * (x2 - p) + f * (y1 - q)))
-        Y2 = int(round(g * (x2 - p) + h * (y1 - q)))
+        f_lo, f_hi = (math.floor, math.ceil) if inflate else (round, round)
+
+        X1 = int(f_lo(e * (x1 - p) + f * (y2 - q)))
+        Y1 = int(f_lo(g * (x1 - p) + h * (y2 - q)))
+        X2 = int(f_hi(e * (x2 - p) + f * (y1 - q)))
+        Y2 = int(f_hi(g * (x2 - p) + h * (y1 - q)))
 
         return X1, Y1, X2, Y2
 
