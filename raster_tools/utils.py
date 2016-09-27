@@ -146,6 +146,13 @@ class GeoTransform(tuple):
         X2 = int(f_hi(e * (x2 - p) + f * (y1 - q)))
         Y2 = int(f_hi(g * (x2 - p) + h * (y1 - q)))
 
+        # prevent zero dimensions in case of inflate
+        if inflate:
+            if X1 == X2:
+                X2 += 1
+            if Y1 == Y2:
+                Y1 -= 1
+
         return X1, Y1, X2, Y2
 
     def get_slices(self, geometry):
