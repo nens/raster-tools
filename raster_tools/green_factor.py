@@ -1,5 +1,5 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# (c) Nelen & Schuurmans, see LICENSE.rst.
 """
 Calculates greenfactor of polygons (e.g. gardens) with
 input: aerial image and polygons and
@@ -14,27 +14,25 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
-import logging
 import subprocess
 import os
-import sys
 import re
-import gdal
+
 import numpy as np
 
-from osgeo import ogr
-from osgeo import osr
+from raster_tools import gdal
+from raster_tools import ogr
+from raster_tools import osr
 
 from raster_tools import datasets
 from raster_tools import datasources
 
-
 DRIVER_OGR_MEMORY = ogr.GetDriverByName(str('Memory'))
 DRIVER_GDAL_MEM = gdal.GetDriverByName(str('mem'))
 DRIVER_GDAL_GTIFF = gdal.GetDriverByName(str('gtiff'))
-ogr.UseExceptions()
 
-logger = logging.getLogger(__name__)
+WKT_RD = osr.GetUserInputAsWKT(str('epsg:28992'))
+PROJ4_RD = osr.SpatialReference(WKT_RD).ExportToProj4().strip()
 
 
 def command(gardens_path, aerial_image_path,
@@ -74,7 +72,7 @@ def command(gardens_path, aerial_image_path,
         return 1
 
     # delete any existing target
-    driver = ogr.GetDriverByName(b'ESRI Shapefile')
+    driver = ogr.GetDriverByName(str('ESRI Shapefile'))
     try:
         driver.DeleteDataSource(str(target_path))
     except RuntimeError:
@@ -123,11 +121,10 @@ def command(gardens_path, aerial_image_path,
                                                 envelope_aerial_image)
         if not skip_large_size == 1:
             x1, x2, y1, y2 = envelope_garden
-            x1, y1 = np.floor(np.divide((x1, y1), pixelsize))*pixelsize
-            x2, y2 = np.ceil(np.divide((x2, y2), pixelsize))*pixelsize
+            x1, y1 = np.floor(np.divide((x1, y1), pixelsize)) * pixelsize
+            x2, y2 = np.ceil(np.divide((x2, y2), pixelsize)) * pixelsize
             envelope_garden_round = (x1, x2, y1, y2)
-            projwin_garden = ' '.join(str(envelope_garden_round[i])
-                                      for i in [0, 3, 1, 2])
+            projwin_garden = '%s %s %s %s' % (x1, y2, x2, y1)
 
             # create filename clipped aerial image geotiff
             tmp_aerial_tif = os.path.join(tmp_dirname, garden_name + '.tif')
@@ -302,28 +299,20 @@ def ecw_gdal_translate(aerial_image_path, tmp_aerial_tif, projwin_garden):
     using ``subprocess``
     creating :param tmp_aerial_tif
     """
-
-    a_srs = ('"+proj=sterea +lat_0=52.15616055555555 +lon_0=5.38763888888889'
-             ' +k=0.9999079 +x_0=155000 +y_0=463000 +ellps=bessel'
-             ' +towgs84=565.4171,50.3319,465.5524,-0.398957388243134,'
-             '0.343987817378283,-1.87740163998045,4.0725 +units=m +no_ defs"')
-    compression = '"COMPRESS=DEFLATE"'
-    data_type = 'Byte'
-    cmd_tpl = 'ecw-gdal_translate -projwin %s -a_srs %s -co %s -ot %s %s %s'
-    cmd_str = [cmd_tpl % (projwin_garden, a_srs, compression,
-                          data_type, aerial_image_path, tmp_aerial_tif)]
-    # print("\n[!] About to translate
-    # an aerial image '%s' to geotiff..." % aerial_image_path)
-    # print("[*] The command that will be used for this: %s" % cmd_str)
-    try:
-        proc = subprocess.Popen(cmd_str, shell=True,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        proc.communicate()
-    except OSError:
-        raise
-    # print("[*] Ready! Location of the file is: %s" % tmp_aerial_tif)
-
-    return 0
+    a_srs = PROJ4_RD
+    command = [
+        # first comes the command
+        'ecw-gdal_translate',
+        # then come the arguments
+        '-co', 'compress=deflate',
+        '-ot', 'byte',
+        '-projwin'
+    ] + projwin_garden.split() + [
+        '-a_srs', a_srs,
+        aerial_image_path,
+        tmp_aerial_tif,
+    ]
+    subprocess.check_output(command)
 
 
 def gdalinfo(aerial_image_path):
@@ -332,18 +321,7 @@ def gdalinfo(aerial_image_path):
     :param aerial_image_path
     using ``subprocess``
     """
-
-    cmd_str = ["ecw-gdalinfo %s" % (aerial_image_path)]
-    # print("\n[!] About to get the info of
-    # an aerial image '%s' ..." % aerial_image_path)
-    # print("[*] The command that will be used for this: %s" % cmd_str)
-    try:
-        proc = subprocess.Popen(cmd_str, shell=True,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        gdalinfolog = proc.stdout.read()
-    except OSError:
-        raise
-    # print("[*] Ready! ECW info is present %s")
+    gdalinfolog = subprocess.check_output(['ecw-gdalinfo', aerial_image_path])
     grep_pixelsize_line = re.findall(
         "Pixel Size = \([0-9+].[0-9]+", gdalinfolog,
     )[0]
@@ -428,15 +406,7 @@ def get_parser():
 def main():
     """ Call command with args from parser. """
     kwargs = vars(get_parser().parse_args())
-
-    logging.basicConfig(stream=sys.stderr,
-                        level=logging.DEBUG,
-                        format='%(message)s')
-
-    try:
-        return command(**kwargs)
-    except:
-        logger.exception('An exception has occurred.')
+    return command(**kwargs)
 
 
 if __name__ == '__main__':
