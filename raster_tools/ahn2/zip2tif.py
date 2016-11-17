@@ -21,10 +21,11 @@ from osgeo import osr
 
 from raster_tools import utils
 
-GDAL_GTIFF_DRIVER = gdal.GetDriverByName(b'gtiff')
-GDAL_MEM_DRIVER = gdal.GetDriverByName(b'mem')
+GDAL_GTIFF_DRIVER = gdal.GetDriverByName(str('gtiff'))
+GDAL_MEM_DRIVER = gdal.GetDriverByName(str('mem'))
 
 POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
+GEO_TRANSFORM = utils.GeoTransform([0, 0.5, 0, 0, 0, -0.5])
 
 gdal.UseExceptions()
 ogr.UseExceptions()
@@ -96,16 +97,16 @@ def create_targets(source):
     datasource = ogr.Open(index_path)
     layer = datasource[0]
     layer.SetSpatialFilter(polygon)
-    wkt = osr.GetUserInputAsWKT(b'epsg:28992')
+    wkt = osr.GetUserInputAsWKT(str('epsg:28992'))
     no_data_value = source.GetRasterBand(1).GetNoDataValue()
     for feature in layer:
         target = GDAL_MEM_DRIVER.Create('', 2000, 2500, 1, gdal.GDT_Float32)
-        target.SetGeoTransform(utils.get_geo_transform(feature))
-        target.SetProjection(osr.GetUserInputAsWKT(b'epsg:28992'))
+        target.SetGeoTransform(GEO_TRANSFORM.shifted(feature.geometry()))
+        target.SetProjection(osr.GetUserInputAsWKT(str('epsg:28992')))
         target.GetRasterBand(1).SetNoDataValue(no_data_value)
         target.GetRasterBand(1).Fill(no_data_value)
         gdal.ReprojectImage(source, target, wkt, wkt, 0, 0.0, 0.125)
-        yield feature[b'BLADNR'][1:], target
+        yield feature[str('BLADNR')][1:], target
 
 
 def convert(source_path, target_dir):
