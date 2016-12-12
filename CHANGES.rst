@@ -2,7 +2,7 @@ Changelog of raster-tools
 ===================================================
 
 
-0.1 (unreleased)
+0.1 (2016-12-12)
 ----------------
 
 - Intend to release this package more often.
