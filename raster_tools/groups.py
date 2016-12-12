@@ -79,11 +79,11 @@ class Group(object):
         with no data values.
         """
         # find indices
-        try:
-            x1, y1, x2, y2 = bounds
-        except ValueError:
+        if isinstance(bounds, ogr.Geometry):
             x1, y1, x2, y2 = self.geo_transform.get_indices(bounds,
                                                             inflate=inflate)
+        else:
+            x1, y1, x2, y2 = bounds
 
         # overlapping bounds
         w, h = self.width, self.height
