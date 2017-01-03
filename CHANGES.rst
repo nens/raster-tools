@@ -5,7 +5,7 @@ Changelog of raster-tools
 0.2 (unreleased)
 ----------------
 
-- Nothing changed yet.
+- Leanified and documented AHN3 downloader.
 
 
 0.1 (2016-12-12)

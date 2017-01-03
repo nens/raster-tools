@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-""" Download ahn3 units, using curl. """
+"""
+Download ahn3 units, using curl.
+
+The INDEX argument should be a shapefile containing the names of the
+AHN units (for example 31bz2) in a column named 'unit'.
+"""
 
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -35,7 +40,7 @@ class Router(object):
         self.path = path
 
         # create dirs
-        for name in next(zip(*self.names)):
+        for name in next(iter(zip(*self.names))):
             try:
                 os.makedirs(join(path, name))
             except OSError:
@@ -43,7 +48,7 @@ class Router(object):
 
     def get_directions(self, feature):
         for kind, sub, pre, ext in self.names:
-            name = pre + feature['unit'] + ext
+            name = pre + feature[str('unit')] + ext
             path = join(self.path, kind, name)
             url = join(self.root, sub, name.upper())
             curl = self.curl.format(url=url, path=path)
@@ -61,7 +66,7 @@ def download(index_path, target_path):
 
     for feature in layer:
         for path, curl in router.get_directions(feature):
-            if os.path.exists(path):
+            if exists(path):
                 skipped += 1
             else:
                 logger.info(curl)
@@ -94,7 +99,6 @@ def download(index_path, target_path):
 def get_parser():
     """ Return argument parser. """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('index_path', metavar='INDEX')
     parser.add_argument('target_path', metavar='TARGET')
     return parser
@@ -102,18 +106,12 @@ def get_parser():
 
 def main():
     """ Call download with args from parser. """
-    # logging
     kwargs = vars(get_parser().parse_args())
-    if kwargs.pop('verbose'):
-        level = logging.DEBUG
-    else:
-        level = logging.INFO
-    logging.basicConfig(stream=sys.stderr, level=level, format='%(message)s')
+
+    # logging
+    stream = sys.stderr
+    level = logging.INFO
+    logging.basicConfig(stream=stream, level=level, format='%(message)s')
 
     # run or fail
-    try:
-        download(**kwargs)
-        return 0
-    except:
-        logger.exception('An exception has occurred.')
-        return 1
+    download(**kwargs)
