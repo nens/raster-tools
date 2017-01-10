@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-""" 
+"""
 Create tif rasters from ZVP points by linear interpolation using griddata.
 """
 

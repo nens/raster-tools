@@ -10,7 +10,8 @@ import logging
 
 import numpy as np
 
-from raster_tools import gdal_array
+from osgeo import gdal_array
+
 from raster_tools import datasets
 from raster_tools import utils
 from raster_tools import ogr

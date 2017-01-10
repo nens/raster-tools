@@ -22,6 +22,7 @@ from raster_tools import osr
 import numpy as np
 
 from raster_tools import datasets
+from raster_tools import datasources
 from raster_tools import postgis
 from raster_tools import utils
 
@@ -144,7 +145,7 @@ class Rasterizer(object):
 
 def command(index_path, part, **kwargs):
     """ Rasterize some postgis tables. """
-    index = utils.PartialDataSource(index_path)
+    index = datasources.PartialDataSource(index_path)
     rasterizer = Rasterizer(**kwargs)
 
     if part is not None:

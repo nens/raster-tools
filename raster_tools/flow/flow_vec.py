@@ -16,7 +16,7 @@ import os
 import numpy as np
 
 from raster_tools import groups
-from raster_tools import utils
+from raster_tools import datasources
 
 from raster_tools import gdal
 from raster_tools import ogr
@@ -178,7 +178,7 @@ def flow_vec(index_path, part, **kwargs):
     """
     """
     # select some or all polygons
-    index = utils.PartialDataSource(index_path)
+    index = datasources.PartialDataSource(index_path)
     if part is not None:
         index = index.select(part)
 

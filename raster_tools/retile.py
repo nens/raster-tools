@@ -15,8 +15,8 @@ import numpy as np
 
 from raster_tools import gdal
 from raster_tools import datasets
+from raster_tools import datasources
 from raster_tools import groups
-from raster_tools import utils
 
 driver = gdal.GetDriverByName(str('gtiff'))
 
@@ -67,7 +67,7 @@ class Retiler(object):
 
 def retile(index_path, source_path, target_path, part):
     """ Convert all features. """
-    index = utils.PartialDataSource(index_path)
+    index = datasources.PartialDataSource(index_path)
     if part is not None:
         index = index.select(part)
 

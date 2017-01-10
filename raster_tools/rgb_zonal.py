@@ -16,9 +16,9 @@ import argparse
 import logging
 import sys
 
+from raster_tools import datasources
 from raster_tools import gdal
 from raster_tools import groups
-from raster_tools import utils
 
 import numpy as np
 
@@ -61,13 +61,13 @@ def get_parser():
 
 def command(image_path, source_path, target_path, calculation, part):
     """ Main """
-    source_features = utils.PartialDataSource(source_path)
+    source_features = datasources.PartialDataSource(source_path)
     if part is not None:
         source_features = source_features.select(part)
 
     image = groups.RGBWrapper(gdal.Open(image_path))
 
-    target = utils.TargetDataSource(
+    target = datasources.TargetDataSource(
         path=target_path,
         template_path=source_path,
         attributes=['result'],

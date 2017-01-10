@@ -16,7 +16,7 @@ import os
 import numpy as np
 
 from raster_tools import datasets
-from raster_tools import utils
+from raster_tools import datasources
 
 from raster_tools import fillnodata
 from raster_tools import gdal
@@ -28,7 +28,7 @@ def fill(index_path, source_path, ceiling_path, output_path, part):
     """
     """
     # select some or all polygons
-    index = utils.PartialDataSource(index_path)
+    index = datasources.PartialDataSource(index_path)
     if part is not None:
         index = index.select(part)
 

@@ -31,6 +31,7 @@ import sys
 from scipy import ndimage
 import numpy as np
 
+from raster_tools import datasources
 from raster_tools import gdal
 from raster_tools import groups
 from raster_tools import ogr
@@ -420,7 +421,7 @@ def line_up(source_path, raster_path, target_path, **kwargs):
     raster = groups.Group(*datasets)
 
     # source
-    source = utils.PartialDataSource(source_path)
+    source = datasources.PartialDataSource(source_path)
 
     process(raster=raster, source=source, target=target, **kwargs)
 
