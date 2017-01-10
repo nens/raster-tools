@@ -14,8 +14,8 @@ For rasterization of landuse tables from a postgres datasource a special
 wrapper command is available at bin/rasterize-landuse, use --help for args.
 
 
-Creating a seamless large-scale void-filled raster
---------------------------------------------------
+Creating a seamless large-scale void-filled raster (deprecated)
+---------------------------------------------------------------
 1. Make index with power-of-two dimensions for some extent [reindex] 
 2. Aggregate base dataset to that index for 32x32 pixels [aggregate]
 3. Merge result of 2. into single raster [gdal_merge.py]
@@ -25,6 +25,16 @@ Creating a seamless large-scale void-filled raster
    'ceiling' and result of 1. as index [mfillnodata]
 7. Cut result back into desired tiling using [retile]
 
+Procedure for filling completely filling internal nodata
+--------------------------------------------------------
+1. Make VRT of all source rasters
+2. Create filled rasters using fillnodata using source (1st pass)
+    - use units shape for partitioning
+    - keep edge geometries (an attribute for unit names?)
+3. Dissolve edge geometries and give them proper names
+4. Create filled rasters for the dissolved edge geometries (2nd pass)
+5. Have a separate script spatially lookup all 1st pass outputs and put
+   2nd pass outputs into it
 
 Creating streamlines
 --------------------
