@@ -21,7 +21,8 @@ from raster_tools import datasets
 from raster_tools import datasources
 from raster_tools import groups
 
-GDAL_DRIVER_GTIFF = gdal.GetDriverByName(str('gtiff'))
+DRIVER = gdal.GetDriverByName(str('gtiff'))
+OPTIONS = ['compress=deflate', 'tiled=yes']
 
 logger = logging.getLogger(__name__)
 
@@ -68,14 +69,11 @@ class GdalFiller(object):
         if (values == self.no_data_value).all():
             return
 
-        geo_transform = self.geo_transform.shifted(geometry)
-
-        work = datasets.create(
-            array=values[np.newaxis],
-            projection=self.projection,
-            geo_transform=geo_transform,
-            no_data_value=self.no_data_value,
-        )
+        kwargs = {
+            'projection': self.projection,
+            'geo_transform': self.geo_transform.shifted(geometry),
+            'no_data_value': self.no_data_value,
+        }
 
         # gdal is going to use the current dir as temporary space
         curdir = os.getcwd()
@@ -84,34 +82,34 @@ class GdalFiller(object):
 
         # fill no data until no voids remain
         iterations = 0
+        original_values = values.copy()  # for diffing
         while self.no_data_value in values:
 
             # create a mask band
-            mask_array = (values != self.no_data_value).view('u1')
-            mask = datasets.create(mask_array[np.newaxis])
-            mask_band = mask.GetRasterBand(1)
+            # mask_array = (values != self.no_data_value).view('u1')
+            # mask = datasets.create(mask_array[np.newaxis])
+            # mask_band = mask.GetRasterBand(1)
 
             # call the algorithm
-            gdal.FillNodata(
-                work.GetRasterBand(1),
-                mask_band,
-                100,  # search distance
-                0,    # smoothing iterations
-            )
-            work.FlushCache()
+            with datasets.Dataset(values[np.newaxis], **kwargs) as work:
+                work_band = work.GetRasterBand(1)
+                mask_band = work_band.GetMaskBand()
+                gdal.FillNodata(
+                    work_band,
+                    mask_band,
+                    100,  # search distance
+                    0,    # smoothing iterations
+                )
             iterations += 1
 
         # switch back current dir
         os.chdir(curdir)
         os.rmdir(tmpdir)
 
-        GDAL_DRIVER_GTIFF.CreateCopy(
-            path,
-            work,
-            1,
-            ['COMPRESS=DEFLATE', 'TILED=YES'],
-        )
-        print(path, iterations)
+        # write diff
+        values[values == original_values] = self.no_data_value
+        with datasets.Dataset(values[np.newaxis], **kwargs) as result:
+            DRIVER.CreateCopy(path, result, options=OPTIONS)
 
 
 def gmfillnodata(index_path, part, **kwargs):
