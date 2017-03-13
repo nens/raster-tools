@@ -57,6 +57,7 @@ setup(name='raster-tools',
               'flow-vec           = raster_tools.flow.flow_vec:main',
               'flow-rst           = raster_tools.flow.flow_rst:main',
               # modification
+              'gmfillnodata       = raster_tools.gmfillnodata:main',
               'mfillnodata        = raster_tools.mfillnodata:main',
               'fillnodata         = raster_tools.fillnodata:main',
               'hillshade          = raster_tools.hillshade:main',
