@@ -23,8 +23,8 @@ import numpy as np
 
 from raster_tools import datasets
 from raster_tools import datasources
+from raster_tools import groups
 from raster_tools import postgis
-from raster_tools import utils
 
 DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
 DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
@@ -36,24 +36,38 @@ logger = logging.getLogger(__name__)
 
 
 class Rasterizer(object):
-    def __init__(self, raster_path, target_dir, table, **kwargs):
+    def __init__(self, table, raster_path, output_path, **kwargs):
+        # postgis
         self.postgis_source = postgis.PostgisSource(**kwargs)
-        self.target_dir = target_dir
         self.table = table
 
-        self.dataset = gdal.Open(raster_path)
-        self.geo_transform = utils.GeoTransform(
-            self.dataset.GetGeoTransform()
-        )
-        self.projection = self.dataset.GetProjection()
-        self.sr = osr.SpatialReference(self.projection)
-        self.no_data_value = np.finfo('f4').min.item()
+        # raster
+        if os.path.isdir(raster_path):
+            raster_datasets = [gdal.Open(os.path.join(raster_path, path))
+                               for path in sorted(os.listdir(raster_path))]
+        else:
+            raster_datasets = [gdal.Open(raster_path)]
+        self.raster_group = groups.Group(*raster_datasets)
+
+        # properties
+        self.projection = self.raster_group.projection
+        self.geo_transform = self.raster_group.geo_transform
+        self.no_data_value = self.raster_group.no_data_value.item()
+
+        # self.no_data_value = np.finfo('f4').min.item()
         self.kwargs = {'projection': self.projection,
                        'no_data_value': self.no_data_value}
 
+        # output
+        self.output_path = output_path
+
+    @property
+    def sr(self):
+        return osr.SpatialReference(self.projection)
+
     def path(self, feature):
-        leaf = feature[b'bladnr']
-        return os.path.join(self.target_dir, leaf[0:3], leaf + '.tif')
+        leaf = feature[str('bladnr')]
+        return os.path.join(self.output_path, leaf[0:3], leaf + '.tif')
 
     def target(self, feature):
         """ Return empty gdal dataset. """
@@ -69,7 +83,7 @@ class Rasterizer(object):
     def get_ogr_data_source(self, geometry):
         """ Return geometry wrapped as ogr data source. """
         data_source = DRIVER_OGR_MEM.CreateDataSource('')
-        layer = data_source.CreateLayer(b'', self.sr)
+        layer = data_source.CreateLayer(str(''), self.sr)
         layer_defn = layer.GetLayerDefn()
         feature = ogr.Feature(layer_defn)
         feature.SetGeometry(geometry)
@@ -89,10 +103,9 @@ class Rasterizer(object):
             # garbage geometry
             return
 
-        # retrieve raster data
+        # read raster data
         geo_transform = self.geo_transform.shifted(geometry_buffer)
-        window = self.geo_transform.get_window(geometry_buffer)
-        data = self.dataset.ReadAsArray(**window)
+        data = self.raster_group.read(geometry_buffer)
         if data is None:
             return
         data.shape = (1,) + data.shape
@@ -170,8 +183,8 @@ def get_parser():
                         help='Table name, including schema (e.g. public.bag)')
     parser.add_argument('raster_path', metavar='RASTER',
                         help='Path to the raster file')
-    parser.add_argument('target_dir', metavar='TARGET',
-                        help='Target folder for result files')
+    parser.add_argument('output_path', metavar='OUTPUT',
+                        help='Output folder for result files')
     parser.add_argument('-s', '--host', default='localhost')
     parser.add_argument('-u', '--user'),
     parser.add_argument('-p', '--password'),
