@@ -5,6 +5,10 @@ Changelog of raster-tools
 0.2 (unreleased)
 ----------------
 
+- Extended extract tool with 3Di-AHN3 option.
+
+- Added meta about raster-server layers to extract tool.
+
 - Leanified and documented AHN3 downloader.
 
 
