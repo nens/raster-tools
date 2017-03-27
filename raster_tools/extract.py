@@ -41,7 +41,7 @@ from osgeo import osr
 operations = {}
 
 # Version management for outdated warning
-VERSION = 21
+VERSION = 22
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -93,7 +93,7 @@ class Layers(Operation):
     def __init__(self, layers, dtype, fillvalue, time, **kwargs):
         """ Initialize the operation. """
         # self.layers = layers
-        self.outputs = [self.name]
+        self.outputs = {self.name: [self.name]}
         self.inputs = {self.name: {'layers': layers, 'time': time}}
 
         self.data_type = {self.name: DTYPES[dtype]}
