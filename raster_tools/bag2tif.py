@@ -147,7 +147,7 @@ class Rasterizer(object):
         # analyze and rasterize
         burned = False
         for bag_feature in data_source[0]:
-            burned = burned or self.single(feature=bag_feature, target=target)
+            burned = self.single(feature=bag_feature, target=target)
         if not burned:
             return
 
