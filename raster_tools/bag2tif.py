@@ -106,7 +106,7 @@ class Rasterizer(object):
         # read raster data
         geo_transform = self.geo_transform.shifted(geometry_buffer)
         data = self.raster_group.read(geometry_buffer)
-        if data is None:
+        if (data == self.no_data_value).all():
             return
         data.shape = (1,) + data.shape
 
