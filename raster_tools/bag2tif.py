@@ -101,13 +101,13 @@ class Rasterizer(object):
             geometry_buffer = geometry.Buffer(1).Difference(geometry)
         except RuntimeError:
             # garbage geometry
-            return
+            return False
 
         # read raster data
         geo_transform = self.geo_transform.shifted(geometry_buffer)
         data = self.raster_group.read(geometry_buffer)
         if (data == self.no_data_value).all():
-            return
+            return False
         data.shape = (1,) + data.shape
 
         # create ogr data sources with geometry and buffer
@@ -127,8 +127,9 @@ class Rasterizer(object):
             burn = np.percentile(data[mask.nonzero()], 75)
         except IndexError:
             # no data points at all
-            return
+            return False
         gdal.RasterizeLayer(target, [1], data_source[0], burn_values=[burn])
+        return True
 
     def rasterize(self, index_feature):
         # prepare or abort
@@ -136,11 +137,7 @@ class Rasterizer(object):
         if os.path.exists(path):
             return
 
-        try:
-            os.makedirs(os.path.dirname(path))
-        except OSError:
-            pass
-
+        # target array
         target = self.target(index_feature)
 
         # fetch geometries from postgis
@@ -148,9 +145,18 @@ class Rasterizer(object):
             table=self.table, geometry=index_feature.geometry(),
         )
         # analyze and rasterize
+        burned = False
         for bag_feature in data_source[0]:
-            self.single(feature=bag_feature, target=target)
+            burned = burned or self.single(feature=bag_feature, target=target)
+        if not burned:
+            return
+
         # save
+        try:
+            os.makedirs(os.path.dirname(path))
+        except OSError:
+            pass
+
         DRIVER_GDAL_GTIFF.CreateCopy(path,
                                      target,
                                      options=['compress=deflate'])
