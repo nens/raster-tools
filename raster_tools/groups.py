@@ -56,7 +56,7 @@ class Group(object):
         metas = [Meta(dataset) for dataset in datasets]
         meta = metas[0]
         if not all([meta == m for m in metas]):
-            raise ValueError('Incopatible rasters.')
+            raise ValueError('Incompatible rasters.')
 
         self.dtype = meta.dtype
         self.width = meta.width
