@@ -11,7 +11,9 @@ Changelog of raster-tools
 
 - Leanified and documented AHN3 downloader.
 
-- Extended extract tool with 3Di-AHN3i-HHNK option.
+- Extended extract tool with 3Di-AHN3-HHNK option.
+
+- Extended extract tool with 3Di-RD option.
 
 
 0.1 (2016-12-12)

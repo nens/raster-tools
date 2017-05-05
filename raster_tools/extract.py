@@ -41,7 +41,7 @@ from osgeo import osr
 operations = {}
 
 # Version management for outdated warning
-VERSION = 23
+VERSION = 24
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -525,6 +525,25 @@ class ThreeDiAHN3HHNK(Operation, ThreeDiBase):
         }
         # then let the base class handle the rest
         super(ThreeDiAHN3HHNK, self).__init__(floor, **kwargs)
+
+
+class ThreeDiRD(Operation, ThreeDiBase):
+    name = '3di-rd'
+
+    def __init__(self, floor, **kwargs):
+        """ Initialize the operation. """
+        # first define the layers
+        self.layers = {
+            self.I_BATHYMETRY: dict(layers=','.join([
+                'intern:nl:rd:int',
+                'intern:nl:rd:bag!{}'.format(floor),
+                'dem:water',
+            ])),
+            self.I_LANDUSE: dict(layers='cover:3di'),
+            self.I_SOIL: dict(layers='soil:3di'),
+        }
+        # then let the base class handle the rest
+        super(ThreeDiRD, self).__init__(floor, **kwargs)
 
 
 class Preparation(object):
