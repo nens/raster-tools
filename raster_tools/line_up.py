@@ -1,27 +1,22 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
+"""
+Convert a shapefile containing 2D linestrings to a shapefile with embedded
+elevation from an elevation map.
+
+Target shapefile can have two layouts: A 'point' layout where the elevation is
+stored in the third coordinate of a 3D linestring, and a 'line' layout where a
+separate feature is created in the target shapefile for each segment of each
+feature in the source shapefile, with two extra attributes compared to the
+original shapefile, one to store the elevation, and another to store an
+arbitrary feature id referring to the source feature in the source shapefile.
+"""
 
 from __future__ import print_function
 from __future__ import unicode_literals
 from __future__ import absolute_import
 from __future__ import division
 
-""" Convert a shapefile containing 2D linestrings to a shapefile with
-embedded elevation from an elevation map.
-
-Target shapefile can have two layouts: A 'point' layout where the
-elevation is stored in the third coordinate of a 3D linestring, and a
-'line' layout where a separate feature is created in the target shapefile
-for each segment of each feature in the source shapefile, with two
-extra attributes compared to the original shapefile, one to store the
-elevation, and another to store an arbitrary feature id referring to
-the source feature in the source shapefile.
-
-For the script to work, a configuration variable AHN_PATH must be set in
-threedilib/localconfig.py pointing to the location of the elevation map,
-and a variable INDEX_PATH pointing to the .shp file that contains the
-index to the elevation map.
-"""
 import argparse
 import logging
 import math
@@ -426,11 +421,15 @@ def line_up(source_path, raster_path, target_path, **kwargs):
     process(raster=raster, source=source, target=target, **kwargs)
 
 
+class Formatter(argparse.RawDescriptionHelpFormatter,
+                argparse.ArgumentDefaultsHelpFormatter):
+    """ Combined argparse formatter class. """
+
+
 def get_parser():
     """ Return arguments dictionary. """
     parser = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=__doc__, formatter_class=Formatter,
     )
     parser.add_argument('raster_path',
                         metavar='RASTER',
@@ -449,18 +448,16 @@ def get_parser():
     parser.add_argument('-d', '--distance',
                         metavar='DISTANCE',
                         type=float,
-                        default=0,
+                        default=0.0,
                         help=('Distance (half-width) to look '
                               'perpendicular to the segments to '
                               'find the highest (or lowest, with '
-                              ' --inverse) points on the elevation '
-                              ' map. Defaults to 0.0.'))
+                              ' --inverse) points on the elevation map.'))
     parser.add_argument('-w', '--width',
                         metavar='WIDTH',
                         type=float,
-                        default=0,
-                        help=('Guaranteed width of maximum. '
-                              'Defaults to 0.0.'))
+                        default=0.0,
+                        help=('Guaranteed width of maximum.'))
     parser.add_argument('-m', '--modify',
                         action='store_true',
                         help=('Move nodes perpendicular to be located'
@@ -468,7 +465,7 @@ def get_parser():
     parser.add_argument('-a', '--average',
                         metavar='AMOUNT',
                         type=int,
-                        default=0,
+                        default=None,
                         help='Average of points and minimum (or'
                              ' maximum, with --inverse) of values.')
     parser.add_argument('-l', '--layout',

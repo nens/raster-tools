@@ -89,8 +89,8 @@ class ParameterizedLine(object):
         """
         p, a, b, q, c, d = geo_transform
         if p % a or q % d or b or c or a + d:
-            raise ValueError(('Currently only aligned, ')
-                             ('square pixels are implemented'))
+            raise ValueError('Currently only aligned, '
+                             'square pixels are implemented')
         size = a
 
         extent = np.array([self.points.min(0), self.points.max(0)])
