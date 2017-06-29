@@ -15,6 +15,8 @@ Changelog of raster-tools
 
 - Extended extract tool with 3Di-RD option.
 
+- Add difference script from the past.
+
 
 0.1 (2016-12-12)
 ----------------
