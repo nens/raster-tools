@@ -56,11 +56,14 @@ def command(shape1_path, shape2_path, target_path):
         for count, feature2 in enumerate(layer2):
             geometry2 = feature2.geometry()
             multipolygon.AddGeometry(geometry2)
-            ogr.TermProgress_nocb((count + 1) / total)
+            ogr.TermProgress_nocb((count + 1) / total / 3)
         union = multipolygon.UnionCascaded()
+        ogr.TermProgress_nocb(0.67)
         geometry1 = geometry1.Difference(union)
+        ogr.TermProgress_nocb(0.99)
         feature1.SetGeometry(geometry1)
         target_layer.CreateFeature(feature1)
+        ogr.TermProgress_nocb(1)
     
     return 0
 
