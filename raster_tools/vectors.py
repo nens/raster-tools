@@ -96,7 +96,7 @@ class ParameterizedLine(object):
         extent = np.array([self.points.min(0), self.points.max(0)])
         parameters = []
         # loop dimensions for intersection parameters
-        for i in range(extent.shape[-1]):
+        for i in 0, 1:
             intersects = np.arange(
                 size * np.ceil(extent[0, i] / size),
                 size * np.ceil(extent[1, i] / size),
@@ -117,7 +117,10 @@ class ParameterizedLine(object):
         # add parameters for original points
         parameters.append(np.arange(self.length + 1))
 
-        return ParameterizedLine(self[np.unique(np.concatenate(parameters))])
+        # apply unique on single precision, eliminating really close points
+        unique = np.unique(np.concatenate(parameters).astype('f4'))
+
+        return ParameterizedLine(self[unique])
 
     def project(self, points):
         """
