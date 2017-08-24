@@ -25,9 +25,9 @@ from raster_tools import osr
 
 from raster_tools import datasets
 
-DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
-DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
-DRIVER_OGR_MEMORY = ogr.GetDriverByName(b'Memory')
+DRIVER_GDAL_GTIFF = gdal.GetDriverByName(str('gtiff'))
+DRIVER_GDAL_MEM = gdal.GetDriverByName(str('mem'))
+DRIVER_OGR_MEMORY = ogr.GetDriverByName(str('Memory'))
 
 NO_DATA_VALUE = {
     'Real': -3.4028234663852886e+38,
@@ -43,7 +43,7 @@ POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 
 logger = logging.getLogger(__name__)
 
-gdal.PushErrorHandler(b'CPLQuietErrorHandler')
+gdal.PushErrorHandler(str('CPLQuietErrorHandler'))
 
 
 def get_geotransform(geometry, cellsize=(0.5, -0.5)):
@@ -140,7 +140,7 @@ def command(index_path, source_path, target_dir, attribute):
                     continue
             print('Creating spatial index on {}.'.format(source_layer_name))
             source_data_source.ExecuteSQL(
-                b'CREATE SPATIAL INDEX ON {}'.format(source_layer_name),
+                str('CREATE SPATIAL INDEX ON {}').format(source_layer_name),
             )
 
     # rasterize
@@ -150,7 +150,7 @@ def command(index_path, source_path, target_dir, attribute):
     print('Starting rasterize.')
     gdal.TermProgress_nocb(0)
     for count, index_feature in enumerate(index_layer, 1):
-        leaf_number = index_feature[b'BLADNR']
+        leaf_number = index_feature[str('BLADNR')]
         target_path = os.path.join(
             target_dir, leaf_number[0:3], leaf_number + '.tif',
         )
@@ -164,7 +164,7 @@ def command(index_path, source_path, target_dir, attribute):
         data_type = DATA_TYPE[ogr_type]
         no_data_value = NO_DATA_VALUE[ogr_type]
         dataset = DRIVER_GDAL_MEM.Create('', 2000, 2500, 1, data_type)
-        dataset.SetProjection(osr.GetUserInputAsWKT(b'epsg:28992'))
+        dataset.SetProjection(osr.GetUserInputAsWKT(str('epsg:28992')))
         dataset.SetGeoTransform(get_geotransform(index_geometry))
         band = dataset.GetRasterBand(1)
         band.SetNoDataValue(no_data_value)
@@ -194,7 +194,7 @@ def command(index_path, source_path, target_dir, attribute):
             burned = True
 
         if burned:
-            leaf_number = index_feature[b'BLADNR']
+            leaf_number = index_feature[str('BLADNR')]
             array = (dataset.ReadAsArray() == 255).astype('u1')
             if array.any():
                 # save no data tif for inspection
@@ -211,7 +211,7 @@ def command(index_path, source_path, target_dir, attribute):
                     'array': array,
                     'no_data_value': 0,
                     'geo_transform': get_geotransform(index_geometry),
-                    'projection': osr.GetUserInputAsWKT(b'epsg:28992'),
+                    'projection': osr.GetUserInputAsWKT(str('epsg:28992')),
                 }
                 with datasets.Dataset(**kwargs) as ndv_dataset:
                     options = ['compress=deflate', 'tiled=yes']
@@ -350,7 +350,7 @@ class PGLayer(object):
         cursor.execute(sql)
 
         data_source = DRIVER_OGR_MEMORY.CreateDataSource('')
-        layer = data_source.CreateLayer(b'', sr)
+        layer = data_source.CreateLayer(str(''), sr)
         layer.CreateField(ogr.FieldDefn(str(name), ogr.OFTInteger))
         layer_defn = layer.GetLayerDefn()
         for wkb, value in cursor:
