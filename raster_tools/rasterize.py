@@ -296,6 +296,7 @@ class PGLayer(object):
         typenames = {
             'integer': 'Integer',
             'real': 'Real',
+            'bigint': 'Integer',
         }
         sql = """
             select
