@@ -94,12 +94,16 @@ class GdalFiller(object):
             with datasets.Dataset(values[np.newaxis], **kwargs) as work:
                 work_band = work.GetRasterBand(1)
                 mask_band = work_band.GetMaskBand()
-                gdal.FillNodata(
-                    work_band,
-                    mask_band,
-                    100,  # search distance
-                    0,    # smoothing iterations
-                )
+                try:
+                    gdal.FillNodata(
+                        work_band,
+                        mask_band,
+                        100,  # search distance
+                        0,    # smoothing iterations
+                    )
+                except RuntimeError:
+                    print(name)
+                    raise
             iterations += 1
 
         # switch back current dir
