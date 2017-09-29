@@ -61,7 +61,7 @@ class Selector(object):
 
     def select(self, feature):
         try:
-            name = feature[str(self.attribute)]
+            name = str(feature[str(self.attribute)])
         except ValueError:
             message = 'No attribute "{}" found in selection datasource.'
             print(message.format(self.attribute))
