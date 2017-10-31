@@ -162,7 +162,13 @@ class PostgisSource(object):
         g = data['column_names'].index(geom)
         for r in data['records']:
             # geometry
-            geometry = ogr.CreateGeometryFromWkb(bytes(r[g]))
+            try:
+		geometry = ogr.CreateGeometryFromWkb(bytes(r[g]))
+            except RuntimeError:
+                # there were geometries giving trouble on trusty gdal
+                print('Skipping geometry:')
+                print(bytes(r[g]))
+                continue
             feature = ogr.Feature(layer_defn)
             feature.SetGeometry(geometry)
 
