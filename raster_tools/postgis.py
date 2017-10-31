@@ -163,7 +163,7 @@ class PostgisSource(object):
         for r in data['records']:
             # geometry
             try:
-		geometry = ogr.CreateGeometryFromWkb(bytes(r[g]))
+                geometry = ogr.CreateGeometryFromWkb(bytes(r[g]))
             except RuntimeError:
                 # there were geometries giving trouble on trusty gdal
                 print('Skipping geometry:')
