@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 class Rasterizer(object):
-    def __init__(self, table, raster_path, output_path, **kwargs):
+    def __init__(self, table, raster_path, output_path, floor, **kwargs):
         # postgis
         self.postgis_source = postgis.PostgisSource(**kwargs)
         self.table = table
@@ -60,6 +60,7 @@ class Rasterizer(object):
 
         # output
         self.output_path = output_path
+        self.floor = floor
 
     @property
     def sr(self):
@@ -125,6 +126,8 @@ class Rasterizer(object):
         # rasterize the percentile
         try:
             burn = np.percentile(data[mask.nonzero()], 75)
+            if self.floor:
+                burn += self.floor
         except IndexError:
             # no data points at all
             return False
@@ -192,6 +195,7 @@ def get_parser():
     parser.add_argument('output_path', metavar='OUTPUT',
                         help='Output folder for result files')
     parser.add_argument('-s', '--host', default='localhost')
+    parser.add_argument('-f', '--floor', default=None, type=float)
     parser.add_argument('-u', '--user'),
     parser.add_argument('-p', '--password'),
     parser.add_argument('--part',
