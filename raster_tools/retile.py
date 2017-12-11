@@ -24,8 +24,13 @@ driver = gdal.GetDriverByName(str('gtiff'))
 class Retiler(object):
     def __init__(self, source_path, target_path):
         """ Init group. """
-        self.group = groups.Group(gdal.Open(source_path))
+        if os.path.isdir(source_path):
+            raster_datasets = [gdal.Open(os.path.join(source_path, path))
+                               for path in sorted(os.listdir(source_path))]
+        else:
+            raster_datasets = [gdal.Open(source_path)]
 
+        self.group = groups.Group(gdal.Open(*raster_datasets))
         self.projection = self.group.projection
         self.geo_transform = self.group.geo_transform
         self.no_data_value = self.group.no_data_value
