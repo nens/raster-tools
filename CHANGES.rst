@@ -19,6 +19,10 @@ Changelog of raster-tools
 
 - Extended extract tool with 3Di-ahn3-almere option.
 
+- Added option to specify floor.
+
+- Enabled multiple source-files support in retile.
+
 
 0.1 (2016-12-12)
 ----------------
