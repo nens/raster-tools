@@ -50,7 +50,10 @@ class Retiler(object):
         # retile
         geometry = feature.geometry()
         geo_transform = self.geo_transform.shifted(geometry)
-        values = self.group.read(geometry)
+        try:
+            values = self.group.read(geometry)
+        except TypeError:
+            return
         if (values == self.no_data_value).all():
             return
 
