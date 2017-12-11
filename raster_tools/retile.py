@@ -30,7 +30,7 @@ class Retiler(object):
         else:
             raster_datasets = [gdal.Open(source_path)]
 
-        self.group = groups.Group(gdal.Open(*raster_datasets))
+        self.group = groups.Group(*raster_datasets)
         self.projection = self.group.projection
         self.geo_transform = self.group.geo_transform
         self.no_data_value = self.group.no_data_value
