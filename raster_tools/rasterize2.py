@@ -151,7 +151,7 @@ class Raster(object):
 class Rasterizer(object):
     TEMPLATE = re.sub(' +', ' ', """
         SELECT
-            ST_AsBinary(geometry), value
+            ST_AsBinary(ST_Force2D(geometry)), value
         FROM
             ({query}) as query
         WHERE
@@ -162,7 +162,8 @@ class Rasterizer(object):
         self.connection = connection
         with open(queryfilepath) as queryfile:
             self.queries = [query.strip()
-                            for query in queryfile.readlines()]
+                            for query in queryfile.readlines()
+                            if not query.startswith('--')]
 
     def rasterize(self, tile):
         logger.info(80 * '-')
