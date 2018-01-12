@@ -23,6 +23,8 @@ Changelog of raster-tools
 
 - Enabled multiple source-files support in retile.
 
+- Add rasterize2 that keeps close to the sql.
+
 
 0.1 (2016-12-12)
 ----------------
