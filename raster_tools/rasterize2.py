@@ -163,7 +163,7 @@ class Rasterizer(object):
         with open(queryfilepath) as queryfile:
             self.queries = [query.strip()
                             for query in queryfile.readlines()
-                            if not query.startswith('--')]
+                            if not query.strip().startswith('--')]
 
     def rasterize(self, tile):
         logger.info(80 * '-')
