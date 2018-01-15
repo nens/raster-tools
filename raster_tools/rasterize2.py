@@ -3,14 +3,17 @@
 """
 Rasterize a set of queries into a collection of raster tile files.
 
-The approach is to infer as little as possible from the queries. The user is
-responsible for defining queries that only return two columns, namely geometry
-and value, and that proper spatial indexes are created on the geometry column.
-Currently all statements should be one-liners and not ending with ';'.
+The queries must be defined in a file. The approach is to infer as little as
+possible from the queries. The user is responsible for defining queries that
+only return two columns, namely 'geometry' and 'value'. For example:
 
-So an example query is:
+    select my_geometry as geometry, my_value as value from my_schema.my_table
 
-select my_geometry as geometry, my_value as value from my_schema.my_table
+All statements in the queryfile should be one-liners and NOT ending with ';'.
+It is possible, however, to comment lines by starting them with '--'.
+
+The actual queries supplied to the database can be found in a logfile
+'rasterize.log'.
 """
 
 from __future__ import print_function
