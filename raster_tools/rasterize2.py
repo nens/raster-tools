@@ -198,7 +198,10 @@ def rasterize(tilesourcepath, queryfilepath, targetdir, **kwargs):
 
 def get_parser():
     """ Return argument parser. """
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument('tilesourcepath',
                         metavar='TILESOURCE',
                         help='Path to ogr source for tile layout')
