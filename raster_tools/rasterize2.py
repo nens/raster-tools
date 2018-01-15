@@ -45,6 +45,7 @@ DRIVER_OGR_MEMORY = ogr.GetDriverByName(str('Memory'))
 
 PROJECTION = osr.GetUserInputAsWKT(str('EPSG:28992'))
 NO_DATA_VALUE = 255
+INITIAL_VALUE = 254
 CELLSIZE = 0.5
 NAME = str('name')
 
@@ -115,7 +116,7 @@ class Raster(object):
         }
 
         shape = 1, tile.height, tile.width
-        self.data = np.full(shape, NO_DATA_VALUE, dtype='u1')
+        self.data = np.full(shape, INITIAL_VALUE, dtype='u1')
         self.burned = False
 
     def burn(self, items):
