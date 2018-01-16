@@ -45,7 +45,7 @@ DRIVER_OGR_MEMORY = ogr.GetDriverByName(str('Memory'))
 
 PROJECTION = osr.GetUserInputAsWKT(str('EPSG:28992'))
 NO_DATA_VALUE = 255
-INITIAL_VALUE = 254
+INITIAL_VALUE = 253
 CELLSIZE = 0.5
 NAME = str('name')
 
