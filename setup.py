@@ -69,7 +69,6 @@ setup(name='raster-tools',
               'reindex            = raster_tools.reindex:main',
               # rasterization
               'bag2tif            = raster_tools.bag2tif:main',
-              'rasterize-landuse  = raster_tools.rasterize_landuse:main',
               'rasterize          = raster_tools.rasterize:main',
               'rasterize2         = raster_tools.rasterize2:main',
               # modeling
