@@ -41,7 +41,7 @@ from osgeo import osr
 operations = {}
 
 # Version management for outdated warning
-VERSION = 24
+VERSION = 25
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -497,8 +497,8 @@ class ThreeDiAHN3(Operation, ThreeDiBase):
         # first define the layers
         self.layers = {
             self.I_BATHYMETRY: dict(layers=','.join([
-                'intern:nl:ahn3:int',
-                'intern:nl:ahn3:bag!{}'.format(floor),
+                'intern:nl:ahn3:int-2018',
+                'intern:nl:ahn3:bag-2018!{}'.format(floor),
                 'dem:water',
             ])),
             self.I_LANDUSE: dict(layers='cover:3di'),
@@ -513,6 +513,8 @@ class ThreeDiAHN3HHNK(Operation, ThreeDiBase):
 
     def __init__(self, floor, **kwargs):
         """ Initialize the operation. """
+        template = 'Operation "{}" is deprecated. Use "3di-ahn3" instead.'
+        print(template.format(self.name))
         # first define the layers
         self.layers = {
             self.I_BATHYMETRY: dict(layers=','.join([
@@ -532,6 +534,8 @@ class ThreeDiAHN3Almere(Operation, ThreeDiBase):
 
     def __init__(self, floor, **kwargs):
         """ Initialize the operation. """
+        template = 'Operation "{}" is deprecated. Use "3di-ahn3" instead.'
+        print(template.format(self.name))
         # first define the layers
         self.layers = {
             self.I_BATHYMETRY: dict(layers=','.join([
