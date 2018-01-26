@@ -378,7 +378,7 @@ class ThreeDiBase(object):
     def _calculate_infiltration(self, datasets):
         # short keys
         s = self.I_SOIL
-        l = self.I_LANDUSE
+        c = self.I_LANDUSE
         o = self.O_INFILTRATION
         # create
         no_data_value = self.no_data_value[o]
@@ -395,7 +395,7 @@ class ThreeDiBase(object):
         # read and convert landuse
         l_conv = np.array([no_data_value if x is None else x
                            for x in self.landuse_tables['permeability']])
-        l_band = datasets[l].GetRasterBand(1)
+        l_band = datasets[c].GetRasterBand(1)
         l_data = l_conv[l_band.ReadAsArray()]
         l_mask = ~l_band.GetMaskBand().ReadAsArray().astype('b1')
         l_data[l_mask] = no_data_value
@@ -513,20 +513,9 @@ class ThreeDiAHN3HHNK(Operation, ThreeDiBase):
 
     def __init__(self, floor, **kwargs):
         """ Initialize the operation. """
-        template = 'Operation "{}" is deprecated. Use "3di-ahn3" instead.'
+        template = 'Operation "{}" no longer exists. Use "3di-ahn3" instead.'
         print(template.format(self.name))
-        # first define the layers
-        self.layers = {
-            self.I_BATHYMETRY: dict(layers=','.join([
-                'intern:nl:ahn3:int-hhnk',
-                'intern:nl:ahn3:bag-hhnk!{}'.format(floor),
-                'dem:water',
-            ])),
-            self.I_LANDUSE: dict(layers='cover:3di'),
-            self.I_SOIL: dict(layers='soil:3di'),
-        }
-        # then let the base class handle the rest
-        super(ThreeDiAHN3HHNK, self).__init__(floor, **kwargs)
+        exit()
 
 
 class ThreeDiAHN3Almere(Operation, ThreeDiBase):
@@ -534,20 +523,9 @@ class ThreeDiAHN3Almere(Operation, ThreeDiBase):
 
     def __init__(self, floor, **kwargs):
         """ Initialize the operation. """
-        template = 'Operation "{}" is deprecated. Use "3di-ahn3" instead.'
+        template = 'Operation "{}" no longer exists. Use "3di-ahn3" instead.'
         print(template.format(self.name))
-        # first define the layers
-        self.layers = {
-            self.I_BATHYMETRY: dict(layers=','.join([
-                'intern:nl:ahn3:int-almere',
-                'intern:nl:ahn3:bag-almere!{}'.format(floor),
-                'dem:water',
-            ])),
-            self.I_LANDUSE: dict(layers='cover:3di'),
-            self.I_SOIL: dict(layers='soil:3di'),
-        }
-        # then let the base class handle the rest
-        super(ThreeDiAHN3Almere, self).__init__(floor, **kwargs)
+        exit()
 
 
 class ThreeDiRD(Operation, ThreeDiBase):
