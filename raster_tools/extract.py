@@ -41,7 +41,7 @@ from osgeo import osr
 operations = {}
 
 # Version management for outdated warning
-VERSION = 25
+VERSION = 26
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
