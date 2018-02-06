@@ -25,6 +25,8 @@ Changelog of raster-tools
 
 - Add rasterize2 that keeps close to the sql.
 
+- Have extract script use new landuse sources.
+
 
 0.1 (2016-12-12)
 ----------------

@@ -41,7 +41,7 @@ from osgeo import osr
 operations = {}
 
 # Version management for outdated warning
-VERSION = 26
+VERSION = 27
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -482,8 +482,8 @@ class ThreeDiAHN2(Operation, ThreeDiBase):
                 'intern:nl:ahn2:bag!{}'.format(floor),
                 'dem:water',
             ])),
-            self.I_LANDUSE: dict(layers='cover:3di'),
-            self.I_SOIL: dict(layers='soil:3di'),
+            self.I_LANDUSE: dict(layers='intern:nl:cover:phy-1801c'),
+            self.I_SOIL: dict(layers='soil:3di-1801c'),
         }
         # then let the base class handle the rest
         super(ThreeDiAHN2, self).__init__(floor, **kwargs)
@@ -501,8 +501,8 @@ class ThreeDiAHN3(Operation, ThreeDiBase):
                 'intern:nl:ahn3:bag-2018!{}'.format(floor),
                 'dem:water',
             ])),
-            self.I_LANDUSE: dict(layers='cover:3di'),
-            self.I_SOIL: dict(layers='soil:3di'),
+            self.I_LANDUSE: dict(layers='intern:nl:cover:phy-1801c'),
+            self.I_SOIL: dict(layers='soil:3di-1801c'),
         }
         # then let the base class handle the rest
         super(ThreeDiAHN3, self).__init__(floor, **kwargs)
@@ -540,8 +540,8 @@ class ThreeDiRD(Operation, ThreeDiBase):
                 'intern:nl:rd:bag!{}'.format(floor),
                 'dem:water',
             ])),
-            self.I_LANDUSE: dict(layers='cover:3di'),
-            self.I_SOIL: dict(layers='soil:3di'),
+            self.I_LANDUSE: dict(layers='intern:nl:cover:phy-1801c'),
+            self.I_SOIL: dict(layers='soil:3di-1801c'),
         }
         # then let the base class handle the rest
         super(ThreeDiRD, self).__init__(floor, **kwargs)
