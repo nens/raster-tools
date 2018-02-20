@@ -81,7 +81,6 @@ setup(name='raster-tools',
               'roof               = raster_tools.roof:main',
               # analysis
               'zonal              = raster_tools.zonal:main',
-              'jzonal              = raster_tools.jzonal:main',
               'rgb-zonal          = raster_tools.rgb_zonal:main',
               'green-factor       = raster_tools.green_factor:main',
               'difference         = raster_tools.difference:main',
