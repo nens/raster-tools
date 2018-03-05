@@ -118,7 +118,10 @@ class PostgisSource(object):
         _srid = self._get_srid(geometry)
         request = template.format(wkb, _srid, srid)
 
-        replace = 'ST_AsBinary(ST_Transform({}, {}))'.format(geom, _srid)
+        replace = 'ST_AsBinary(ST_Force2D(ST_Transform({}, {})))'.format(
+            geom,
+            _srid,
+        )
         columns = ','.join(column_names).replace(geom, replace)
 
         # get data
