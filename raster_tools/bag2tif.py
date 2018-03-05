@@ -25,11 +25,12 @@ from raster_tools import datasources
 from raster_tools import groups
 from raster_tools import postgis
 
-DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
-DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
-DRIVER_OGR_MEM = ogr.GetDriverByName(b'memory')
+DRIVER_GDAL_GTIFF = gdal.GetDriverByName(str('gtiff'))
+DRIVER_GDAL_MEM = gdal.GetDriverByName(str('mem'))
+DRIVER_OGR_MEM = ogr.GetDriverByName(str('memory'))
 
 NO_DATA_VALUE = -3.4028234663852886e+38
+CELLSIZE = 0.5
 
 
 class Rasterizer(object):
@@ -51,9 +52,10 @@ class Rasterizer(object):
         self.geo_transform = self.raster_group.geo_transform
         self.no_data_value = self.raster_group.no_data_value.item()
 
-        # self.no_data_value = np.finfo('f4').min.item()
-        self.kwargs = {'projection': self.projection,
-                       'no_data_value': self.no_data_value}
+        self.kwargs = {
+            'projection': self.projection,
+            'no_data_value': self.no_data_value,
+        }
 
         # output
         self.output_path = output_path
@@ -70,7 +72,10 @@ class Rasterizer(object):
     def target(self, feature):
         """ Return empty gdal dataset. """
         geometry = feature.geometry()
-        dataset = DRIVER_GDAL_MEM.Create('', 2000, 2500, 1, 6)
+        envelope = geometry.GetEnvelope()
+        width = int((envelope[1] - envelope[0]) / CELLSIZE)
+        height = int((envelope[3] - envelope[2]) / CELLSIZE)
+        dataset = DRIVER_GDAL_MEM.Create('', width, height, 1, 6)
         dataset.SetGeoTransform(self.geo_transform.shifted(geometry))
         dataset.SetProjection(self.projection)
         band = dataset.GetRasterBand(1)
