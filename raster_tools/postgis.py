@@ -37,6 +37,7 @@ class PostgisSource(object):
         'text': ogr.OFTString,
         'USER-DEFINED': ogr.OFTString,
         'character varying': ogr.OFTString,
+        'timestamp with time zone': ogr.OFTString,
         'timestamp without time zone': ogr.OFTString,
     }
 

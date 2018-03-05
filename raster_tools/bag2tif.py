@@ -11,9 +11,8 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
-import logging
+import getpass
 import os
-import sys
 
 from raster_tools import gdal
 from raster_tools import ogr
@@ -31,8 +30,6 @@ DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
 DRIVER_OGR_MEM = ogr.GetDriverByName(b'memory')
 
 NO_DATA_VALUE = -3.4028234663852886e+38
-
-logger = logging.getLogger(__name__)
 
 
 class Rasterizer(object):
@@ -67,7 +64,7 @@ class Rasterizer(object):
         return osr.SpatialReference(self.projection)
 
     def path(self, feature):
-        leaf = feature[str('bladnr')]
+        leaf = feature[str('name')]
         return os.path.join(self.output_path, leaf[0:3], leaf + '.tif')
 
     def target(self, feature):
@@ -165,7 +162,7 @@ class Rasterizer(object):
                                      options=['compress=deflate'])
 
 
-def command(index_path, part, **kwargs):
+def bag2tif(index_path, part, **kwargs):
     """ Rasterize some postgis tables. """
     index = datasources.PartialDataSource(index_path)
     rasterizer = Rasterizer(**kwargs)
@@ -197,7 +194,6 @@ def get_parser():
     parser.add_argument('-s', '--host', default='localhost')
     parser.add_argument('-f', '--floor', default=None, type=float)
     parser.add_argument('-u', '--user'),
-    parser.add_argument('-p', '--password'),
     parser.add_argument('--part',
                         help='Partial processing source, for example "2/3"')
     return parser
@@ -205,15 +201,6 @@ def get_parser():
 
 def main():
     """ Call command with args from parser. """
-    logging.basicConfig(stream=sys.stderr,
-                        level=logging.DEBUG,
-                        format='%(message)s')
-    try:
-        return command(**vars(get_parser().parse_args()))
-    except SystemExit:
-        raise  # argparse does this
-    except:
-        logger.exception('An exception has occurred.')
-
-if __name__ == "__main__":
-    main()
+    kwargs = vars(get_parser().parse_args())
+    kwargs['password'] = getpass.getpass()
+    bag2tif(**kwargs)
