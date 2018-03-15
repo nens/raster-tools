@@ -41,7 +41,7 @@ from osgeo import osr
 operations = {}
 
 # Version management for outdated warning
-VERSION = 27
+VERSION = 28
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -369,8 +369,15 @@ class ThreeDiBase(object):
         # read
         band = datasets[i].GetRasterBand(1)
         data = band.ReadAsArray()
+
+        # mask
         mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
         data[mask] = no_data_value
+
+        # mask nan (for example when floor is nan)
+        mask = np.isnan(data)
+        data[mask] = no_data_value
+
         # write
         bathymetry.GetRasterBand(1).WriteArray(data)
         return bathymetry
@@ -1053,7 +1060,10 @@ def get_parser():
     parser.add_argument('-f', '--floor',
                         type=float,
                         default=FLOOR,
-                        help='Floor height (3di). Default: {}'.format(FLOOR))
+                        help=('Floor height (3di). Note that using \'nan\' as '
+                              'value will result in buildings having no data '
+                              'in the resulting dem. '
+                              'Default: {}').format(FLOOR))
     parser.add_argument('-c', '--cellsize',
                         nargs=2,
                         type=float,
