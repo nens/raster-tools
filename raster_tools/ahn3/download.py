@@ -3,7 +3,7 @@
 Download ahn3 units, using curl.
 
 The INDEX argument should be a shapefile containing the names of the
-AHN units (for example 31bz2) in a column named 'unit'.
+AHN units (for example 31bz2) in a column named 'name'.
 """
 
 from __future__ import print_function
@@ -48,7 +48,7 @@ class Router(object):
 
     def get_directions(self, feature):
         for kind, sub, pre, ext in self.names:
-            name = pre + feature[str('unit')] + ext
+            name = pre + feature[str('name')] + ext
             path = join(self.path, kind, name)
             url = join(self.root, sub, name.upper())
             curl = self.curl.format(url=url, path=path)
