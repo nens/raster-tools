@@ -513,24 +513,24 @@ class ThreeDiAHN3(Operation, ThreeDiBase):
         super(ThreeDiAHN3, self).__init__(floor, **kwargs)
 
 
-class ThreeDiAHN3HHNK(Operation, ThreeDiBase):
-    name = '3di-ahn3-hhnk'
+# class ThreeDiAHN3HHNK(Operation, ThreeDiBase):
+    # name = '3di-ahn3-hhnk'
 
-    def __init__(self, floor, **kwargs):
-        """ Initialize the operation. """
-        template = 'Operation "{}" no longer exists. Use "3di-ahn3" instead.'
-        print(template.format(self.name))
-        exit()
+    # def __init__(self, floor, **kwargs):
+        # """ Initialize the operation. """
+        # template = 'Operation "{}" no longer exists. Use "3di-ahn3" instead.'
+        # print(template.format(self.name))
+        # exit()
 
 
-class ThreeDiAHN3Almere(Operation, ThreeDiBase):
-    name = '3di-ahn3-almere'
+# class ThreeDiAHN3Almere(Operation, ThreeDiBase):
+    # name = '3di-ahn3-almere'
 
-    def __init__(self, floor, **kwargs):
-        """ Initialize the operation. """
-        template = 'Operation "{}" no longer exists. Use "3di-ahn3" instead.'
-        print(template.format(self.name))
-        exit()
+    # def __init__(self, floor, **kwargs):
+        # """ Initialize the operation. """
+        # template = 'Operation "{}" no longer exists. Use "3di-ahn3" instead.'
+        # print(template.format(self.name))
+        # exit()
 
 
 class ThreeDiRD(Operation, ThreeDiBase):
