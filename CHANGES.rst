@@ -27,6 +27,8 @@ Changelog of raster-tools
 
 - Have extract script use new landuse sources.
 
+- Removed dem:water from extract.
+
 
 0.1 (2016-12-12)
 ----------------
