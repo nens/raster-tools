@@ -64,6 +64,7 @@ setup(name='raster-tools',
               'aggregate          = raster_tools.aggregate:main',
               'rebase             = raster_tools.rebase:main',
               'shadow             = raster_tools.shadow:main',
+              'merge              = raster_tools.merge:main',
               # organization
               'retile             = raster_tools.retile:main',
               'reindex            = raster_tools.reindex:main',
