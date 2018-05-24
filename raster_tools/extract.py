@@ -41,7 +41,7 @@ from osgeo import osr
 operations = {}
 
 # Version management for outdated warning
-VERSION = 28
+VERSION = 29
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -487,7 +487,6 @@ class ThreeDiAHN2(Operation, ThreeDiBase):
             self.I_BATHYMETRY: dict(layers=','.join([
                 'intern:nl:ahn2:int',
                 'intern:nl:ahn2:bag!{}'.format(floor),
-                'dem:water',
             ])),
             self.I_LANDUSE: dict(layers='intern:nl:cover:phy-1801c'),
             self.I_SOIL: dict(layers='soil:3di-1801c'),
@@ -506,7 +505,6 @@ class ThreeDiAHN3(Operation, ThreeDiBase):
             self.I_BATHYMETRY: dict(layers=','.join([
                 'intern:nl:ahn3:int-2018',
                 'intern:nl:ahn3:bag-2018!{}'.format(floor),
-                'dem:water',
             ])),
             self.I_LANDUSE: dict(layers='intern:nl:cover:phy-1801c'),
             self.I_SOIL: dict(layers='soil:3di-1801c'),
@@ -515,24 +513,24 @@ class ThreeDiAHN3(Operation, ThreeDiBase):
         super(ThreeDiAHN3, self).__init__(floor, **kwargs)
 
 
-class ThreeDiAHN3HHNK(Operation, ThreeDiBase):
-    name = '3di-ahn3-hhnk'
+# class ThreeDiAHN3HHNK(Operation, ThreeDiBase):
+    # name = '3di-ahn3-hhnk'
 
-    def __init__(self, floor, **kwargs):
-        """ Initialize the operation. """
-        template = 'Operation "{}" no longer exists. Use "3di-ahn3" instead.'
-        print(template.format(self.name))
-        exit()
+    # def __init__(self, floor, **kwargs):
+        # """ Initialize the operation. """
+        # template = 'Operation "{}" no longer exists. Use "3di-ahn3" instead.'
+        # print(template.format(self.name))
+        # exit()
 
 
-class ThreeDiAHN3Almere(Operation, ThreeDiBase):
-    name = '3di-ahn3-almere'
+# class ThreeDiAHN3Almere(Operation, ThreeDiBase):
+    # name = '3di-ahn3-almere'
 
-    def __init__(self, floor, **kwargs):
-        """ Initialize the operation. """
-        template = 'Operation "{}" no longer exists. Use "3di-ahn3" instead.'
-        print(template.format(self.name))
-        exit()
+    # def __init__(self, floor, **kwargs):
+        # """ Initialize the operation. """
+        # template = 'Operation "{}" no longer exists. Use "3di-ahn3" instead.'
+        # print(template.format(self.name))
+        # exit()
 
 
 class ThreeDiRD(Operation, ThreeDiBase):
@@ -545,7 +543,6 @@ class ThreeDiRD(Operation, ThreeDiBase):
             self.I_BATHYMETRY: dict(layers=','.join([
                 'intern:nl:rd:int',
                 'intern:nl:rd:bag!{}'.format(floor),
-                'dem:water',
             ])),
             self.I_LANDUSE: dict(layers='intern:nl:cover:phy-1801c'),
             self.I_SOIL: dict(layers='soil:3di-1801c'),
