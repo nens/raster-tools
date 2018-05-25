@@ -50,9 +50,10 @@ def merge(source_paths, target_path):
         # skip when missing sources
         if not exists(source_path):
             print('{} not found.'.format(source_path))
-            if offset is not None:
-                # except when it has an offset (buildings!)
+            if offset is None:
                 return
+            else:
+                continue
 
         # read source dataset
         source_dataset = gdal.Open(str(source_path))
