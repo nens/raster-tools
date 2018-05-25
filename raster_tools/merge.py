@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Merge a number of rasterfiles.
+Merge a number of rasterfiles. When any rasterfile is missing, the command does
+not proceed, except in the case of rasterfiles with an offset.
 """
 
 from __future__ import print_function
@@ -49,7 +50,9 @@ def merge(source_paths, target_path):
         # skip when missing sources
         if not exists(source_path):
             print('{} not found.'.format(source_path))
-            return
+            if offset is not None:
+                # except when it has an offset (buildings!)
+                return
 
         # read source dataset
         source_dataset = gdal.Open(str(source_path))
