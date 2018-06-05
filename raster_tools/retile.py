@@ -40,10 +40,10 @@ class Retiler(object):
     def retile(self, feature):
         """ Retile to feature. """
         # target path
-        leaf_number = feature[str('BLADNR')]
+        name = feature[str('name')]
         path = os.path.join(self.target_path,
-                            leaf_number[:3],
-                            '{}.tif'.format(leaf_number))
+                            name[:3],
+                            '{}.tif'.format(name))
         if os.path.exists(path):
             return
 
