@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Rebase a raster on some base. If the base does not exist, copy the
-source. If the source not exist, skip.
+Rebase a number of rasterfiles, masking cells in the source raster that are
+identical to corresponding cells in the base raster. If the base raster is
+missing, rebase just copies the source raster.
 """
 
 from __future__ import print_function
@@ -10,166 +11,106 @@ from __future__ import absolute_import
 from __future__ import division
 
 import argparse
-import logging
 import os
-import sys
+
+from os.path import dirname, exists
 
 import numpy as np
 
-from raster_tools import gdal
-from raster_tools import ogr
-
 from raster_tools import datasets
+from raster_tools import gdal
 
-logger = logging.getLogger(__name__)
 
-DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
+DRIVER_GDAL_GTIFF = gdal.GetDriverByName(str('gtiff'))
 OPTIONS = ['compress=deflate', 'tiled=yes']
-NAME = '{prefix}{leaf}.tif'
 
 
-def save(dataset, path):
-    """ Save dataset as tif, create directory if needed. """
-    logger.debug('Write target: {}'.format(path))
-    dirname = os.path.dirname(path)
+def rebase(base_path, source_path, target_path):
+    """ Rebase source on base and write it to target. """
+    # skip existing
+    if exists(target_path):
+        print('{} skipped.'.format(target_path))
+        return
+
+    # skip when missing sources
+    if not exists(source_path):
+        print('{} not found.'.format(source_path))
+
+    # prepare dirs
     try:
-        os.makedirs(dirname)
+        os.makedirs(dirname(target_path))
     except OSError:
         pass
-    DRIVER_GDAL_GTIFF.CreateCopy(path, dataset, options=OPTIONS)
 
+    # read source dataset
+    source_dataset = gdal.Open(str(source_path))
+    source_band = source_dataset.GetRasterBand(1)
+    source_no_data_value = source_band.GetNoDataValue()
+    source_array = source_band.ReadAsArray()
 
-def rebase(base_path, source_path, target_path, tolerance=None):
-    """ Rebase source on base and write it to target. """
-    # read datasets
-    logger.debug('Read source: {}'.format(source_path))
-    try:
-        source = gdal.Open(source_path)
-    except RuntimeError:
-        logger.debug('Error reading source {}, skip.'.format(source_path))
-        return
-    source_band = source.GetRasterBand(1)
-    source_data = source_band.ReadAsArray()
-    source_mask = ~source_band.GetMaskBand().ReadAsArray().astype('b1')
+    # prepare target array
+    target_projection = source_dataset.GetProjection()
+    target_geo_transform = source_dataset.GetGeoTransform()
+    target_no_data_value = np.finfo(source_array.dtype).max
+    target_array = np.full_like(source_array, target_no_data_value)
 
-    logger.debug('Read base: {}'.format(base_path))
-    try:
-        base = gdal.Open(base_path)
-    except RuntimeError:
-        logger.debug('Error reading base {}, copy source.'.format(base_path))
-        save(dataset=source, path=target_path)
-        return
-    base_band = base.GetRasterBand(1)
-    base_data = base_band.ReadAsArray()
-    if base_data.shape != source_data.shape:
-        logger.debug('Shape mismatch, copy source.'.format(base_path))
-        save(dataset=source, path=target_path)
-        return
+    # copy active cells
+    source_mask = (source_array != source_no_data_value)
+    target_array[source_mask] = source_array[source_mask]
 
-    base_mask = ~base_band.GetMaskBand().ReadAsArray().astype('b1')
+    # rebase
+    if exists(base_path):
+        base_dataset = gdal.Open(str(base_path))
+        base_band = base_dataset.GetRasterBand(1)
+        base_no_data_value = base_band.GetNoDataValue()
+        base_array = base_band.ReadAsArray()
 
-    # calculation
-    logger.debug('Determine difference.')
-    try:
-        no_data_value = np.finfo(source_data.dtype).min
-    except ValueError:
-        no_data_value = np.iinfo(source_data.dtype).min
+        # combined mask has active pixels from source and base that are equal
+        mask = (base_array != base_no_data_value)
+        equal = (source_array == base_array)
+        blank = source_mask & mask & equal
+        target_array[blank] = target_no_data_value
 
-    # give all data the same no_data_value
-    base_data[base_mask] = no_data_value
-    source_data[source_mask] = no_data_value
-
-    # calculate content based on equality or tolerance
-    if tolerance is None:
-        index = np.not_equal(source_data, base_data)
+        method = 'rebase'
     else:
-        index = np.greater(np.abs(source_data - base_data), tolerance)
-
-    target_data = np.empty_like(source_data)
-    target_data.fill(no_data_value)
-    target_data[index] = source_data[index]
+        method = 'copy'
 
     # write
-    kwargs = {'projection': base.GetProjection(),
-              'no_data_value': no_data_value.item(),
-              'geo_transform': base.GetGeoTransform()}
+    kwargs = {
+        'projection': target_projection,
+        'geo_transform': target_geo_transform,
+        'no_data_value': target_no_data_value.item(),
+    }
 
-    with datasets.Dataset(target_data[np.newaxis, ...], **kwargs) as dataset:
-        save(dataset=dataset, path=target_path)
-
-
-class PathMaker():
-    """ Makes paths. """
-    def __init__(self, leaf):
-        """ Store common things. """
-        self.leaf = leaf
-
-    def make(self, root, prefix=None):
-        """ Return a path. """
-        if prefix is None:
-            prefix = ''
-        name = NAME.format(prefix=prefix, leaf=self.leaf)
-        return os.path.join(root, self.leaf[:3], name)
-
-
-def command(index_path, base_root, source_root, target_root, **kwargs):
-    """ Rebase files based on features from shapefile. """
-    index = ogr.Open(index_path)
-    layer = index[0]
-    total = layer.GetFeatureCount()
-
-    base_prefix = kwargs.pop('base_prefix')
-    source_prefix = kwargs.pop('source_prefix')
-
-    for count, feature in enumerate(layer, 1):
-        path_maker = PathMaker(leaf=feature[b'bladnr'])
-
-        base_path = path_maker.make(root=base_root, prefix=base_prefix)
-        source_path = path_maker.make(root=source_root, prefix=source_prefix)
-        target_path = path_maker.make(root=target_root)
-
-        if os.path.exists(target_path):
-            logger.debug('Skip target: {}'.format(target_path))
-        else:
-            rebase(base_path=base_path,
-                   source_path=source_path,
-                   target_path=target_path, **kwargs)
-
-        gdal.TermProgress_nocb(count / total)
+    # write
+    with datasets.Dataset(target_array[np.newaxis, ...], **kwargs) as dataset:
+        DRIVER_GDAL_GTIFF.CreateCopy(target_path, dataset, options=OPTIONS)
+    print('{} created ({}).'.format(target_path, method))
 
 
 def get_parser():
     """ Return argument parser. """
     parser = argparse.ArgumentParser(description=__doc__)
 
-    # optional arguments
-    parser.add_argument('-b', '--base-prefix')
-    parser.add_argument('-s', '--source-prefix')
-    parser.add_argument('-t', '--tolerance', type=float)
-    parser.add_argument('-v', '--verbose', action='store_true')
-
     # positional arguments
-    parser.add_argument('index_path', metavar='INDEX')
-    parser.add_argument('base_root', metavar='BASE')
-    parser.add_argument('source_root', metavar='SOURCE')
-    parser.add_argument('target_root', metavar='TARGET')
+    parser.add_argument(
+        'base_path',
+        metavar='SOURCE',
+        help='Path to base file.',
+    )
+    parser.add_argument(
+        'source_path',
+        metavar='SOURCE',
+        help='Path to source file.',
+    )
+    parser.add_argument(
+        'target_path',
+        metavar='TARGET',
+        help='Path to target file. Directories will be created if necessary.',
+    )
     return parser
 
 
 def main():
     """ Call command with args from parser. """
-    # logging
-    kwargs = vars(get_parser().parse_args())
-    if kwargs.pop('verbose'):
-        level = logging.DEBUG
-    else:
-        level = logging.INFO
-    logging.basicConfig(stream=sys.stderr, level=level, format='%(message)s')
-
-    # run or fail
-    try:
-        command(**kwargs)
-        return 0
-    except:
-        logger.exception('An exception has occurred.')
-        return 1
+    rebase(**vars(get_parser().parse_args()))

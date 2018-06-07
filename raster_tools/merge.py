@@ -40,12 +40,6 @@ def merge(source_paths, target_path):
         print('{} skipped.'.format(target_path))
         return
 
-    # prepare dirs
-    try:
-        os.makedirs(dirname(target_path))
-    except OSError:
-        pass
-
     for i, (source_path, offset) in enumerate(source_paths):
         # skip when missing sources
         if not exists(source_path):
@@ -77,6 +71,12 @@ def merge(source_paths, target_path):
 
         # paste
         target_array[source_mask] = source_array[source_mask]
+
+    # prepare dirs
+    try:
+        os.makedirs(dirname(target_path))
+    except OSError:
+        pass
 
     # write
     kwargs = {

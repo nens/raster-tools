@@ -29,6 +29,8 @@ Changelog of raster-tools
 
 - Removed dem:water from extract.
 
+- Rewrite rebase to not use index shapefile.
+
 
 0.1 (2016-12-12)
 ----------------
