@@ -2,7 +2,7 @@ Changelog of raster-tools
 ===================================================
 
 
-0.2 (unreleased)
+0.3 (2018-06-07)
 ----------------
 
 - Extended extract tool with 3di-ahn3 option.
