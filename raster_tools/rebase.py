@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Rebase a number of rasterfiles, masking cells in the source raster that are
-identical to corresponding cells in the base raster. If the base raster is
-missing, rebase just copies the source raster.
+Rebase a source raster file on a base raster file, masking cells in the source
+raster that are identical to corresponding cells in the base raster. If the
+base raster is missing, rebase just copies the source raster.
 """
 
 from __future__ import print_function
@@ -95,7 +95,7 @@ def get_parser():
     # positional arguments
     parser.add_argument(
         'base_path',
-        metavar='SOURCE',
+        metavar='BASE',
         help='Path to base file.',
     )
     parser.add_argument(
