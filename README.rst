@@ -8,7 +8,7 @@ Installation
 3. Install pipenv: ``sudo pip install pipenv``
 4. ``cd`` to the raster-tools directory
 5. Run ``PIPENV_VENV_IN_PROJECT=1 pipenv install --deploy``
-6. Add the ``raster-tools/.venv/bin`` directory to PATH in your bashrc.
+6. Add the ``raster-tools/.venv/bin`` directory to PATH in your ``/etc/environment``.
 
 
 Rasterizing landuse tables
