@@ -116,7 +116,6 @@ def analyze_raster(filepath):
     geo_transform = raster.GetGeoTransform()
     shape = band.YSize, band.XSize
     area_per_px = abs(geo_transform[1] * geo_transform[5])
-    del raster
     return projection, geo_transform, shape, area_per_px
 
 
@@ -133,7 +132,6 @@ def analyze_shapefile(filepath):
     if num_regions > 254:
         raise ValueError("Too many regions ({}), maximum is "
                          "{}".format(num_regions, 254))
-    del shp_in
     return num_regions
 
 
@@ -146,7 +144,6 @@ def analyze_maskfile(filepath):
     if mask_layer.GetGeomType() != ogr.wkbPolygon:
         raise ValueError("The maskfile does not contain features of type "
                          "'wkbPolygon'")
-    del mask_in
 
 
 def make_result(filepath_in, filepath_out):
@@ -175,9 +172,6 @@ def make_result(filepath_in, filepath_out):
         feature = layer_out.GetFeature(i)
         feature['rmtk_id'] = i
         layer_out.SetFeature(feature)
-
-    # close the input file
-    del shp_in
 
     return shp_out
 
@@ -211,7 +205,6 @@ def rasterize(shape_file, projection, geo_transform, shape,
                      projection=projection) as dataset:
             gdal.RasterizeLayer(dataset, (1,), mask_layer, burn_values=(1,))
         mask = mask[0].astype(np.bool)
-        del mask_in
 
         # mask the rasterized shapefile
         labels[~mask] = no_data_value
@@ -237,7 +230,6 @@ def aggregate(raster_path, out, mask_path, num_regions,
         else:
             accum += result
 
-    del source
     return accum, area_per_px
 
 
@@ -330,9 +322,6 @@ def command(shapefile_path, output_dir, maxdepth_dir, damage_dir, mask_path):
         if mask[i]:
             feature[ATTRS['indicator']] = indicator[i]
         layer_out.SetFeature(feature)
-
-    # close the output file
-    del out
 
 
 def get_parser():
