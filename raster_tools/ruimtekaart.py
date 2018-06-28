@@ -5,7 +5,6 @@ the "ruimte-indicator". Optionally, a mask shapefile can be provided.
 """
 
 from __future__ import print_function
-from __future__ import unicode_literals
 from __future__ import absolute_import
 from __future__ import division
 
@@ -14,6 +13,7 @@ from osgeo import gdal, ogr, gdal_array
 import argparse
 import logging
 import os
+import sys
 
 import numpy as np
 from scipy import ndimage
@@ -133,12 +133,8 @@ def analyze_shapefile(filepath):
     if num_regions > 254:
         raise ValueError("Too many regions ({}), maximum is "
                          "{}".format(num_regions, 254))
-    region_ids = []
-    for i in range(num_regions):
-        feature = layer_in.GetFeature(i)
-        region_ids.append(int(feature[str('id')]))
     del shp_in
-    return num_regions, region_ids
+    return num_regions
 
 
 def analyze_maskfile(filepath):
@@ -166,10 +162,10 @@ def make_result(filepath_in, filepath_out):
     for i in range(layer_definition.GetFieldCount()):
         layer_out.CreateField(layer_definition.GetFieldDefn(i))
 
-    layer_out.CreateField(ogr.FieldDefn(str('rmtk_id'), ogr.OFTInteger))
+    layer_out.CreateField(ogr.FieldDefn('rmtk_id', ogr.OFTInteger))
     # define extra fields for later use
     for key, name in ATTRS.items():
-        layer_out.CreateField(ogr.FieldDefn(str(name), ogr.OFTReal))
+        layer_out.CreateField(ogr.FieldDefn(name, ogr.OFTReal))
 
     for i in range(layer_in.GetFeatureCount()):
         feature = layer_in.GetFeature(i)
@@ -177,7 +173,7 @@ def make_result(filepath_in, filepath_out):
 
     for i in range(layer_out.GetFeatureCount()):
         feature = layer_out.GetFeature(i)
-        feature[str('RMTK_ID')] = i
+        feature['rmtk_id'] = i
         layer_out.SetFeature(feature)
 
     # close the input file
@@ -217,8 +213,8 @@ def rasterize(shape_file, projection, geo_transform, shape,
         mask = mask[0].astype(np.bool)
         del mask_in
 
-    # mask the rasterized shapefile
-    labels[~mask] = no_data_value
+        # mask the rasterized shapefile
+        labels[~mask] = no_data_value
     return labels
 
 
@@ -245,14 +241,10 @@ def aggregate(raster_path, out, mask_path, num_regions,
     return accum, area_per_px
 
 
-def command(maxdepth_dir, damage_dir, shapefile_path, output_dir,
-            mask_path=''):
-    num_regions, region_ids = analyze_shapefile(shapefile_path)
+def command(shapefile_path, output_dir, maxdepth_dir, damage_dir, mask_path):
+    num_regions = analyze_shapefile(shapefile_path)
     if mask_path:
         analyze_maskfile(mask_path)
-    if os.path.isdir(output_dir):
-        raise IOError("The output directory '{}' should not exist "
-                      "already.".format(output_dir))
     for fn in MAXDEPTH_TIFF_NAMES:
         filepath = os.path.join(maxdepth_dir, fn)
         if not os.path.isfile(filepath):
@@ -261,7 +253,10 @@ def command(maxdepth_dir, damage_dir, shapefile_path, output_dir,
         filepath = os.path.join(damage_dir, fn)
         if not os.path.isfile(filepath):
             raise IOError("'{}' does not exist".format(filepath))
-
+    if os.path.isdir(output_dir):
+        raise IOError("The output directory '{}' should not exist "
+                      "already.".format(output_dir))
+    os.makedirs(output_dir)
     out_filepath = os.path.join(output_dir, 'ruimtekaart.shp')
     out = make_result(shapefile_path, out_filepath)
 
@@ -313,8 +308,6 @@ def command(maxdepth_dir, damage_dir, shapefile_path, output_dir,
     for i in range(layer_out.GetFeatureCount()):
         feature = layer_out.GetFeature(i)
 
-        assert feature['id'] == region_ids[i]
-
         # set the total damages
         for j in range(6):
             feature[ATTRS['damage_{}'.format(j)]] = euro[i, j]
@@ -330,8 +323,8 @@ def command(maxdepth_dir, damage_dir, shapefile_path, output_dir,
 
         # set the normalized incremental euro/m3
         for j in range(5):
-            feature[ATTRS['deuro_per_dm3_norm{}'.format(j)]] = \
-            d_euro_per_m3_norm[i, j]
+            feature[ATTRS['deuro_per_dm3_norm_{}'.format(j)]] = \
+                d_euro_per_m3_norm[i, j]
 
         # set the indicator
         if mask[i]:
@@ -353,31 +346,44 @@ def get_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        'maxdepth_dir',
-        help=('Path to directory that contains 6 maxdepth tiffiles (in meters)'
-              'with the filenames ' + ', '.join(MAXDEPTH_TIFF_NAMES)),
-    )
-    parser.add_argument(
-        'damage_dir',
-        help=('Path to directory that contains 6 damage tiffiles (in euros)'
-              'with the filenames ' + ', '.join(DAMAGE_TIFF_NAMES)),
-    )
-    parser.add_argument(
         'shapefile_path',
-        help=('Path to a single shapefile that contains the region polygons'),
+        help='Path to a shapefile that contains the region polygons. The '
+             'maximum number of polygons is 254.',
     )
     parser.add_argument(
         'output_dir',
-        help=('Directory name to use as output path'),
+        help='Directory name to use as output path. The directory should not '
+             'exist.',
     )
     parser.add_argument(
-        '-m', '--mask_path',
+        '-m', '--maxdepth_dir',
+        default='maxdepth',
+        dest='maxdepth_dir',
+        help=('Path to directory that contains 6 maxdepth tiffiles (in meters)'
+              ' with the filenames ' + ', '.join(MAXDEPTH_TIFF_NAMES) +
+              '. Default: "maxdepth".'),
+    )
+    parser.add_argument(
+        '-d', '--damage_dir',
+        default='damage',
+        dest='damage_dir',
+        help=('Path to directory that contains 6 damage tiffiles (in euros)'
+              ' with the filenames ' + ', '.join(DAMAGE_TIFF_NAMES) +
+              '. Default: "damage".'),
+    )
+    parser.add_argument(
+        '-s', '--mask',
         default='',
-        help=('Path to a mask shapefile containing polygons'),
+        dest='mask_path',
+        help='Optional path to a mask shapefile containing polygons of areas '
+             'to include in this analysis.',
     )
     return parser
 
 
 def main():
     """ Call command with args from parser. """
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO,
+                        format='%(message)s')
+
     command(**vars(get_parser().parse_args()))
