@@ -9,7 +9,7 @@ long_description = '\n\n'.join([
     ])
 
 install_requires = [
-    'gdal',
+    'pygdal',
     'psycopg2',
     'scipy',
     'setuptools',
