@@ -3,14 +3,12 @@ raster-tools
 
 Installation
 ------------
-1. Install dependencies: ``sudo apt install libgdal-dev libpq-dev``
-2. Run ``pipenv install --deploy``
-
-
-Before usage
-------------
-1. ``cd`` to the directory where raster-tools is installed
-2. Run ``pipenv shell`` to make the commandline raster-tools available.
+1. Install dependencies: ``sudo apt install python-dev python-pip libgdal-dev libpq-dev``
+2. Upgrade pip: ``sudo pip install setuptools pip --upgrade``
+3. Install pipenv: ``sudo pip install pipenv``
+4. ``cd`` to the raster-tools directory
+5. Run ``PIPENV_VENV_IN_PROJECT=1 pipenv install --deploy``
+6. Add the ``raster-tools/.venv/bin`` directory to PATH in your ``/etc/environment``.
 
 
 Rasterizing landuse tables
