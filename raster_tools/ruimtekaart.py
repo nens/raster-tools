@@ -202,7 +202,7 @@ def rasterize(shape_file, projection, geo_transform, shape,
 
     if mask_path:
         # rasterize the maskfile
-        mask_in = ogr.Open(os.path.join(DATA_ROOT, mask_filename), 0)
+        mask_in = ogr.Open(mask_path, 0)
         mask_layer = mask_in.GetLayer(0)
 
         mask = np.zeros(shape, dtype=np.uint8)[np.newaxis]
@@ -356,7 +356,7 @@ def get_parser():
              'exist.',
     )
     parser.add_argument(
-        '-m', '--maxdepth_dir',
+        '-x', '--maxdepth_dir',
         default='maxdepth',
         dest='maxdepth_dir',
         help=('Path to directory that contains 6 maxdepth tiffiles (in meters)'
@@ -372,7 +372,7 @@ def get_parser():
               '. Default: "damage".'),
     )
     parser.add_argument(
-        '-s', '--mask',
+        '-m', '--mask',
         default='',
         dest='mask_path',
         help='Optional path to a mask shapefile containing polygons of areas '
