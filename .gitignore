@@ -15,6 +15,7 @@ var
 sdist
 develop-eggs
 .installed.cfg
+.venv
 
 # Installer logs
 pip-log.txt
@@ -37,3 +38,6 @@ src
 # Ignore generated config files
 etc/*.nginx.conf
 etc/*.logrotate
+
+# Pycharm
+.idea
