@@ -59,6 +59,7 @@ ATTRS = {
     'indicator': 'indicator',
 }
 MIN_BLOCKSIZE = 1024  # process rasters using at least 1024x1024 blocks
+MAX_NUM_REGIONS = 2 ** 16 - 1  # uint16 dtype + nodata value
 
 
 def _iter_block_row(band, offset_y, block_height, block_width, no_data_value):
@@ -129,9 +130,9 @@ def analyze_shapefile(filepath):
         raise ValueError("The shapefile does not contain features of type "
                          "'wkbPolygon'")
     num_regions = layer_in.GetFeatureCount()
-    if num_regions > 254:
+    if num_regions > MAX_NUM_REGIONS:
         raise ValueError("Too many regions ({}), maximum is "
-                         "{}".format(num_regions, 254))
+                         "{}".format(num_regions, MAX_NUM_REGIONS))
     return num_regions
 
 
@@ -164,10 +165,12 @@ def make_result(filepath_in, filepath_out):
     for key, name in ATTRS.items():
         layer_out.CreateField(ogr.FieldDefn(name, ogr.OFTReal))
 
+    # first copy the features, so that they obtain the extra field 'rmtk_id'
     for i in range(layer_in.GetFeatureCount()):
         feature = layer_in.GetFeature(i)
         layer_out.CreateFeature(feature)
 
+    # then set the extra field 'rmtk_id'
     for i in range(layer_out.GetFeatureCount()):
         feature = layer_out.GetFeature(i)
         feature['rmtk_id'] = i
@@ -336,8 +339,7 @@ def get_parser():
     )
     parser.add_argument(
         'shapefile_path',
-        help='Path to a shapefile that contains the region polygons. The '
-             'maximum number of polygons is 254.',
+        help='Path to a shapefile that contains the region polygons.',
     )
     parser.add_argument(
         'output_dir',
