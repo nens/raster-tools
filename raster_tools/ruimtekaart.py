@@ -110,7 +110,7 @@ def iter_blocks(band, min_blocksize=0):
 
 def analyze_raster(filepath):
     """ Analyze a rasterfile to get projection, geo_transform, and shape """
-    raster = gdal.Open(filepath, 0)
+    raster = gdal.Open(filepath, gdal.GA_ReadOnly)
     band = raster.GetRasterBand(1)
     projection = raster.GetProjection()
     geo_transform = raster.GetGeoTransform()
@@ -121,7 +121,7 @@ def analyze_raster(filepath):
 
 def analyze_shapefile(filepath):
     """ Analyze the shapefile """
-    shp_in = ogr.Open(filepath, 0)
+    shp_in = ogr.Open(filepath, gdal.GA_ReadOnly)
     if shp_in is None:
         raise IOError("The shapefile '{}' is invalid.".format(filepath))
     layer_in = shp_in.GetLayer(0)
@@ -137,7 +137,7 @@ def analyze_shapefile(filepath):
 
 def analyze_maskfile(filepath):
     """ Analyze the maskfile """
-    mask_in = ogr.Open(filepath, 0)
+    mask_in = ogr.Open(filepath, gdal.GA_ReadOnly)
     if mask_in is None:
         raise IOError("The maskfile '{}' is invalid.".format(filepath))
     mask_layer = mask_in.GetLayer(0)
@@ -148,7 +148,7 @@ def analyze_maskfile(filepath):
 
 def make_result(filepath_in, filepath_out):
     # copy the shapefile
-    shp_in = ogr.Open(filepath_in, 0)
+    shp_in = ogr.Open(filepath_in, gdal.GA_ReadOnly)
     layer_in = shp_in.GetLayer(0)
     shp_driver = ogr.GetDriverByName('ESRI Shapefile')
     if os.path.isfile(filepath_out):
@@ -196,7 +196,7 @@ def rasterize(shape_file, projection, geo_transform, shape,
 
     if mask_path:
         # rasterize the maskfile
-        mask_in = ogr.Open(mask_path, 0)
+        mask_in = ogr.Open(mask_path, gdal.GA_ReadOnly)
         mask_layer = mask_in.GetLayer(0)
 
         mask = np.zeros(shape, dtype=np.uint8)[np.newaxis]
@@ -216,7 +216,7 @@ def aggregate(raster_path, out, mask_path, num_regions,
     projection, geo_transform, shape, area_per_px = analyze_raster(raster_path)
     labels = rasterize(out, projection, geo_transform, shape, mask_path)
 
-    source = gdal.Open(raster_path, 0)
+    source = gdal.Open(raster_path, gdal.GA_ReadOnly)
     band = source.GetRasterBand(1)
 
     accum = None
