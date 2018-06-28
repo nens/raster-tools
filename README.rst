@@ -1,11 +1,16 @@
 raster-tools
 ==========================================
 
-Dependencies
+Installation
 ------------
-python-gdal
-python-psycopg2
-python-scipy
+1. Install dependencies: ``sudo apt install libgdal-dev libpq-dev``
+2. Run ``pipenv install --deploy``
+
+
+Before usage
+------------
+1. ``cd`` to the directory where raster-tools is installed
+2. Run ``pipenv shell`` to make the commandline raster-tools available.
 
 
 Rasterizing landuse tables
