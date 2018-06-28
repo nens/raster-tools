@@ -7,6 +7,8 @@ Changelog of raster-tools
 
 - Replaced buildout with pipenv.
 
+- Added 'ruimtekaart' tools.
+
 
 0.3 (2018-06-07)
 ----------------
