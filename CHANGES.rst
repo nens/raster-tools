@@ -9,6 +9,8 @@ Changelog of raster-tools
 
 - Added 'ruimtekaart' tools.
 
+- Fixed use of deprecated mismatched boolean index size.
+
 
 0.3 (2018-06-07)
 ----------------

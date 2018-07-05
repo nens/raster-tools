@@ -80,7 +80,7 @@ def vectorize(direction, accumulation):
 
     # eliminate opposing directions
     state = np.arange(size)
-    flow[flow[flow[state]] == state] = size
+    flow[:-1][flow[flow[state]] == state] = size
 
     for lower, upper in CLASSES:
         # select points that match klass
