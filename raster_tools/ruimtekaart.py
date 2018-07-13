@@ -236,16 +236,17 @@ def aggregate(raster_path, out, mask_path, num_regions,
     return accum, area_per_px
 
 
-def command(shapefile_path, output_dir, maxdepth_dir, damage_dir, mask_path):
+def command(shapefile_path, output_dir, maxdepth_prefix, damage_prefix,
+            mask_path):
     num_regions = analyze_shapefile(shapefile_path)
     if mask_path:
         analyze_maskfile(mask_path)
     for fn in MAXDEPTH_TIFF_NAMES:
-        filepath = os.path.join(maxdepth_dir, fn)
+        filepath = maxdepth_prefix + fn
         if not os.path.isfile(filepath):
             raise IOError("'{}' does not exist".format(filepath))
     for fn in DAMAGE_TIFF_NAMES:
-        filepath = os.path.join(damage_dir, fn)
+        filepath = damage_prefix + fn
         if not os.path.isfile(filepath):
             raise IOError("'{}' does not exist".format(filepath))
     if os.path.isdir(output_dir):
@@ -260,14 +261,14 @@ def command(shapefile_path, output_dir, maxdepth_dir, damage_dir, mask_path):
     volumes_m3 = np.zeros((num_regions, 6), dtype=np.float)
 
     for i, fn in enumerate(MAXDEPTH_TIFF_NAMES):
-        filepath = os.path.join(maxdepth_dir, fn)
+        filepath = maxdepth_prefix + fn
         logger.info("Aggregating '{}'".format(filepath))
         volumes_m3[:, i], area_per_px = aggregate(filepath, out, mask_path,
                                                   num_regions, MIN_BLOCKSIZE)
         volumes_m3[:, i] *= area_per_px
 
     for i, fn in enumerate(DAMAGE_TIFF_NAMES):
-        filepath = os.path.join(damage_dir, fn)
+        filepath = damage_prefix + fn
         logger.info("Aggregating '{}'".format(filepath))
         damages_euro[:, i], _ = aggregate(filepath, out, mask_path,
                                           num_regions, MIN_BLOCKSIZE)
@@ -349,20 +350,20 @@ def get_parser():
              'exist.',
     )
     parser.add_argument(
-        '-x', '--maxdepth_dir',
-        default='maxdepth',
-        dest='maxdepth_dir',
-        help=('Path to directory that contains 6 maxdepth tiffiles (in meters)'
-              ' with the filenames ' + ', '.join(MAXDEPTH_TIFF_NAMES) +
-              '. Default: "maxdepth".'),
+        '-x', '--maxdepth_prefix',
+        default='rasters/maxdepth_',
+        dest='maxdepth_prefix',
+        help=('Prefix of 6 maxdepth tiffiles (in meters). '
+              'The filenames ' + ', '.join(MAXDEPTH_TIFF_NAMES) +
+              ' will be prefixed by this. Default: "rasters/maxdepth_".'),
     )
     parser.add_argument(
-        '-d', '--damage_dir',
-        default='damage',
-        dest='damage_dir',
-        help=('Path to directory that contains 6 damage tiffiles (in euros)'
-              ' with the filenames ' + ', '.join(DAMAGE_TIFF_NAMES) +
-              '. Default: "damage".'),
+        '-d', '--damage_prefix',
+        default='rasters/damage_',
+        dest='damage_prefix',
+        help=('Prefix of  6 damage tiffiles (in euros). '
+              'The filenames ' + ', '.join(DAMAGE_TIFF_NAMES) +
+              ' will be prefixed by this. Default: "rasters/damage_".'),
     )
     parser.add_argument(
         '-m', '--mask',
