@@ -284,19 +284,21 @@ def command(shapefile_path, output_dir, maxdepth_dir, damage_dir, mask_path):
 
     # how many euros extra per m3 extra?
     mask = (d_m3 != 0).all(axis=1)
-    d_euro_per_m3 = np.zeros_like(d_m3)
-    d_euro_per_m3[mask] = d_euro[mask] / d_m3[mask]
+    d_euro_per_m3 = np.full_like(d_m3, np.nan)
+    d_euro_per_m3[mask] = np.clip(d_euro[mask] / d_m3[mask], 0, 1E100)
 
     # normalize on the total sum
     d_euro_per_m3_norm = \
         (d_euro_per_m3[-1] - d_euro_per_m3) / d_euro_per_m3[-1]
-    d_euro_per_m3_norm[d_euro_per_m3_norm > 1] = 1
 
-    indicator = (d_euro_per_m3_norm[:, 0] +
-                 d_euro_per_m3_norm[:, 1] * 2 +
-                 d_euro_per_m3_norm[:, 2] * 2 +
-                 d_euro_per_m3_norm[:, 3] * 5 +
-                 d_euro_per_m3_norm[:, 4] * 5) / 15
+    # compute the indicator, ignoring NaNs
+    weights = np.tile([[1., 2., 2., 5., 5.]], (d_euro_per_m3_norm.shape[0], 1))
+    weights[np.isnan(d_euro_per_m3_norm)] = 0
+    weights_total = weights.sum(1)
+    weights_total[weights_total == 0] = np.nan
+    indicator = (d_euro_per_m3_norm * weights).sum(1) / weights_total
+    # if all values are NaN, the indicator becomes 0
+    indicator[np.isnan(indicator)] = 0
 
     # add the results to the output file
     layer_out = out.GetLayer(0)
