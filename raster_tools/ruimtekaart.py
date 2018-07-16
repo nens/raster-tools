@@ -298,8 +298,6 @@ def command(shapefile_path, output_dir, maxdepth_prefix, damage_prefix,
     weights_total = weights.sum(1)
     weights_total[weights_total == 0] = np.nan
     indicator = (d_euro_per_m3_norm * weights).sum(1) / weights_total
-    # if all values are NaN, the indicator becomes 0
-    indicator[np.isnan(indicator)] = 0
 
     # add the results to the output file
     layer_out = out.GetLayer(0)
@@ -325,8 +323,7 @@ def command(shapefile_path, output_dir, maxdepth_prefix, damage_prefix,
                 d_euro_per_m3_norm[i, j]
 
         # set the indicator
-        if mask[i]:
-            feature[ATTRS['indicator']] = indicator[i]
+        feature[ATTRS['indicator']] = indicator[i]
         layer_out.SetFeature(feature)
 
 
@@ -381,3 +378,7 @@ def main():
                         format='%(message)s')
 
     command(**vars(get_parser().parse_args()))
+
+
+if __name__ == '__main__':
+    main()
