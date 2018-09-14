@@ -85,7 +85,8 @@ setup(name='raster-tools',
               'rgb-zonal          = raster_tools.rgb_zonal:main',
               'green-factor       = raster_tools.green_factor:main',
               'difference         = raster_tools.difference:main',
-              # ruimtekaart
+              # ruimtekaart & maskerkaart
               'ruimtekaart        = raster_tools.ruimtekaart:main',
+              'maskerkaart        = raster_tools.maskerkaart:main',
           ]},
       )
