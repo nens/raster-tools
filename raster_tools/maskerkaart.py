@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Compute a shapefile that distinguishes "plas", "overlast", and "modelfout" from
-a 3Di gridadmin and results file.
+two 3Di gridadmin and results files ("piek" and "blok").
 
 This analysis has 4 steps:
 
@@ -48,10 +48,19 @@ logger = logging.getLogger(__name__)
 
 GRIDADMIN_NAME = 'gridadmin.h5'
 RESULTS_NAME = 'results_3di.nc'
+POLYGON = 'POLYGON (({0} {1},{2} {1},{2} {3},{0} {3},{0} {1}))'
 
 
 def filter_min_flow_area(lines, threshold, timestamp=None):
-    """Returns the ids of lines that have flow_area >= threshold"""
+    """Filter lines below a given threshold in flow area (au)
+
+    :param lines: GridH5ResultAdmin.lines to filter
+    :param threshold: the minimum flow area, in square meters
+    :param timestamp: the timestamp from which to take the flow areas from.
+      Defaults to the last timestamp in the dataset.
+
+    :returns: list of line ids with a gradient above or equal to threshold
+    """
     if timestamp is None:
         timestamp = lines.timestamps[-1]
     data = lines.timeseries(
@@ -62,7 +71,21 @@ def filter_min_flow_area(lines, threshold, timestamp=None):
 
 
 def filter_max_gradient(lines, nodes, threshold, timestamp=None):
-    """Returns the ids of lines that have gradient <= threshold"""
+    """Filter lines above a given threshold in waterlevel gradient
+
+    The waterlevel gradient is computed by taking the difference of the
+    waterlevel in the nodes that are connected by the line, and dividing by
+    the length of the line. The length is computed by first projecting the line
+    to EPSG28992, so this analysis is valid only in The Netherlands.
+
+    :param lines: GridH5ResultAdmin.lines to filter
+    :param nodes: GridH5ResultAdmin.nodes to get waterlevels (s1) from
+    :param threshold: the maximum gradient, dimensionless (m / m)
+    :param timestamp: the timestamp from which to take the waterlevels from.
+      Defaults to the last timestamp in the dataset.
+
+    :returns: list of line ids with a gradient below or equal to threshold
+    """
     if timestamp is None:
         timestamp = lines.timestamps[-1]
     line_data = lines.timeseries(
@@ -92,11 +115,17 @@ def filter_max_gradient(lines, nodes, threshold, timestamp=None):
 def filter_lines(gr, max_gradient, min_flow_area):
     """Filter lines from the gridresultadmin and return 3 filtered sets:
 
-    1. 2D-2D lines that have flow_area >= min_flow_area and
-       gradient <= max_gradient
-    2. 1D-2D lines that have flow_area >= min_flow_area
-    3. 1D-2D lines that have flow_area >= min_flow_area and
-       gradient <= max_gradient
+    :param gr: GridH5ResultAdmin
+    :param max_gradient: GridH5ResultAdmin.nodes to get waterlevels (s1) from
+    :param min_flow_area: the minimum flow area, in square meters
+
+    :returns: tuple of 3 filtered GridH5ResultAdmin.lines objects:
+
+        - 2D-2D lines that have flow_area >= min_flow_area and
+          gradient <= max_gradient
+        - 1D-2D lines that have flow_area >= min_flow_area
+        - 1D-2D lines that have flow_area >= min_flow_area and
+          gradient <= max_gradient
     """
     lines_active = filter_min_flow_area(gr.lines, min_flow_area)
     lines_valid = filter_max_gradient(gr.lines, gr.nodes, max_gradient)
@@ -114,7 +143,12 @@ def filter_lines(gr, max_gradient, min_flow_area):
 
 
 def group_nodes(lines):
-    """From N 2-tuples of node ids, assign group ids"""
+    """Group nodes into connected components
+
+    :param lines: ndarray of shape (N, 2) with the ids of the connected nodes
+
+    :returns: a list with group id per node: return_value[node_id] == group_id
+    """
     coo = coo_matrix((np.ones(lines.shape[1]), lines),
                      shape=(lines.max() + 1,) * 2)
 
@@ -126,6 +160,17 @@ def group_nodes(lines):
 
 
 def classify_nodes(node_id_2d, groups, lines1d2d_active, lines1d2d_valid):
+    """Classify nodes in "plas", "overlast" or "modelfout"
+
+    :param node_id_2d: a list of the ids of all 2D nodes
+    :param groups: a list mapping groups[node_id] == group_id
+    :param lines1d2d_active: a list of active 1D-2D lines (flow_area >=
+      threshold)
+    :param lines1d2d_valid: a list of valid 1D-2D lines (flow_area >= threshold
+      and gradien <= threshold)
+
+    :returns: 3 lists containing the node IDs of overlast, plas, and modelfout
+    """
     plas_ids = []
     overlast_ids = []
     modelfout_ids = []
@@ -167,6 +212,8 @@ def classify_nodes(node_id_2d, groups, lines1d2d_active, lines1d2d_valid):
 
 
 def numpy_to_ogr_type(dtype):
+    """Convert a numpy dtype to an ogr dtype (one of Real, Integer, or String)
+    """
     if np.issubdtype(dtype, np.floating):
         return ogr.OFTReal
     elif np.issubdtype(dtype, np.integer):
@@ -176,6 +223,13 @@ def numpy_to_ogr_type(dtype):
 
 
 def to_shape(cell_data, file_name, fields, epsg_code):
+    """Write cell data to an ESRI shapefile.
+
+    :param cell_data: dictionary containing 'cell_coords', 'id' and all fields
+      the dictionary values are ndarrays with the same length (number of cells)
+    :param file_name: the file name to output the file to. should not exist.
+    :param epsg_code: the EPSG code of the projection
+    """
     if fields is None:
         fields = ['id']
     fields = [str(f) for f in fields]
@@ -198,33 +252,51 @@ def to_shape(cell_data, file_name, fields, epsg_code):
         layer.CreateField(ogr.FieldDefn(field, ogr_dtype))
 
     _definition = layer.GetLayerDefn()
-    for i in xrange(cell_data['cell_coords'].shape[1]):
+    for i in range(cell_data['cell_coords'].shape[1]):
         feature = ogr.Feature(_definition)
-        # Create ring
-        ring = ogr.Geometry(ogr.wkbLinearRing)
-        ring.AddPoint(cell_data['cell_coords'][0][i],
-                      cell_data['cell_coords'][1][i])
 
-        ring.AddPoint(cell_data['cell_coords'][2][i],
-                      cell_data['cell_coords'][1][i])
+        # get the cell coords
+        cell_coords = [cell_data['cell_coords'][j][i] for j in range(4)]
 
-        ring.AddPoint(cell_data['cell_coords'][2][i],
-                      cell_data['cell_coords'][3][i])
-
-        ring.AddPoint(cell_data['cell_coords'][0][i],
-                      cell_data['cell_coords'][3][i])
-
-        ring.AddPoint(cell_data['cell_coords'][0][i],
-                      cell_data['cell_coords'][1][i])
-
-        # Create polygon from ring
-        poly = ogr.Geometry(ogr.wkbPolygon)
-        poly.AddGeometry(ring)
+        # create polygon and set it on the feature
+        poly = ogr.CreateGeometryFromWkt(POLYGON.format(*cell_coords), sr)
         feature.SetGeometry(poly)
 
+        # set fields
         for field in fields:
             feature.SetField(field, cell_data[field][i].item())
         layer.CreateFeature(feature)
+
+
+def run_single(path, min_flow_area, max_gradient):
+    logger.info("Analyzing scenario at {}".format(path))
+
+    gr = GridH5ResultAdmin(os.path.join(path, GRIDADMIN_NAME),
+                           os.path.join(path, RESULTS_NAME))
+
+
+    lines2d2d_valid, lines1d2d_active, lines1d2d_valid = filter_lines(
+        gr,
+        min_flow_area=min_flow_area,
+        max_gradient=max_gradient,
+    )
+
+    groups = group_nodes(lines2d2d_valid.line)
+
+    cell_data = gr.cells.subset('2D_ALL').only("id", "cell_coords").data
+
+    overlast_ids, plas_ids, modelfout_ids = classify_nodes(
+        node_id_2d=cell_data['id'],
+        groups=groups,
+        lines1d2d_active=lines1d2d_active,
+        lines1d2d_valid=lines1d2d_valid,
+    )
+
+    cell_data['case'] = np.full(cell_data['id'].size, '', dtype='S10')
+    cell_data['case'][np.isin(cell_data['id'], plas_ids)] = 'plas'
+    cell_data['case'][np.isin(cell_data['id'], overlast_ids)] = 'overlast'
+    cell_data['case'][np.isin(cell_data['id'], modelfout_ids)] = 'modelfout'
+    return cell_data, gr.epsg_code
 
 
 def command(path_piek, path_blok, path_out,
@@ -240,71 +312,34 @@ def command(path_piek, path_blok, path_out,
             raise IOError('{} does not exist in {}'.format(
                 RESULTS_NAME, path))
 
-    # check if the output file does not exist, but it directory should exist
+    # check if the output file does not exist, but its directory should exist
     if not os.path.isdir(os.path.dirname(path_out)):
         raise IOError('{} does not exist'.format(os.path.dirname(path_out)))
     if os.path.isfile(path_out):
         raise IOError('{} already exists'.format(path_out))
 
-    # parse the thresholds
-    min_flow_area = float(min_flow_area)
-    max_gradient = float(max_gradient)
+    # run the analyses
+    cell_data_piek, epsg = run_single(path_piek, min_flow_area, max_gradient)
+    cell_data_blok, epsg = run_single(path_blok, min_flow_area, max_gradient)
 
-    logger.info("Analyzing piek scenario at {}".format(path_piek))
-    gr = GridH5ResultAdmin(os.path.join(path_piek, GRIDADMIN_NAME),
-                           os.path.join(path_piek, RESULTS_NAME))
-
-    lines2d2d_valid, lines1d2d_active, lines1d2d_valid = filter_lines(
-        gr,
-        min_flow_area=min_flow_area,
-        max_gradient=max_gradient,
-    )
-
-    groups = group_nodes(lines2d2d_valid.line)
-    overlast_ids, plas_ids, modelfout_ids = classify_nodes(
-        node_id_2d=gr.nodes.subset('2D_ALL').id,
-        groups=groups,
-        lines1d2d_active=lines1d2d_active,
-        lines1d2d_valid=lines1d2d_valid,
-    )
-
-    cell_data = gr.cells.subset('2D_ALL').only("id", "cell_coords").data
-    key = 'case_piek'
-    cell_data[key] = np.full(cell_data['id'].size, '', dtype='S10')
-    cell_data[key][np.isin(cell_data['id'], plas_ids)] = 'plas'
-    cell_data[key][np.isin(cell_data['id'], overlast_ids)] = 'overlast'
-    cell_data[key][np.isin(cell_data['id'], modelfout_ids)] = 'modelfout'
-
-    logger.info("Analyzing blok scenario at {}".format(path_blok))
-    gr = GridH5ResultAdmin(os.path.join(path_blok, GRIDADMIN_NAME),
-                           os.path.join(path_blok, RESULTS_NAME))
     # check if the cell coords are precisely equal
-    comp = gr.cells.subset('2D_ALL').cell_coords == cell_data['cell_coords']
+    comp = cell_data_piek['cell_coords'] == cell_data_blok['cell_coords']
     if not comp.all():
         raise RuntimeError("Blok and Piek scenarios have unequal cell coords")
 
-    lines2d2d_valid, lines1d2d_active, lines1d2d_valid = filter_lines(
-        gr,
-        min_flow_area=min_flow_area,
-        max_gradient=max_gradient,
-    )
-    groups = group_nodes(lines2d2d_valid.line)
-    overlast_ids, plas_ids, modelfout_ids = classify_nodes(
-        node_id_2d=gr.nodes.subset('2D_ALL').id,
-        groups=groups,
-        lines1d2d_active=lines1d2d_active,
-        lines1d2d_valid=lines1d2d_valid,
-    )
-    key = 'case_blok'
-    cell_data[key] = np.full(cell_data['id'].size, '', dtype='S10')
-    cell_data[key][np.isin(cell_data['id'], plas_ids)] = 'plas'
-    cell_data[key][np.isin(cell_data['id'], overlast_ids)] = 'overlast'
-    cell_data[key][np.isin(cell_data['id'], modelfout_ids)] = 'modelfout'
+    # assemble the data
+    cell_data = {
+        'id': cell_data_piek['id'],
+        'cell_coords': cell_data_piek['cell_coords'],
+        'case_piek': cell_data_piek['case'],
+        'case_blok': cell_data_blok['case'],
+    }
 
     # logical operations to generate "case_final"
     cell_data['case_final'] = np.full(cell_data['id'].size, '', dtype='S10')
     cell_data['case_final'][
-        (cell_data['case_blok'] == 'plas') | (cell_data['case_piek'] == 'plas')
+        (cell_data['case_blok'] == 'plas') |
+        (cell_data['case_piek'] == 'plas')
     ] = 'plas'
     cell_data['case_final'][
         (cell_data['case_blok'] == 'overlast') |
@@ -320,16 +355,15 @@ def command(path_piek, path_blok, path_out,
         cell_data,
         path_out,
         fields=['id', 'case_blok', 'case_piek', 'case_final'],
-        epsg_code=gr.epsg_code
+        epsg_code=epsg,
     )
     logger.info("Done.")
 
 
 def get_parser():
     """
-    Compute the sum of 12 rasterfiles in region given by polygons in a
-    shapefile. The 12 raster files are suffixed by shapefile and compute
-    the "ruimte-indicator". Optionally, a mask shapefile can be provided.
+    Compute a shapefile that distinguishes "plas", "overlast", and "modelfout"
+    from two 3Di gridadmin and results files ("piek" and "blok").
     """
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -357,6 +391,7 @@ def get_parser():
         dest='min_flow_area',
         help=('Minimum flow area ("doorstroomoppervlak") in square meters '
               'for node connections to be included in this analysis.'),
+        type=float,
     )
     parser.add_argument(
         '-g', '--gradient',
@@ -364,6 +399,7 @@ def get_parser():
         dest='max_gradient',
         help=('Maximum gradient ("verhang") (no units, lengh per length) '
               'for node connections to be valid in this analysis.'),
+        type=float,
     )
     return parser
 
