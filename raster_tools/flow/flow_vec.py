@@ -132,7 +132,7 @@ class Vectorizer(object):
 
     def vectorize(self, index_feature):
         # target path
-        name = index_feature[str('bladnr')]
+        name = index_feature[str('name')]
         path = os.path.join(self.target_path, name[:3], '{}'.format(name))
         if os.path.exists(path):
             return

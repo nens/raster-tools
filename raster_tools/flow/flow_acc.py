@@ -106,7 +106,7 @@ class Accumulator(object):
 
     def accumulate(self, feature):
         # target path
-        name = feature[str('bladnr')]
+        name = feature[str('name')]
         path = os.path.join(self.output_path,
                             name[:3],
                             '{}.tif'.format(name))

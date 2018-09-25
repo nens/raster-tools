@@ -133,7 +133,7 @@ def calculate_flow_direction(values):
 
     while True:
         undefined = ~np.in1d(direction, NUMBERS).reshape(direction.shape)
-        edges = undefined - ndimage.binary_erosion(undefined, **kwargs)
+        edges = undefined ^ ndimage.binary_erosion(undefined, **kwargs)
 
         t_index1 = edges.nonzero()
         direction1 = direction[t_index1][:, np.newaxis]
@@ -177,7 +177,7 @@ class DirectionCalculator(object):
 
     def calculate(self, feature):
         # target path
-        name = feature[str('bladnr')]
+        name = feature[str('name')]
         path = os.path.join(self.output_path,
                             name[:3],
                             '{}.tif'.format(name))
@@ -210,7 +210,9 @@ class DirectionCalculator(object):
         direction = calculate_flow_direction(values)
 
         # make water undefined
-        direction[cover == 144] = 0
+        water = np.zeros_like(cover, dtype='b1')
+        water.ravel()[:] = np.in1d(cover, (50, 51, 52, 156, 254))
+        direction[water] = 0
 
         # make buildings undefined
         direction[building] = 0
@@ -257,7 +259,7 @@ def get_parser():
     parser.add_argument(
         'raster_path',
         metavar='RASTER',
-        help='source GDAL raster dataset with voids'
+        help='source GDAL raster dataset with depressions filled',
     )
     parser.add_argument(
         'cover_path',

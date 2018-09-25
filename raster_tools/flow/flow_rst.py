@@ -36,7 +36,7 @@ def get_geo_transform(geometry):
 def rasterize(feature, source_dir, target_dir):
     """ Rasterize streamline shape for a single tile into raster. """
     geo_transform = get_geo_transform(feature.geometry())
-    name = feature[str('bladnr')]
+    name = feature[str('name')]
     partial_path = os.path.join(name[:3], name)
 
     # target path

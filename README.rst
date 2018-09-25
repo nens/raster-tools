@@ -42,8 +42,8 @@ Procedure for filling completely filling internal nodata
 Creating streamlines
 --------------------
 
-flow-fil index raster cover output/f
-flow-dir index output/f/all.vrt cover output/d              # fill depressions
+flow-fil index raster cover output/f                        # fill depressions
+flow-dir index output/f/all.vrt cover output/d              # derive direction
 flow-acc index output/d/all.vrt output/a                    # accumulate
 flow-vec index output/d/all.vrt output/a/all.vrt output/v   # makes features
 flow-rst index output/v output/r                            # features to tifs
