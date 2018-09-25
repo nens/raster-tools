@@ -1,7 +1,10 @@
+# (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 """
 Merge a number of rasterfiles. When any rasterfile is missing, the command does
-not proceed, except in the case of rasterfiles with an offset.
+not proceed, except in the case of rasterfiles with an offset. This script is
+built for the flattening of complementary rasterfiles for use with damage
+estimation software.
 """
 
 from __future__ import print_function
