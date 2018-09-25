@@ -4,11 +4,7 @@
 Filler.
 
 The idea is to get a tension-like result, but much less computationally
-intensive. Design choices to make:
-
-- Which statistic (currrently mean) - could be made dependent on landcover
-
-- Edge is put back before the smoothing on each level. We want smoothness!
+intensive.
 """
 
 from __future__ import print_function
@@ -225,7 +221,10 @@ def fillnodata(source_path, target_path):
 
 def get_parser():
     """ Return argument parser. """
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
     # positional arguments
     parser.add_argument(
