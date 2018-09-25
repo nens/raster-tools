@@ -58,7 +58,6 @@ setup(name='raster-tools',
               'flow-rst           = raster_tools.flow.flow_rst:main',
               # modification
               'gmfillnodata       = raster_tools.gmfillnodata:main',
-              'mfillnodata        = raster_tools.mfillnodata:main',
               'fillnodata         = raster_tools.fillnodata:main',
               'hillshade          = raster_tools.hillshade:main',
               'aggregate          = raster_tools.aggregate:main',

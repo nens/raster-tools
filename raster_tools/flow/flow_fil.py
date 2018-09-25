@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 """
-Aggregate recursively by taking the mean of quads.
+Fill depressions in DEM. The landcover data is supposed to be version 1801c.
 
 TODO
 - distinguish between shallow and deep depressions
@@ -111,7 +111,7 @@ def _fill_complex_depressions(values, mask=None, unique=False):
     # initial uphill and indices
     uphill = calculate_uphill(values)
     indices = np.nonzero(
-        mask - ndimage.binary_erosion(mask, **kwargs),
+        mask ^ ndimage.binary_erosion(mask, **kwargs),
     )
 
     # iterate to raise depressions to pour points
@@ -150,7 +150,7 @@ def _fill_complex_depressions(values, mask=None, unique=False):
 
             # determine contour and mark as starting point for next iteration
             dilated = ndimage.binary_dilation(depress, **kwargs)
-            contour = dilated - depress
+            contour = dilated ^ depress
 
             # find contour minimum
             minimum = values[slices][contour].min()
@@ -212,7 +212,7 @@ class PitFiller(object):
 
     def fill(self, feature):
         # target path
-        name = feature[str('bladnr')]
+        name = feature[str('name')]
         path = os.path.join(self.output_path,
                             name[:3],
                             '{}.tif'.format(name))
@@ -236,7 +236,10 @@ class PitFiller(object):
         # data
         values = self.raster_group.read(outer_geometry)
         cover = self.cover_group.read(outer_geometry)
-        mask = (cover == 144)  # water
+
+        # create mask where cover refers to water
+        mask = np.zeros_like(cover, dtype='b1')
+        mask.ravel()[:] = np.in1d(cover, (50, 51, 52, 156, 254))
 
         # set buildings to maximum dem before directions
         building = np.logical_and(cover > 1, cover < 15)
@@ -293,7 +296,7 @@ def get_parser():
     parser.add_argument(
         'raster_path',
         metavar='RASTER',
-        help='source GDAL raster that has no voids.'
+        help='directory of complementary GDAL rasters.'
     )
     parser.add_argument(
         'cover_path',
