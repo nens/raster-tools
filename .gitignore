@@ -2,6 +2,8 @@
 *.py[co]
 
 # Packages
+Pipfile
+Pipfile.lock
 *.egg-info
 .venv
 
