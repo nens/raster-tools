@@ -17,15 +17,27 @@ from os.path import dirname, exists
 import argparse
 import collections
 import os
+import statistics
 
 from osgeo import gdal
+from pylab import imshow, plot, savefig, subplot2grid, title, xlim
 from scipy import ndimage
+
 import numpy as np
 
 from raster_tools import datasets
 
-GTIF = gdal.GetDriverByName(str('gtiff'))
+
+# properties of working arrays
+DTYPE = 'f4'
+FILLVALUE = np.finfo(DTYPE).max
+
+# output driver and optinos
+DRIVER = gdal.GetDriverByName(str('gtiff'))
 OPTIONS = ['compress=deflate', 'tiled=yes']
+
+# smoothing kernel designed to have the effect of restoring features after
+# aggregation and zooming
 KERNEL = np.array([[0.0625, 0.1250,  0.0625],
                    [0.1250, 0.2500,  0.1250],
                    [0.0625, 0.1250,  0.0625]])
@@ -58,15 +70,13 @@ class Edge(object):
     def aggregated(self):
         """ Return aggregated edge object. """
         # aggregate
-        total = collections.defaultdict(float)
-        count = collections.defaultdict(float)
+        work = collections.defaultdict(list)
         for k, i, j in zip(self.values, *self.indices):
-            total[i // 2, j // 2] += k
-            count[i // 2, j // 2] += 1
+            work[i // 2, j // 2].append(k)
 
         # statistic
-        indices = tuple(np.array(ind) for ind in zip(*total))
-        values = [total[k] / count[k] for k in zip(*indices)]
+        indices = tuple(np.array(ind) for ind in zip(*work))
+        values = [statistics.median(work[k]) for k in zip(*indices)]
         return self.__class__(
             indices=indices,
             values=values,
@@ -79,7 +89,7 @@ class Edge(object):
 
     def toarray(self):
         """ Return fresh array. """
-        array = np.empty(self.shape, 'f4')
+        array = np.full(self.shape, FILLVALUE, dtype=DTYPE)
         self.pasteon(array)
         return array
 
@@ -158,29 +168,98 @@ class Exchange(object):
         # write tiff
         array = self.target[np.newaxis]
         with datasets.Dataset(array, **self.kwargs) as dataset:
-            GTIF.CreateCopy(self.target_path, dataset, options=OPTIONS)
+            DRIVER.CreateCopy(self.target_path, dataset, options=OPTIONS)
 
 
-def fill(edge):
+def fill(edge, func, level=0):
     """
     Return a filled array.
 
     :param edge: Edge instance.
     """
+    func(edge, 'Edge {}'.format(level))
+
     # aggregate the edge
     aggregated = edge.aggregated()
 
     if aggregated.full:
         # convert the aggregated edge into an array
         array = aggregated.toarray()
+
+        func(array, 'Edge {}'.format(level + 1))
+
     else:
         # fill the aggregated edge and return the array
-        array = fill(aggregated)  # recursively fills
+        array = fill(aggregated, func, level + 1)  # recursively fills
 
     array = zoom(array)[:edge.shape[0], :edge.shape[1]]
+
+    func(array, '{}C Zoomed'.format(level))
+
     edge.pasteon(array)
+    func(array, '{}B Edge pasted'.format(level))
+
     smooth(array)
+    func(array, '{}A Smoothed'.format(level))
+
     return array
+
+
+class Display(object):
+    def __init__(self, count):
+        self.count = count
+
+    def __call__(self, obj, text):
+        """ Show fancy analysis plots. """
+        # convert edge to array
+        if isinstance(obj, Edge):
+            obj = np.ma.masked_equal(obj.toarray(), FILLVALUE)
+
+        height, width = obj.shape
+
+        # plot array
+        subplot2grid((3, 3), (0, 0), rowspan=2, colspan=2)
+        imshow(obj)
+        title('{}: {}'.format(self.count, text))
+
+        # horizontal samples at 1/3 and 2/3
+        for i in (0, 1):
+            subplot2grid((3, 3), (i, 2))
+            index = (i + 1) * height // 3
+            plot(obj[index])
+            xlim(0, width)
+
+        # vertical samples at 1/3 and 2/3
+        for i in (0, 1):
+            subplot2grid((3, 3), (2, i))
+            index = (i + 1) * width // 3
+            plot(obj[:, index])
+            xlim(0, height)
+
+        # topleft to bottomright sample
+        subplot2grid((3, 3), (2, 2))
+        size = max(width, height)
+        index = (
+            np.linspace(0.5, height - 0.5, size).astype('i8'),
+            np.linspace(0.5, width - 0.5, size).astype('i8'),
+        )
+        plot(obj[index])
+        xlim(0, height)
+
+        # save
+        target_path = '{}/{}.png'.format(
+            self.count, text.lower().replace(' ', '_'),
+        )
+
+        try:
+            os.makedirs(dirname(target_path))
+        except OSError:
+            pass
+        savefig(target_path)
+
+
+def do_not_display(obj, text):
+    pass
 
 
 def fillnodata(source_path, target_path):
@@ -200,17 +279,23 @@ def fillnodata(source_path, target_path):
 
     # process
     for count, (source, target, void) in enumerate(exchange, 1):
+
+        # func = Display(count)  # debug only
+        func = do_not_display
+
         # analyze
         edge = void ^ ndimage.binary_dilation(void)
         indices = edge.nonzero()
 
-        # fill
+        # create edge object
         edge = Edge(
             indices=indices,
             values=source[indices],
             shape=source.shape,
         )
-        filled = fill(edge)
+
+        # fill it
+        filled = fill(edge, func)
 
         # apply
         target[void] = filled[void]

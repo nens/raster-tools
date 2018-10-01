@@ -8,8 +8,8 @@ from __future__ import division
 
 import os
 
-from raster_tools import gdal
-from raster_tools import ogr
+from osgeo import gdal
+from osgeo import ogr
 
 
 class PartialDataSource(object):
@@ -21,9 +21,9 @@ class PartialDataSource(object):
     def __iter__(self):
         total = len(self)
         gdal.TermProgress_nocb(0)
-        for count, feature in enumerate(self.layer, 1):
-            yield feature
-            gdal.TermProgress_nocb(count / total)
+        for i in range(total):
+            yield self.layer[i]
+            gdal.TermProgress_nocb((i + 1) / total)
 
     def __len__(self):
         return self.layer.GetFeatureCount()
