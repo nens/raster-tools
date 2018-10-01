@@ -1,0 +1,14 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[dev-packages]
+
+[packages]
+pygdal = "==1.11.3.*"
+"e1839a8" = {path = ".", editable = true}
+threedigrid = {extras = ["geo", "results"]}
+
+[requires]
+python_version = "2.7"
