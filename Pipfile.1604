@@ -11,4 +11,4 @@ pygdal = "==1.11.3.*"
 threedigrid = {extras = ["geo", "results"]}
 
 [requires]
-python_version = "3.6"
+python_version = "3.5"
