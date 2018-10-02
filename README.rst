@@ -1,10 +1,30 @@
 raster-tools
 ============
 
-Development installation
-------------------------
+A collection of raster tools.
 
-Create a docker-compose.override.yaml to add local filesystems:
+
+Local setup
+-----------
+
+The docker-compose file expects the following folders to exist:
+
+ - ``~/.cache/pip``
+ - ``~/.cache/pipenv``
+
+Check if they exist and if you are the owner. If they do not exist, create them
+with ``mkdir``, and if they are not owned by you, use ``sudo chown``.
+
+
+Local development
+-----------------
+
+First, clone this repo and make some required directories::
+
+    $ git clone git@github.com:nens/raster-tools
+    $ cd raster-tools
+
+Create a docker-compose.override.yaml to map local filesystems:
 
 .. code-block:: yaml
 
@@ -14,19 +34,23 @@ Create a docker-compose.override.yaml to add local filesystems:
         volumes:
           - /some/local/path:/some/container/path
 
+Then build the docker image, providing your user and group ids for correct file
+permissions::
 
-On your machine::
+    $ docker-compose build --build-arg uid=`id -u` --build-arg gid=`id -g` lib
 
-    $ docker-compose up --no-start
-    $ docker-compose start
-    $ docker-compose exec lib bash
+The entrypoint into the docker is set to `pipenv run`, so that every command is
+executed in the pipenv-managed virtual environment. On the first
+`docker-compose run`, the `.venv` folder will be created automatically inside
+your project directory::
 
-And then in the container::
+    $ docker-compose run --rm lib bash
 
-    $ pipenv sync --dev
-    $ pipenv shell
+Then install the packages (including dev packages) listed in `Pipfile.lock`::
 
-In this pipenv shell the raster-tools commands can be run in the container.
+    (docker) $ pipenv sync --dev
+
+Now you are ready to run the raster tools in the container.
 
 
 Task server installation

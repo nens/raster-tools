@@ -10,7 +10,6 @@ services:
       - SHELL=/bin/bash
     volumes:
       - ./:/code
-      - ~/.netrc:/home/nens/.netrc  # github authentication
       - ~/.cache/pip:/home/nens/.cache/pip  # shared pip cache
       - ~/.cache/pipenv:/home/nens/.cache/pipenv  # shared pipenv cache
     command: tail -F anything
