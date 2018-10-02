@@ -1,8 +1,36 @@
 raster-tools
 ============
 
-Installation
-------------
+Development installation
+------------------------
+
+Create a docker-compose.override.yaml to add local filesystems:
+
+.. code-block:: yaml
+
+    version: '3'
+    services:
+      lib:
+        volumes:
+          - /some/local/path:/some/container/path
+
+
+On your machine::
+
+    $ docker-compose up --no-start
+    $ docker-compose start
+    $ docker-compose exec lib bash
+
+And then in the container::
+
+    $ pipenv sync --dev
+    $ pipenv shell
+
+In this pipenv shell the raster-tools commands can be run in the container.
+
+
+Task server installation
+------------------------
 
 1. Install dependencies::
 
@@ -16,20 +44,11 @@ Installation
 
     $ sudo pip install --upgrade pip pipenv setuptools
 
-3. ``cd`` to the raster-tools directory
-4. Depending on your ubuntu version, make symlinks::
+3. Clone this repository and step into it.
 
-    $ ln -s Pipfile.1604 Pipfile
-    $ ln -s Pipfile.lock.1604 Pipfile.lock
+3. Run ``PIPENV_VENV_IN_PROJECT=1 pipenv sync --dev``
 
-   or::
-
-    $ ln -s Pipfile.1804 Pipfile
-    $ ln -s Pipfile.lock.1804 Pipfile.lock
-
-
-5. Run ``PIPENV_VENV_IN_PROJECT=1 pipenv sync --dev``
-6. Add the ``raster-tools/.venv/bin`` directory to PATH in your ``/etc/environment``.
+4. Add the absolute path to ``.venv/bin`` to the PATH in ``/etc/environment``.
 
 
 Rasterizing landuse tables

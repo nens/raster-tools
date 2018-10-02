@@ -5,5 +5,10 @@
 *.egg-info
 .venv
 
+# Docker
+Dockerfile
+docker-compose.override.yaml
+docker-compose.yml
+
 # Pycharm
 .idea
