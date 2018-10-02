@@ -1,18 +1,83 @@
 raster-tools
-==========================================
+============
 
-Installation
-------------
-1. Install dependencies: ``sudo apt install python-dev python-pip libgdal-dev libpq-dev``
-2. Upgrade pip: ``sudo pip install setuptools pip --upgrade``
-3. Install pipenv: ``sudo pip install pipenv``
-4. ``cd`` to the raster-tools directory
-5. Run ``PIPENV_VENV_IN_PROJECT=1 pipenv install --deploy``
-6. Add the ``raster-tools/.venv/bin`` directory to PATH in your ``/etc/environment``.
+A collection of raster tools.
+
+
+Local setup
+-----------
+
+The docker-compose file expects the following folders to exist:
+
+ - ``~/.cache/pip``
+ - ``~/.cache/pipenv``
+
+Check if they exist and if you are the owner. If they do not exist, create them
+with ``mkdir``, and if they are not owned by you, use ``sudo chown``.
+
+
+Local development
+-----------------
+
+First, clone this repo and make some required directories::
+
+    $ git clone git@github.com:nens/raster-tools
+    $ cd raster-tools
+
+Create a docker-compose.override.yaml to map local filesystems:
+
+.. code-block:: yaml
+
+    version: '3'
+    services:
+      lib:
+        volumes:
+          - /some/local/path:/some/container/path
+
+Then build the docker image, providing your user and group ids for correct file
+permissions::
+
+    $ docker-compose build --build-arg uid=`id -u` --build-arg gid=`id -g` lib
+
+The entrypoint into the docker is set to `pipenv run`, so that every command is
+executed in the pipenv-managed virtual environment. On the first
+`docker-compose run`, the `.venv` folder will be created automatically inside
+your project directory::
+
+    $ docker-compose run --rm lib bash
+
+Then install the packages (including dev packages) listed in `Pipfile.lock`::
+
+    (docker) $ pipenv sync --dev
+
+Now you are ready to run the raster tools in the container.
+
+
+Task server installation
+------------------------
+
+1. Install dependencies::
+
+    $ sudo apt install\
+        python-dev\
+        python-pip\
+        libgdal-dev\
+        libpq-dev\
+
+2. Upgrade python packages::
+
+    $ sudo pip install --upgrade pip pipenv setuptools
+
+3. Clone this repository and step into it.
+
+3. Run ``PIPENV_VENV_IN_PROJECT=1 pipenv sync --dev``
+
+4. Add the absolute path to ``.venv/bin`` to the PATH in ``/etc/environment``.
 
 
 Rasterizing landuse tables
 --------------------------
+
 For rasterization of landuse tables from a postgres datasource a special
 wrapper command is available at bin/rasterize-landuse, use --help for args.
 
@@ -27,26 +92,3 @@ Run the following scripts for streamline calculation::
     flow-acc  # accumulation
     flow-vec  # make shapefiles
     flow-rst  # make rasters from shapefiles
-
-
-Post-nensskel setup TODO
-------------------------
-
-Here are some instructions on what to do after you've created the project with
-nensskel.
-
-- Add a new jenkins job at
-  http://buildbot.lizardsystem.nl/jenkins/view/djangoapps/newJob or
-  http://buildbot.lizardsystem.nl/jenkins/view/libraries/newJob . Job name
-  should be "raster-tools", make the project a copy of the existing "lizard-wms"
-  project (for django apps) or "nensskel" (for libraries). On the next page,
-  change the "github project" to ``https://github.com/nens/raster-tools/`` and
-  "repository url" fields to ``git@github.com:nens/raster-tools.git`` (you might
-  need to replace "nens" with "lizardsystem"). The rest of the settings should
-  be OK.
-
-- The project is prepared to be translated with Lizard's
-  `Transifex <http://translations.lizard.net/>`_ server. For details about
-  pushing translation files to and fetching translation files from the
-  Transifex server, see the ``nens/translations`` `documentation
-  <https://github.com/nens/translations/blob/master/README.rst>`_.
