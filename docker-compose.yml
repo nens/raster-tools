@@ -12,4 +12,3 @@ services:
       - ./:/code
       - ~/.cache/pip:/home/nens/.cache/pip  # shared pip cache
       - ~/.cache/pipenv:/home/nens/.cache/pipenv  # shared pipenv cache
-    command: tail -F anything
