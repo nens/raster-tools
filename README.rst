@@ -7,7 +7,7 @@ Installation
 1. Install dependencies::
 
     $ sudo apt install\
-        python-dev\
+        python3-dev\
         python-pip\
         libgdal-dev\
         libpq-dev\
