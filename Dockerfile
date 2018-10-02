@@ -25,8 +25,9 @@ RUN apt update \
         libhdf5-serial-dev \
         libnetcdf-dev \
         locales \
-        python-dev \
-        python-pip \
+        python3 \
+        python3-dev \
+        python3-pip \
     && apt autoremove --yes \
     && apt clean
 
