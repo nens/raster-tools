@@ -8,7 +8,7 @@ Pipfile.lock
 .venv
 
 # Docker
-docker-compose.override.yaml
+docker-compose.override.yml
 
 # Pycharm
 .idea
