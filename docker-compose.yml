@@ -1,0 +1,16 @@
+version: '3'
+services:
+  lib:
+    build: .
+    entrypoint: "pipenv run"
+    environment:
+      - DOCKER=True
+      - PYTHONUNBUFFERED=1
+      - PIPENV_VENV_IN_PROJECT=1
+      - SHELL=/bin/bash
+    volumes:
+      - ./:/code
+      - ~/.netrc:/home/nens/.netrc  # github authentication
+      - ~/.cache/pip:/home/nens/.cache/pip  # shared pip cache
+      - ~/.cache/pipenv:/home/nens/.cache/pipenv  # shared pipenv cache
+    command: tail -F anything
