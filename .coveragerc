@@ -1,4 +1,2 @@
-[run]
-omit =
-    */migrations/*
-    *settings.py
+[report]
+show_missing = True
