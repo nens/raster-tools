@@ -15,9 +15,7 @@ from __future__ import division
 from os.path import dirname, exists
 
 import argparse
-import collections
 import os
-import statistics
 
 from osgeo import gdal
 from scipy import ndimage
@@ -25,11 +23,8 @@ from scipy import ndimage
 import numpy as np
 
 from raster_tools import datasets
+from raster_tools.fill import edges
 from raster_tools.fill import imagers
-
-# properties of working arrays
-DTYPE = 'f4'
-FILLVALUE = np.finfo(DTYPE).max
 
 # output driver and optinos
 DRIVER = gdal.GetDriverByName('gtiff')
@@ -53,47 +48,6 @@ def smooth(array):
 def zoom(array):
     """ Return zoomed array. """
     return array.repeat(2, axis=0).repeat(2, axis=1)
-
-
-class Edge(object):
-    def __init__(self, indices, values, shape):
-        """
-        :param indices: tuple of indices
-        :param values: values
-        :param rows: first axis indices
-        :param cols: second axis indices
-        """
-        self.indices = indices
-        self.values = values
-        self.shape = shape
-
-        self.full = len(values) == self.shape[0] * self.shape[1]
-
-    def aggregated(self):
-        """ Return aggregated edge object. """
-        # aggregate
-        work = collections.defaultdict(list)
-        for k, i, j in zip(self.values, *self.indices):
-            work[i // 2, j // 2].append(k)
-
-        # statistic
-        indices = tuple(np.array(ind) for ind in zip(*work))
-        values = [statistics.median(work[k]) for k in zip(*indices)]
-        return self.__class__(
-            indices=indices,
-            values=values,
-            shape=(-(-self.shape[0] // 2), -(-self.shape[1] // 2)),
-        )
-
-    def pasteon(self, array):
-        """ Paste values on array. """
-        array[self.indices] = self.values
-
-    def toarray(self):
-        """ Return fresh array. """
-        array = np.full(self.shape, FILLVALUE, dtype=DTYPE)
-        self.pasteon(array)
-        return array
 
 
 class Exchange(object):
@@ -232,7 +186,7 @@ def fillnodata(source_path, target_path):
         indices = edge.nonzero()
 
         # create edge object
-        edge = Edge(
+        edge = edges.Edge(
             indices=indices,
             values=source[indices],
             shape=source.shape,
