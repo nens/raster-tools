@@ -18,6 +18,7 @@ import argparse
 import os
 
 from osgeo import gdal
+from osgeo import ogr
 from scipy import ndimage
 
 import numpy as np
@@ -115,6 +116,26 @@ class Exchange(object):
             if progress:  # pragma: no cover
                 gdal.TermProgress_nocb(label / total)
 
+    def clip(self, path):
+        """ Clip using OGR source at path. """
+        # create mask with ones
+        mask = np.ones_like(self.source, dtype='b1')
+
+        # rasterize data_source as zeros
+        data_source = ogr.Open(path)
+        array = mask[np.newaxis].view('u1')
+        with datasets.Dataset(array, **self.kwargs) as dataset:
+            for layer in data_source:
+                gdal.RasterizeLayer(dataset, [1], layer, burn_values=[0])
+
+        # blank target where mask contais ones
+        self.target[mask] = self.no_data_value
+
+    def round(self, decimals):
+        """ Round target. """
+        active = self.target != self.no_data_value
+        self.target[active] = self.target[active].round(decimals)
+
     def save(self):
         """ Save. """
         # prepare dirs
@@ -163,7 +184,7 @@ def fill(edge, level=0):
     return array
 
 
-def fillnodata(source_path, target_path):
+def fillnodata(source_path, target_path, clip_path, decimals):
     """ Fill the voids in a single file. """
     # skip existing
     if exists(target_path):
@@ -172,7 +193,10 @@ def fillnodata(source_path, target_path):
 
     # skip when missing sources
     if not exists(source_path):
-        print('{} not found.'.format(source_path))
+        print('Raster source "{}" not found.'.format(source_path))
+        return
+    if clip_path and not exists(clip_path):
+        print('Clip source "{}" not found.'.format(clip_path))
         return
 
     # read
@@ -198,6 +222,12 @@ def fillnodata(source_path, target_path):
         # apply
         target[void] = filled[void]
 
+    if clip_path:
+        exchange.clip(clip_path)
+
+    if decimals:
+        exchange.round(decimals)
+
     # save
     exchange.save()
 
@@ -217,6 +247,17 @@ def get_parser():
     parser.add_argument(
         'target_path',
         metavar='TARGET',
+    )
+    parser.add_argument(
+        '-r', '--round',
+        type=int,
+        dest='decimals',
+        help='Round the result to this number of decimals.',
+    )
+    parser.add_argument(
+        '-c', '--clip',
+        dest='clip_path',
+        help='Clip the result using this OGR data source.',
     )
 
     return parser

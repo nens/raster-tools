@@ -12,7 +12,7 @@ from osgeo import gdal
 from osgeo import ogr
 
 
-class PartialDataSource(object):
+class PartialDataSource(object):  # pragma: no cover
     """ Wrap a shapefile. """
     def __init__(self, path):
         self.data_source = ogr.Open(path)
@@ -21,6 +21,8 @@ class PartialDataSource(object):
     def __iter__(self):
         total = len(self)
         gdal.TermProgress_nocb(0)
+        # this implementation works around an issue in pygdal
+        # https://github.com/nextgis/pygdal/issues/31
         for i in range(total):
             yield self.layer[i]
             gdal.TermProgress_nocb((i + 1) / total)
@@ -41,7 +43,7 @@ class PartialDataSource(object):
             gdal.TermProgress_nocb(count / total)
 
 
-class TargetDataSource(object):
+class TargetDataSource(object):  # pragma: no cover
     """ Wrap a shapefile, copied from raster-analysis. """
     def __init__(self, path, template_path, attributes):
         # read template
