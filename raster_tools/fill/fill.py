@@ -7,11 +7,6 @@ The idea is to get a tension-like result, but much less computationally
 intensive.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 from os.path import dirname, exists
 
 import argparse
@@ -62,7 +57,6 @@ class Exchange(object):
         self.source = band.ReadAsArray()
         self.no_data_value = band.GetNoDataValue()
 
-        self.mask = (self.source == self.no_data_value)
         self.shape = (self.source.shape)
 
         self.kwargs = {
@@ -102,7 +96,8 @@ class Exchange(object):
             gdal.TermProgress_nocb(0)
 
         # analyze
-        labels, total = ndimage.label(self.mask)
+        mask = (self.source == self.no_data_value)
+        labels, total = ndimage.label(mask)
         items = ndimage.find_objects(labels)
 
         # iterate the objects
@@ -117,7 +112,12 @@ class Exchange(object):
                 gdal.TermProgress_nocb(label / total)
 
     def clip(self, path):
-        """ Clip using OGR source at path. """
+        """
+        Clip using OGR source at path.
+
+        Clip actually puts zeros in the source outside the clip layer,
+        so that they are excluded from the fill process.
+        """
         # create mask with ones
         mask = np.ones_like(self.source, dtype='b1')
 
@@ -128,8 +128,8 @@ class Exchange(object):
             for layer in data_source:
                 gdal.RasterizeLayer(dataset, [1], layer, burn_values=[0])
 
-        # blank target where mask contais ones
-        self.target[mask] = self.no_data_value
+        # fill source with zeros where mask contains ones
+        self.source[mask] = 0
 
     def round(self, decimals):
         """ Round target. """
@@ -202,6 +202,9 @@ def fillnodata(source_path, target_path, clip_path, decimals):
     # read
     exchange = Exchange(source_path, target_path)
 
+    if clip_path:
+        exchange.clip(clip_path)
+
     # process
     for count, (source, target, void) in enumerate(exchange, 1):
 
@@ -222,9 +225,6 @@ def fillnodata(source_path, target_path, clip_path, decimals):
         # apply
         target[void] = filled[void]
 
-    if clip_path:
-        exchange.clip(clip_path)
-
     if decimals:
         exchange.round(decimals)
 
@@ -236,7 +236,6 @@ def get_parser():
     """ Return argument parser. """
     parser = argparse.ArgumentParser(
         description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     # positional arguments
