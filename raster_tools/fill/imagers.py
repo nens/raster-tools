@@ -1,10 +1,7 @@
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 """
-Filler.
-
-The idea is to get a tension-like result, but much less computationally
-intensive.
+Image utility to plot edges and arrays.
 """
 
 from __future__ import print_function

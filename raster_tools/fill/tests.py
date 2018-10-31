@@ -1,6 +1,7 @@
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 
+import os
 import sys
 import unittest
 
@@ -78,7 +79,7 @@ class TestFillNoData(unittest.TestCase):
         )
 
     def test_script(self):
-        # patch
+        # patch argv
         argv = sys.argv
         sys.argv = [
             '',
@@ -95,6 +96,10 @@ class TestFillNoData(unittest.TestCase):
         exists = fill.exists
         fill.exists = gdal.VSIStatL
 
+        # patch makedirs
+        makedirs = os.makedirs
+        os.makedirs = lambda p, exist_ok: None
+
         # run and fail to find the clip source on the bogus path
         fill.main()
 
@@ -103,6 +108,7 @@ class TestFillNoData(unittest.TestCase):
         fill.main()                # finds and fills the in-memory dataset
         fill.main()                # skips because the target exists
 
-        # restore
+        # restore exists
         sys.argv = argv
         fill.exists = exists
+        os.makedirs = makedirs

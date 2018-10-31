@@ -5,6 +5,16 @@ Filler.
 
 The idea is to get a tension-like result, but much less computationally
 intensive.
+
+The intensive way would be to initialize all void pixels with some value and
+then iteratively assign each pixel a value that is the result of some function
+of the values of the neighbouring pixels in the previous iteration, until a
+certain stability requirement is met.
+
+The approach here is to recursively aggregate the void to make them smaller. It
+then uses the result of filling the smaller voids as starting point to fill the
+larger voids. Furthermore, instead of a pixel-for-pixel approach a correlation
+with a smoothing kernel is applied.
 """
 
 from os.path import dirname, exists
@@ -57,7 +67,7 @@ class Exchange(object):
         self.source = band.ReadAsArray()
         self.no_data_value = band.GetNoDataValue()
 
-        self.shape = (self.source.shape)
+        self.shape = self.source.shape
 
         self.kwargs = {
             'no_data_value': self.no_data_value,
@@ -70,7 +80,8 @@ class Exchange(object):
 
     def _grow(self, obj):
         """
-        Return grown slices tuple, but not beyond our shape.
+        Increase each slice in a tuple of slices by one pixel, but not beyond
+        our shape.
 
         :param obj: tuple of slices
         """
@@ -139,10 +150,7 @@ class Exchange(object):
     def save(self):
         """ Save. """
         # prepare dirs
-        try:
-            os.makedirs(dirname(self.target_path))
-        except OSError:
-            pass
+        os.makedirs(dirname(self.target_path), exist_ok=True)
 
         # write tiff
         array = self.target[np.newaxis]
@@ -163,15 +171,15 @@ def fill(edge, level=0):
 
     if aggregated.full:
         # convert the aggregated edge into an array
-        array = aggregated.toarray()
+        agg_array = aggregated.toarray()
 
-        imager.debug(array, 'Edge {}'.format(level + 1))
+        imager.debug(agg_array, 'Edge {}'.format(level + 1))
 
     else:
         # fill the aggregated edge and return the array
-        array = fill(aggregated, level + 1)  # recursively fills
+        agg_array = fill(aggregated, level + 1)  # recursively fills
 
-    array = zoom(array)[:edge.shape[0], :edge.shape[1]]
+    array = zoom(agg_array)[:edge.shape[0], :edge.shape[1]]
 
     imager.debug(array, '{}C Zoomed'.format(level))
 
