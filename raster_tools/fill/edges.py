@@ -17,19 +17,27 @@ FILLVALUE = np.finfo(DTYPE).max
 class Edge(object):
     def __init__(self, indices, values, shape):
         """
-        :param indices: tuple of indices
-        :param values: values
-        :param rows: first axis indices
-        :param cols: second axis indices
+        An Edge object represents a contour of pixels in a raster image.
+
+        :param indices: indices as a tuple of integer numpy arrays
+        :param values: values of the pixels at indices
+        :param shape: shape of the envelope containing the edge
         """
         self.indices = indices
         self.values = values
         self.shape = shape
 
-        self.full = len(values) == self.shape[0] * self.shape[1]
+    @property
+    def is_full(self):
+        return len(self.values) == self.shape[0] * self.shape[1]
 
     def aggregated(self):
-        """ Return aggregated edge object. """
+        """
+        Return aggregated edge object.
+
+        The aggregated edge is a new edge object where the edge pixels are the
+        median of up to four underlying pixels from self.
+        """
         # aggregate
         work = collections.defaultdict(list)
         for k, i, j in zip(self.values, *self.indices):
@@ -49,7 +57,7 @@ class Edge(object):
         array[self.indices] = self.values
 
     def toarray(self):
-        """ Return fresh array. """
+        """ Convert this edge into an array. """
         array = np.full(self.shape, FILLVALUE, dtype=DTYPE)
         self.pasteon(array)
         return array

@@ -163,13 +163,14 @@ def fill(edge, level=0):
     Return a filled array.
 
     :param edge: Edge instance.
+    :param level: Indicates the recursion level. For internal use only.
     """
     imager.debug(edge, 'Edge {}'.format(level))
 
     # aggregate the edge
     aggregated = edge.aggregated()
 
-    if aggregated.full:
+    if aggregated.is_full:
         # convert the aggregated edge into an array
         agg_array = aggregated.toarray()
 
