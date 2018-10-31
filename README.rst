@@ -59,7 +59,7 @@ Task server installation
 1. Install dependencies::
 
     $ sudo apt install\
-        python-dev\
+        python3-dev\
         python-pip\
         libgdal-dev\
         libpq-dev\
@@ -73,6 +73,14 @@ Task server installation
 3. Run ``PIPENV_VENV_IN_PROJECT=1 pipenv sync --dev``
 
 4. Add the absolute path to ``.venv/bin`` to the PATH in ``/etc/environment``.
+
+
+Filling nodata in rasters
+-------------------------
+
+Use fillnodata to fill nodata regions in rasters. The input to the algorithm is
+the edge surrounding the region. The raster saved as the target argument only
+contains the complementary cells.
 
 
 Rasterizing landuse tables

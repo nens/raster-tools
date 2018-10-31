@@ -4,11 +4,16 @@ verify_ssl = true
 name = "pypi"
 
 [dev-packages]
+coverage = "*"
+flake8 = "*"
+ipdb = "*"
+ipython = "*"
+nose = "*"
 
 [packages]
 pygdal = "==1.11.3.*"
-"e1839a8" = {path = ".", editable = true}
 threedigrid = {extras = ["geo", "results"]}
+"e1839a8" = {editable = true, path = "."}
 
 [requires]
-python_version = "2.7"
+python_version = "3.5"

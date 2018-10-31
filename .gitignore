@@ -10,3 +10,6 @@ docker-compose.override.yml
 
 # Pycharm
 .idea
+
+# Coverage
+.coverage

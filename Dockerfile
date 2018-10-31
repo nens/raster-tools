@@ -25,15 +25,16 @@ RUN apt update \
         libhdf5-serial-dev \
         libnetcdf-dev \
         locales \
-        python-dev \
-        python-pip \
+        python3 \
+        python3-dev \
+        python3-pip \
     && apt autoremove --yes \
     && apt clean
 
 RUN locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8 LANGUAGE=en_US:en LC_ALL=en_US.UTF-8
 
-RUN pip install --upgrade setuptools && pip install pip==10.0.1 pipenv==2018.5.18
+RUN pip3 install --upgrade setuptools && pip3 install pip==10.0.1 pipenv==2018.5.18
 
 VOLUME /code
 WORKDIR /code

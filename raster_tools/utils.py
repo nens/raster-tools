@@ -85,10 +85,6 @@ def aggregate_uneven(values, no_data_value, func='mean'):
 
 
 class GeoTransform(tuple):
-    def __init__(self, geo_transform_tuple):
-        """First argument must be a 6-tuple defining a geotransform."""
-        super(GeoTransform, self).__init__(geo_transform_tuple)
-
     def shifted(self, geometry, inflate=False):
         """
         Return shifted geo transform.
