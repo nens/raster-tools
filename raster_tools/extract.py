@@ -41,7 +41,7 @@ from osgeo import osr
 operations = {}
 
 # Version management for outdated warning
-VERSION = 29
+VERSION = 30
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -814,6 +814,7 @@ class Chunk():
         self.key = '{}_{}'.format(name, block.tile.serial)
         self.name = name
         self.block = block
+        self.loaded = False
 
     def load(self):
         """ Load url into gdal dataset. """
@@ -830,6 +831,7 @@ class Chunk():
         self.block.inputs[self.name] = DRIVER_GDAL_MEM.CreateCopy('', dataset)
         dataset = None
         gdal.Unlink(vsi_path)
+        self.loaded = True
 
 
 class Target(object):
@@ -957,7 +959,7 @@ def filler(queue, batch):
         thread.daemon = True
         thread.start()
         queue.put((chunk, thread))
-    queue.put(None)
+    queue.put((None, None))
 
 
 def extract(preparation):
@@ -978,12 +980,19 @@ def extract(preparation):
     thread1.start()
 
     while True:
-        # fetch loaded chunks
-        try:
-            chunk, thread2 = queue.get()
-            thread2.join()  # this makes sure the chunk is laoded
-        except TypeError:
+        # get a chunk and its thread from the queue
+        chunk, thread2 = queue.get()
+        if chunk is None:
+            # all done, the filler did this
             break
+
+        # join the thread to make sure loading is finished
+        thread2.join()
+
+        # check if loading was a success
+        if not chunk.loaded:
+            print('Oops, a chunk failed to fetch. Resuming is worth a try!')
+            return
 
         # save complete blocks
         if len(chunk.block.chunks) == len(chunk.block.inputs):

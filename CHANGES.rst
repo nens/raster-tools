@@ -11,6 +11,8 @@ Changelog of raster-tools
 
 - Fixed use of deprecated mismatched boolean index size.
 
+- Improved the extract to actually fail on misfetched chunks.
+
 
 0.3 (2018-06-07)
 ----------------
