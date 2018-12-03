@@ -2,6 +2,7 @@ version: '3'
 services:
   lib:
     build: .
+    command: tail -F Anything
     entrypoint: "pipenv run"
     environment:
       - DOCKER=True

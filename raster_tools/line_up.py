@@ -65,7 +65,7 @@ def get_carpet(parameterized_line, distance, step):
     return points
 
 
-def average_result(amount, inverse, lines, centers, values):
+def average_result(amount, inverse, lines, centers, values, no_data_value):
     """
     Return dictionary of numpy arrays.
 
@@ -99,6 +99,7 @@ def average_result(amount, inverse, lines, centers, values):
     extremum = np.max if inverse else np.min
     ma_values = np.ma.masked_all(amount * groups, dtype=values.dtype)
     ma_values[:sample] = values
+    ma_values.mask[:sample] = (values == no_data_value)
     ma_values.shape = groups, amount
 
     result = {'values': extremum(ma_values, 1),
@@ -247,7 +248,8 @@ class BaseProcessor(object):
 
         if self.average:
             return average_result(amount=self.average,
-                                  inverse=self.inverse, **result)
+                                  inverse=self.inverse,
+                                  no_data_value=self.no_data_value, **result)
         else:
             return result
 

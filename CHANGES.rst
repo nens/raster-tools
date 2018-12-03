@@ -13,6 +13,8 @@ Changelog of raster-tools
 
 - Improved the extract to actually fail on misfetched chunks.
 
+- Line-up: Take into account the 'no data' value when averaging results.
+
 
 0.3 (2018-06-07)
 ----------------
