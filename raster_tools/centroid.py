@@ -110,6 +110,7 @@ def command(source_path, raster_path, target_path, attribute, part):
         xoff, yoff = geo_transform.get_centroid_indices(geometry)
         value = band.ReadAsArray(xoff, yoff, 1, 1).item()
         attributes = {attribute: None if value == no_data_value else value}
+        attributes.update(source_feature.items())
         target.append(geometry=geometry,
                       attributes=attributes)
     return 0
