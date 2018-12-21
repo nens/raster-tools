@@ -62,7 +62,7 @@ setup(name='raster-tools',
               'fillnodata         = raster_tools.fill.fill:main',
               # 'hillshade          = raster_tools.hillshade:main',
               # 'aggregate          = raster_tools.aggregate:main',
-              # 'rebase             = raster_tools.rebase:main',
+              'rebase             = raster_tools.rebase:main',
               # 'shadow             = raster_tools.shadow:main',
               # 'merge              = raster_tools.merge:main',
               # organization
