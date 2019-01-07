@@ -66,7 +66,7 @@ setup(name='raster-tools',
               # 'shadow             = raster_tools.shadow:main',
               # 'merge              = raster_tools.merge:main',
               # organization
-              # 'retile             = raster_tools.retile:main',
+              'retile             = raster_tools.retile:main',
               # 'reindex            = raster_tools.reindex:main',
               # rasterization
               # 'bag2tif            = raster_tools.bag2tif:main',
