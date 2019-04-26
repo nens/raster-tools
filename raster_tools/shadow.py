@@ -39,11 +39,7 @@ class Shadower(object):
         &press=1000&temp=10&dut1=0.0&deltat=64.797&azmrot=180&slope=0
         &refract=0.5667&field=0&field=1&zip=0
     """
-    def __init__(self, raster_path, output_path):
-        # see class.__doc__
-        azimuth = 216
-        elevation = 57
-
+    def __init__(self, raster_path, index_column, output_path, azimuth, elevation):
         # put the input raster(s) in a group
         if os.path.isdir(raster_path):
             datasets = [gdal.Open(os.path.join(raster_path, path))
@@ -70,6 +66,7 @@ class Shadower(object):
         self.mx = int(math.copysign(math.ceil(abs(dx * ms)), dx))  # pixels
         self.my = int(math.copysign(math.ceil(abs(dy * ms)), dy))  # pixels
 
+        self.index_column = index_column
         self.output_path = output_path
 
     def get_size_and_bounds(self, geometry):
@@ -114,10 +111,10 @@ class Shadower(object):
 
     def shadow(self, feature):
         # target path
-        leaf_number = feature[b'BLADNR']
+        tile_number = feature[self.index_column]
         path = os.path.join(self.output_path,
-                            leaf_number[:3],
-                            '{}.tif'.format(leaf_number))
+                            tile_number[:3],
+                            '{}.tif'.format(tile_number))
         if os.path.exists(path):
             logger.debug('Target already exists.')
             return
@@ -164,15 +161,17 @@ class Shadower(object):
             driver.CreateCopy(path, dataset, options=options)
 
 
-def shadow(index_path, raster_path, output_path, part):
+def shadow(index_path, index_column, raster_path, output_path, part, azimuth, elevation):
     """
     """
     index = datasources.PartialDataSource(index_path)
     if part is not None:
         index = index.select(part)
-
-    shadower = Shadower(output_path=output_path,
-                        raster_path=raster_path)
+    shadower = Shadower(raster_path=raster_path,
+                        index_column=index_column,
+                        output_path=output_path,
+                        azimuth=azimuth,
+                        elevation=elevation)
 
     for feature in index:
         shadower.shadow(feature)
@@ -190,6 +189,11 @@ def get_parser():
         help='shapefile with geometries and names of output tiles',
     )
     parser.add_argument(
+        'index_column', type=str,
+        metavar='COLUMN',
+        help='shapefile column name that contains tile names',
+    )
+    parser.add_argument(
         'raster_path',
         metavar='RASTER',
         help='source GDAL raster or directory GDAL rasters to stack.'
@@ -198,6 +202,16 @@ def get_parser():
         'output_path',
         metavar='OUTPUT',
         help='target folder',
+    )
+    parser.add_argument(
+        'azimuth', type=int,
+        metavar='AZIMUTH',
+        help='azimuth angle integer',
+    )
+    parser.add_argument(
+        'elevation', type=int,
+        metavar='ELEVATION',
+        help='elevation in meters integer ',
     )
     parser.add_argument(
         '-p', '--part',
@@ -224,3 +238,6 @@ def main():
     except:
         logger.exception('An exception has occurred.')
         return 1
+
+if __name__ == '__main__':
+    exit(main())
