@@ -14,7 +14,7 @@ from osgeo import osr
 
 import psycopg2
 
-DRIVER_OGR_MEMORY = ogr.GetDriverByName(b'Memory')
+DRIVER_OGR_MEMORY = ogr.GetDriverByName('Memory')
 
 ogr.UseExceptions()
 osr.UseExceptions()

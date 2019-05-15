@@ -11,6 +11,8 @@ Changelog of raster-tools
 
 - Fixed use of deprecated mismatched boolean index size.
 
+- Port various scripts to python3
+
 
 0.3 (2018-06-07)
 ----------------

@@ -21,12 +21,13 @@ from __future__ import division
 import argparse
 import os
 
-from raster_tools import gdal
-from raster_tools import ogr
+from osgeo import gdal
+from osgeo import ogr
+
 from raster_tools import postgis
 
-DRIVER_OGR_MEMORY = ogr.GetDriverByName(str('Memory'))
-DRIVER_OGR_SHAPE = ogr.GetDriverByName(str('ESRI Shapefile'))
+DRIVER_OGR_MEMORY = ogr.GetDriverByName('Memory')
+DRIVER_OGR_SHAPE = ogr.GetDriverByName('ESRI Shapefile')
 
 COMPATIBLE = {1: (1, 4),
               2: (2, 5),
@@ -36,7 +37,7 @@ COMPATIBLE = {1: (1, 4),
               6: (3, 6)}
 
 
-gdal.PushErrorHandler(b'CPLQuietErrorHandler')
+gdal.PushErrorHandler('CPLQuietErrorHandler')
 
 
 class Selector(object):
@@ -49,15 +50,16 @@ class Selector(object):
 
     def _clip(self, data_source, geometry):
         """ Clip DataSource in-place. """
-        l = data_source[0]
-        for f in l:
+        lr = data_source[0]
+        for i in range(lr.GetFeatureCount()):
+            f = lr[i]
             g = f.geometry()
             c = g.Intersection(geometry)
             if c.GetGeometryType() in COMPATIBLE[g.GetGeometryType()]:
                 f.SetGeometryDirectly(c)
-                l.SetFeature(f)
+                lr.SetFeature(f)
             else:
-                l.DeleteFeature(f.GetFID())
+                lr.DeleteFeature(f.GetFID())
 
     def select(self, feature):
         try:
@@ -96,7 +98,8 @@ def command(source_path, **kwargs):
 
     source_data_source = ogr.Open(source_path)
     source_layer = source_data_source[0]
-    for feature in source_layer:
+    for i in range(source_layer.GetFeatureCount()):
+        feature = source_layer[i]
         selector.select(feature)
 
 
