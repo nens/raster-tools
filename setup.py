@@ -10,12 +10,13 @@ long_description = '\n\n'.join([
 
 install_requires = [
     'matplotlib',
+    'numpy >= 1.8.2',
     'pygdal',
     'psycopg2',
+    'requests',
     'scipy',
     'setuptools',
     'unipath',
-    'numpy >= 1.8.2',
     ],
 
 tests_require = [
@@ -74,6 +75,7 @@ setup(name='raster-tools',
               # 'rasterize2         = raster_tools.rasterize2:main',
               # modeling
               # 'extract            = raster_tools.extract:main',
+              'rextract           = raster_tools.rextract:main',
               # 'line-up            = raster_tools.line_up:main',
               # 'vselect            = raster_tools.vselect:main',
               # pointclouds
