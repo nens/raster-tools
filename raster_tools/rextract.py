@@ -3,7 +3,7 @@
 """
 Rextract, the king of extractors.
 
-Extract parts of lizard rasters using geometries from a shapefile.
+Extract parts of lizard (staging!) rasters using geometries from a shapefile.
 
 Please note that any information about the spatial reference system in the
 shapefile is ignored.
@@ -12,6 +12,7 @@ If something goes wrong due to a problem on one of the lizard servers, it may
 be possible to resume the process by keeping the output folder intact and
 retrying exactly the same command.
 """
+from http.client import responses
 
 import argparse
 import contextlib
@@ -29,8 +30,11 @@ from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
 
-from raster_tools import datasources
 from raster_tools import datasets
+from raster_tools import datasources
+from raster_tools import utils
+
+MAX_THREADS = 4  # if set to 0 there will be no limit on the amount of threads
 
 # urls and the like
 USER_AGENT = 'Nelen-Schuurmans/Raster-Tools/Rextract'
@@ -68,8 +72,6 @@ SRS = 'EPSG:28992'
 CELLSIZE = 0.5
 DTYPE = 'f4'
 
-# replace this with dataclass in python 3.7
-
 
 class Indicator:
     def __init__(self, path):
@@ -94,33 +96,33 @@ class Index:
         Rasterize geometry into target dataset extent to find relevant
         blocks.
         """
-        # make a dataset
         w, h = dataset.GetRasterBand(1).GetBlockSize()
-        p, a, b, q, c, d = dataset.GetGeoTransform()
-        index = MEM_DRIVER.Create(
-            '',
+        geo_transform = utils.GeoTransform(dataset.GetGeoTransform())
+
+        # create an array in which each cell represents a dataset block
+        shape = (
             (dataset.RasterXSize - 1) // w + 1,
             (dataset.RasterYSize - 1) // h + 1,
-            1,
-            gdal.GDT_Byte,
         )
-
-        geo_transform = p, a * w, b * h, q, c * w, d * h
-        index.SetProjection(dataset.GetProjection())
-        index.SetGeoTransform(geo_transform)
+        index = np.zeros(shape, dtype='u1')
+        kwargs = {
+            'geo_transform': geo_transform.scaled(w, h),
+            'projection': dataset.GetProjection(),
+        }
 
         # find active blocks by rasterizing geometry
         options = ['all_touched=true']
         with datasources.Layer(geometry) as layer:
-            gdal.RasterizeLayer(
-                index, [1], layer, burn_values=[1], options=options,
-            )
+            with datasets.Dataset(index[np.newaxis], **kwargs) as ds_idx:
+                gdal.RasterizeLayer(
+                    ds_idx, [1], layer, burn_values=[1], options=options,
+                )
 
         # store as attributes
         self.block_size = w, h
         self.dataset_size = dataset.RasterXSize, dataset.RasterYSize
-        self.geo_transform = dataset.GetGeoTransform()
-        self.indices = index.ReadAsArray().nonzero()
+        self.geo_transform = geo_transform
+        self.indices = index.nonzero()
 
     def _get_indices(self, serial):
         """ Return indices into dataset. """
@@ -177,10 +179,12 @@ class Target:
         # types
         self.dtype = dtype
         if fillvalue is None:
+            # pick the largest value possible within the dtype
             info = np.finfo if dtype.startswith('f') else np.iinfo
             self.fillvalue = info(dtype).max.item()
         else:
-            self.fillvalue = fillvalue
+            # cast the string dtype to the correct python type
+            self.fillvalue = np.dtype(self.dtype).type(fillvalue).item()
 
         # dataset
         if path.exists():
@@ -329,8 +333,10 @@ class RasterExtraction:
         """
         Extract for a single feature.
 
-        The kwargs are passed to the fetch() method of each chunk and should
-        define session, time and uuid.
+        :param session: requests.Sesssion object, logged in.
+        :param srs: str defining spatial reference system
+        :param time: ISO-8601 timestamp
+        :param uuid: Lizard raster UUID
         """
         completed = self.indicator.get()
         total = len(self.target)
@@ -343,7 +349,7 @@ class RasterExtraction:
         gdal.TermProgress_nocb(completed / total)
 
         # run a thread that starts putting chunks with threads in a queue
-        queue = queues.Queue(maxsize=4)
+        queue = queues.Queue(maxsize=MAX_THREADS - 1)
         filler_kwargs = {
             'queue': queue,
             'chunks': self.target.get_chunks(start=completed + 1),
@@ -365,13 +371,24 @@ class RasterExtraction:
                 self.indicator.set(completed)
                 break
 
-            # save complete blocks
+            # abort on errors
             if chunk.response.status_code != 200:
+                # remember last completed chunk
                 self.indicator.set(completed)
-                raise ValueError('Error retrieving data from lizard.')
+
+                # abort
+                print('\nFailed to fetch a chunk! The url used was:')
+                print(chunk.response.url)
+                msg = 'The server responded with status code %s (%s).'
+                status_code = chunk.response.status_code
+                print(msg % (status_code, responses[status_code]))
+                exit()
+
+            # save the chunk to the target
             self.target.save(chunk)
             completed = chunk.serial
             gdal.TermProgress_nocb(completed / total)
+
         filler_thread.join()
 
 
@@ -385,25 +402,36 @@ def rextract(shape_path, output_path, username, attribute, srs, **kwargs):
         session = requests
     else:
         # login, might be needed for every thread...
-        password = getpass('password for %s: ' % username)
+        password = getpass.getpass('password for %s: ' % username)
         session = requests.Session()
         session.post(
             url=LOGIN_URL,
             data={'username': username, 'password': password},
         )
+        if 'sessionid' not in session.cookies:
+            # abort
+            print('Login failed.')
+            exit()
 
     # extract
     sr = osr.SpatialReference(osr.GetUserInputAsWKT(srs))
     output_path.mkdir(exist_ok=True)
     for layer in ogr.Open(shape_path):
-        layer_path = output_path / layer.GetName()
+        layer_name = layer.GetName()
+        layer_path = output_path / layer_name
         layer_path.mkdir(exist_ok=True)
         for feature_no in range(layer.GetFeatureCount()):
             feature = layer[feature_no]
             geometry = feature.geometry()
             geometry.AssignSpatialReference(sr)  # ignore original srs
+            try:
+                feature_name = feature[attribute]
+            except ValueError:
+                msg = 'Attribute "%s" not found in layer "%s"'
+                print(msg % (attribute, layer_name))
+                exit()
             raster_extraction = RasterExtraction(
-                path=layer_path / feature[attribute],
+                path=layer_path / feature_name,
                 geometry=geometry,
                 **kwargs,
             )
@@ -447,7 +475,7 @@ def get_parser():
         ) % ATTRIBUTE,
     )
     parser.add_argument(
-        '-c', '--cellsize', nargs=2, type=float, default=CELLSIZE,
+        '-c', '--cellsize', type=float, default=CELLSIZE,
         help='Cellsize. Default: %s' % CELLSIZE,
     )
     parser.add_argument(

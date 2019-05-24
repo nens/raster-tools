@@ -92,12 +92,12 @@ class Aggregator(object):
         except OSError:
             pass  # no problem
 
-        geometry = index_feature.geometry()
+        geom = index_feature.geometry()
         factor = 2 ** self.iterations
-        geo_transform = self.geo_transform.shifted(geometry).scaled(factor)
+        geo_transform = self.geo_transform.shifted(geom).scaled(factor, factor)
 
         # data
-        values = self.raster_group.read(geometry)
+        values = self.raster_group.read(geom)
         no_data_value = self.no_data_value
 
         # set errors to no data
