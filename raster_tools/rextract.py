@@ -38,11 +38,8 @@ MAX_THREADS = 4  # if set to 0 there will be no limit on the amount of threads
 
 # urls and the like
 USER_AGENT = 'Nelen-Schuurmans/Raster-Tools/Rextract'
-API_URL = 'https://nxt3.staging.lizard.net/api/v4/rasters/'
-LOGIN_URL = 'https://nxt3.staging.lizard.net/api-auth/login/'
-GITHUB_URL = (
-    'https://raw.github.com/nens/raster-tools/master/raster_tools/rextract.py'
-)
+API_URL = 'https://%s.lizard.net/api/v4/rasters/'
+LOGIN_URL = 'https://%s.lizard.net/api-auth/login/'
 
 # gdal drivers and options
 MEM_DRIVER = gdal.GetDriverByName('mem')
@@ -71,6 +68,7 @@ ATTRIBUTE = 'name'
 SRS = 'EPSG:28992'
 CELLSIZE = 0.5
 DTYPE = 'f4'
+SUBDOMAIN = 'demo'
 
 
 class Indicator:
@@ -136,7 +134,7 @@ class Index:
         return x1, y1, x2, y2
 
     def _get_geom(self, indices):
-        """ Return ogr wkb polygon for a rectangle. """
+        """ Return WKT Polygon for a rectangle. """
         u1, v1, u2, v2 = indices
         p, a, b, q, c, d = self.geo_transform
         x1 = p + a * u1 + b * v1
@@ -212,7 +210,7 @@ class Target:
     def projection(self):
         return self.geometry.GetSpatialReference().ExportToWkt()
 
-    def _create_dataset(self, path, cellsize, time, uuid):
+    def _create_dataset(self, path, cellsize, subdomain, time, uuid):
         """ Create output tif dataset. """
         # calculate
         a, b, c, d = cellsize, 0.0, 0.0, -cellsize
@@ -232,7 +230,9 @@ class Target:
         dataset.GetRasterBand(1).SetNoDataValue(self.no_data_value)
 
         # meta
-        dataset.SetMetadata({'time': time, 'uuid': uuid})
+        dataset.SetMetadata(
+            {'subdomain': subdomain, 'time': time, 'uuid': uuid},
+        )
 
         return dataset
 
@@ -283,9 +283,10 @@ class Chunk(object):
         # the geotiff data
         self.response = None
 
-    def fetch(self, session, time, uuid, srs):
+    def fetch(self, session, subdomain, time, uuid, srs):
         request = {
-            'url': API_URL + uuid + '/data/',
+            'url': API_URL % subdomain + uuid + '/data/',
+            'headers': {'User-Agent': USER_AGENT},
             'params': {
                 'srs': srs,
                 'time': time,
@@ -293,7 +294,6 @@ class Chunk(object):
                 'width': self.width,
                 'height': self.height,
                 'format': 'geotiff',
-                'compress': 'deflate',
             }
         }
 
@@ -405,7 +405,8 @@ def rextract(shape_path, output_path, username, attribute, srs, **kwargs):
         password = getpass.getpass('password for %s: ' % username)
         session = requests.Session()
         session.post(
-            url=LOGIN_URL,
+            url=LOGIN_URL % kwargs['subdomain'],
+            headers={'User-Agent': USER_AGENT},
             data={'username': username, 'password': password},
         )
         if 'sessionid' not in session.cookies:
@@ -438,6 +439,7 @@ def rextract(shape_path, output_path, username, attribute, srs, **kwargs):
             raster_extraction.process(
                 session=session,
                 srs=srs,
+                subdomain=kwargs['subdomain'],
                 time=kwargs['time'],
                 uuid=kwargs['uuid']
             )
@@ -467,6 +469,10 @@ def get_parser():
     parser.add_argument(
         '-u', '--username',
         help='Lizard username.',
+    )
+    parser.add_argument(
+        '-l', '--lizard', default=SUBDOMAIN,
+        help='Lizard subdomain. Default: "%s"' % SUBDOMAIN,
     )
     parser.add_argument(
         '-a', '--attribute', default=ATTRIBUTE,
