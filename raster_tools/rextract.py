@@ -283,7 +283,7 @@ class Chunk(object):
         # the geotiff data
         self.response = None
 
-    def fetch(self, session, subdomain, time, uuid, srs):
+    def fetch(self, session, subdomain, uuid, time, srs):
         request = {
             'url': API_URL % subdomain + uuid + '/data/',
             'headers': {'User-Agent': USER_AGENT},
@@ -329,7 +329,7 @@ class RasterExtraction:
         self.indicator = Indicator(path=path.with_suffix('.pro'))
         self.target = Target(path=path.with_suffix('.tif'), **kwargs)
 
-    def process(self, session, srs, time, uuid):
+    def process(self, session, srs, subdomain, time, uuid):
         """
         Extract for a single feature.
 
@@ -351,12 +351,13 @@ class RasterExtraction:
         # run a thread that starts putting chunks with threads in a queue
         queue = queues.Queue(maxsize=MAX_THREADS - 1)
         filler_kwargs = {
-            'queue': queue,
             'chunks': self.target.get_chunks(start=completed + 1),
+            'subdomain': subdomain,
             'session': session,
-            'srs': srs,
-            'time': time,
+            'queue': queue,
             'uuid': uuid,
+            'time': time,
+            'srs': srs,
         }
         filler_thread = threading.Thread(target=filler, kwargs=filler_kwargs)
         filler_thread.daemon = True
@@ -446,8 +447,17 @@ def rextract(shape_path, output_path, username, attribute, srs, **kwargs):
 
 
 def get_parser():
+    class CustomFormatterClass(
+        argparse.RawDescriptionHelpFormatter,
+        argparse.ArgumentDefaultsHelpFormatter,
+    ):
+        pass
+
     """ Return argument parser. """
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=CustomFormatterClass,
+    )
     # main
     parser.add_argument(
         'shape_path',
@@ -471,31 +481,38 @@ def get_parser():
         help='Lizard username.',
     )
     parser.add_argument(
-        '-l', '--lizard', default=SUBDOMAIN,
-        help='Lizard subdomain. Default: "%s"' % SUBDOMAIN,
+        '-l', '--lizard',
+        default=SUBDOMAIN,
+        dest='subdomain',
+        help='Lizard subdomain.',
     )
     parser.add_argument(
-        '-a', '--attribute', default=ATTRIBUTE,
-        help=(
-            'Shapefile attribute for naming result files. Default: "%s"'
-        ) % ATTRIBUTE,
+        '-a', '--attribute',
+        default=ATTRIBUTE,
+        help='Shapefile attribute for naming result files.'
     )
     parser.add_argument(
-        '-c', '--cellsize', type=float, default=CELLSIZE,
-        help='Cellsize. Default: %s' % CELLSIZE,
+        '-c', '--cellsize',
+        default=CELLSIZE,
+        type=float,
+        help='Cellsize.',
     )
     parser.add_argument(
-        '-s', '--srs', default=SRS,
-        help='Spatial reference system. Default: "%s"' % SRS,
+        '-s', '--srs',
+        default=SRS,
+        help='Spatial reference system.',
     )
     parser.add_argument(
         '-t', '--timestamp',
-        default=TIMESTAMP, dest='time',
-        help='Timestamp. Default: "%s"' % TIMESTAMP,
+        default=TIMESTAMP,
+        dest='time',
+        help='Timestamp.',
     )
     parser.add_argument(
-        '-d', '--dtype', default=DTYPE, choices=DTYPES,
-        help='Numpy datatype for resulting rasters. Default: "%s"' % DTYPE,
+        '-d', '--dtype',
+        default=DTYPE,
+        choices=DTYPES,
+        help='Numpy datatype for resulting rasters.',
     )
     parser.add_argument(
         '-f', '--fillvalue',
