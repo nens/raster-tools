@@ -20,6 +20,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt update \
     && apt install --yes \
+        curl \
         git \
         libgdal-dev \
         libhdf5-serial-dev \
