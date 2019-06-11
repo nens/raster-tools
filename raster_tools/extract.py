@@ -8,11 +8,6 @@ Alternatively it is possible to extract from a single layer on the remote
 server.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import collections
 import csv
@@ -80,7 +75,7 @@ class CompleteError(Exception):
     pass
 
 
-class Operation(object):
+class Operation:
     """
     Base class for operations.
     """
@@ -126,7 +121,7 @@ class Layers(Operation):
         return {self.name: result}
 
 
-class ThreeDiBase(object):
+class ThreeDiBase:
     """ Extract all rasters for a 3Di model. """
     # inputs
     I_SOIL = 'soil'
@@ -513,26 +508,6 @@ class ThreeDiAHN3(Operation, ThreeDiBase):
         super(ThreeDiAHN3, self).__init__(floor, **kwargs)
 
 
-# class ThreeDiAHN3HHNK(Operation, ThreeDiBase):
-    # name = '3di-ahn3-hhnk'
-
-    # def __init__(self, floor, **kwargs):
-        # """ Initialize the operation. """
-        # template = 'Operation "{}" no longer exists. Use "3di-ahn3" instead.'
-        # print(template.format(self.name))
-        # exit()
-
-
-# class ThreeDiAHN3Almere(Operation, ThreeDiBase):
-    # name = '3di-ahn3-almere'
-
-    # def __init__(self, floor, **kwargs):
-        # """ Initialize the operation. """
-        # template = 'Operation "{}" no longer exists. Use "3di-ahn3" instead.'
-        # print(template.format(self.name))
-        # exit()
-
-
 class ThreeDiRD(Operation, ThreeDiBase):
     name = '3di-rd'
 
@@ -551,7 +526,7 @@ class ThreeDiRD(Operation, ThreeDiBase):
         super(ThreeDiRD, self).__init__(floor, **kwargs)
 
 
-class Preparation(object):
+class Preparation:
     """
     Preparation.
     """
@@ -683,7 +658,7 @@ class Preparation(object):
         return target
 
 
-class Index(object):
+class Index:
     """ Iterates the indices into the target dataset. """
     def __init__(self, dataset, geometry, resume):
         """
@@ -752,7 +727,7 @@ class Index(object):
     def __len__(self):
         return len(self.indices[0])
 
-    def __nonzero__(self):
+    def __bool__(self):
         return len(self) > self.resume
 
     def __iter__(self):
@@ -767,7 +742,7 @@ class Index(object):
                        polygon=polygon)
 
 
-class Source(object):
+class Source:
     """
     Factory of source chunks.
     """
@@ -832,7 +807,7 @@ class Chunk():
         gdal.Unlink(vsi_path)
 
 
-class Target(object):
+class Target:
     """
     Factory of target blocks
     """
@@ -860,7 +835,7 @@ class Target(object):
             yield block
 
 
-class Block(object):
+class Block:
     """ Self saving local chunk of data. """
     def __init__(self, tile, rpath, source, datasets, geometry, operation):
         self.tile = tile
@@ -1022,7 +997,9 @@ def command(shape_path, target_dir, **kwargs):
     check_version()
     datasource = ogr.Open(shape_path)
     for layer in datasource:
-        for feature in layer:
+        total = layer.GetFeatureCount()
+        for i in range(total):
+            feature = layer[i]
             try:
                 preparation = Preparation(layer=layer,
                                           feature=feature,

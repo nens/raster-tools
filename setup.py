@@ -49,6 +49,7 @@ setup(name='raster-tools',
               'fillnodata         = raster_tools.fill.fill:main',
               'rebase             = raster_tools.rebase:main',
               # modeling and extraction
+              'extract            = raster_tools.extract:main',
               'rextract           = raster_tools.rextract:main',
               # organization
               'retile             = raster_tools.retile:main',
@@ -58,27 +59,26 @@ setup(name='raster-tools',
               # ahn3
               'ahn3-download      = raster_tools.ahn3.download:main',
               # analysis
-              'zonal              = raster_tools.zonal:main',  # <=== here
-              'rgb-zonal          = raster_tools.rgb_zonal:main',
-              'green-factor       = raster_tools.green_factor:main',
-              'difference         = raster_tools.difference:main',
+              # 'zonal              = raster_tools.zonal:main',
+              # 'rgb-zonal          = raster_tools.rgb_zonal:main',
+              # 'green-factor       = raster_tools.green_factor:main',
+              # 'difference         = raster_tools.difference:main',
               # flow analysis
-              'flow-fil           = raster_tools.flow.flow_fil:main',
-              'flow-dir           = raster_tools.flow.flow_dir:main',
-              'flow-acc           = raster_tools.flow.flow_acc:main',
-              'flow-vec           = raster_tools.flow.flow_vec:main',
-              'flow-rst           = raster_tools.flow.flow_rst:main',
+              # 'flow-fil           = raster_tools.flow.flow_fil:main',
+              # 'flow-dir           = raster_tools.flow.flow_dir:main',
+              # 'flow-acc           = raster_tools.flow.flow_acc:main',
+              # 'flow-vec           = raster_tools.flow.flow_vec:main',
+              # 'flow-rst           = raster_tools.flow.flow_rst:main',
               # modification
-              'hillshade          = raster_tools.hillshade:main',
-              'shadow             = raster_tools.shadow:main',
-              'merge              = raster_tools.merge:main',
+              # 'hillshade          = raster_tools.hillshade:main',
+              # 'shadow             = raster_tools.shadow:main',
+              # 'merge              = raster_tools.merge:main',
               # rasterization
-              'bag2tif            = raster_tools.bag2tif:main',
-              'rasterize2         = raster_tools.rasterize2:main',
+              # 'bag2tif            = raster_tools.bag2tif:main',
+              # 'rasterize2         = raster_tools.rasterize2:main',
               # modeling and extraction
-              'extract            = raster_tools.extract:main',
-              'line-up            = raster_tools.line_up:main',
-              'vselect            = raster_tools.vselect:main',
+              # 'line-up            = raster_tools.line_up:main',
+              # 'vselect            = raster_tools.vselect:main',
               # ==============================================================
               # Scripts to be ported to python3
               # --------------------------------------------------------------
