@@ -41,10 +41,10 @@ VERSION = 29
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
 
-DRIVER_OGR_MEMORY = ogr.GetDriverByName(str('Memory'))
-DRIVER_OGR_SHAPE = ogr.GetDriverByName(str('ESRI Shapefile'))
-DRIVER_GDAL_MEM = gdal.GetDriverByName(str('mem'))
-DRIVER_GDAL_GTIFF = gdal.GetDriverByName(str('gtiff'))
+DRIVER_OGR_MEMORY = ogr.GetDriverByName('Memory')
+DRIVER_OGR_SHAPE = ogr.GetDriverByName('ESRI Shapefile')
+DRIVER_GDAL_MEM = gdal.GetDriverByName('mem')
+DRIVER_GDAL_GTIFF = gdal.GetDriverByName('gtiff')
 DTYPES = {'u1': gdal.GDT_Byte,
           'u2': gdal.GDT_UInt16,
           'u4': gdal.GDT_UInt32,
@@ -209,7 +209,7 @@ class ThreeDiBase:
         max_infil = [None] * 256
         # fill
         with open(path) as soil_file:
-            reader = csv.DictReader(soil_file, delimiter=str(';'))
+            reader = csv.DictReader(';')
             for record in reader:
                 try:
                     code = int(record['Code'])
@@ -251,7 +251,7 @@ class ThreeDiBase:
         permeability = [None] * 256
         # fill
         with open(path) as landuse_file:
-            reader = csv.DictReader(landuse_file, delimiter=str(';'))
+            reader = csv.DictReader(';')
             for record in reader:
                 try:
                     code = int(record['Code'])
@@ -539,7 +539,7 @@ class Preparation:
         self.projection = kwargs.pop('projection')
         self.cellsize = kwargs.pop('cellsize')
 
-        self.wkt = osr.GetUserInputAsWKT(str(self.projection))
+        self.wkt = osr.GetUserInputAsWKT(self.projection)
         self.sr = osr.SpatialReference(self.wkt)
         self.paths = self._make_paths(path, layer, feature, attribute)
         self.rpath = self.paths.pop('rpath')
@@ -565,7 +565,7 @@ class Preparation:
     def _make_paths(self, path, layer, feature, attribute):
         """ Prepare paths from feature attribute or id. """
         try:
-            model = feature[str(attribute)]
+            model = feature[attribute]
         except ValueError:
             model = layer.GetName() + str(feature.GetFID())
 
@@ -683,7 +683,7 @@ class Index:
         # rasterize where geometry is
         datasource = DRIVER_OGR_MEMORY.CreateDataSource('')
         sr = geometry.GetSpatialReference()
-        layer = datasource.CreateLayer(str('geometry'), sr)
+        layer = datasource.CreateLayer('geometry', sr)
         layer_defn = layer.GetLayerDefn()
         feature = ogr.Feature(layer_defn)
         feature.SetGeometry(geometry)
@@ -794,7 +794,7 @@ class Chunk():
         """ Load url into gdal dataset. """
         # retrieve file into gdal vsimem system
         vsi_path = '/vsimem/{}'.format(self.key)
-        vsi_file = gdal.VSIFOpenL(str(vsi_path), str('w'))
+        vsi_file = gdal.VSIFOpenL(vsi_path, 'w')
         url_file = urlopen(self.url)
         size = int(url_file.info().get('content-length'))
         gdal.VSIFWriteL(url_file.read(), size, 1, vsi_file)
@@ -863,7 +863,7 @@ class Block:
         no_data_value = dataset.GetRasterBand(1).GetNoDataValue()
         datasource = DRIVER_OGR_MEMORY.CreateDataSource('')
         sr = osr.SpatialReference(wkt)
-        layer = datasource.CreateLayer(str('blocks'), sr)
+        layer = datasource.CreateLayer('blocks', sr)
         layer_defn = layer.GetLayerDefn()
         feature = ogr.Feature(layer_defn)
         feature.SetGeometry(self.geometry)
@@ -977,7 +977,7 @@ def check_version():
     url_file.close()
 
     for l in lines:
-        if str(l).startswith('VERSION ='):
+        if l.startswith('VERSION ='):
             remote_version = int(l.split('=')[-1].strip())
             break
     if remote_version > VERSION:
