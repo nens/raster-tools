@@ -209,7 +209,7 @@ class ThreeDiBase:
         max_infil = [None] * 256
         # fill
         with open(path) as soil_file:
-            reader = csv.DictReader(';')
+            reader = csv.DictReader(soil_file, delimiter=';')
             for record in reader:
                 try:
                     code = int(record['Code'])
@@ -251,7 +251,7 @@ class ThreeDiBase:
         permeability = [None] * 256
         # fill
         with open(path) as landuse_file:
-            reader = csv.DictReader(';')
+            reader = csv.DictReader(landuse_file, delimiter=';')
             for record in reader:
                 try:
                     code = int(record['Code'])
