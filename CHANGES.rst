@@ -13,6 +13,8 @@ Changelog of raster-tools
 
 - Port various scripts to python3
 
+- Modify extract for a specific task.
+
 
 0.3 (2018-06-07)
 ----------------

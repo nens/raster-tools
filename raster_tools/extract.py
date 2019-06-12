@@ -14,29 +14,25 @@ import csv
 import os
 import threading
 
-try:
-    from urllib.request import urlopen
-    from urllib.parse import urlencode
-    from urllib.parse import urljoin
-except ImportError:
-    from urllib import urlopen
-    from urlparse import urljoin
-    from urllib import urlencode
+from urllib.request import urlopen
+from urllib.parse import urlencode
+from urllib.parse import urljoin
 
-try:
-    import queue as queues
-except ImportError:
-    import Queue as queues
+import queue as queues
 
 from osgeo import gdal
-from osgeo import gdalnumeric as np
 from osgeo import ogr
 from osgeo import osr
+
+from raster_tools import datasources
+from raster_tools import datasets
+
+import numpy as np
 
 operations = {}
 
 # Version management for outdated warning
-VERSION = 29
+VERSION = 30
 
 GITHUB_URL = ('https://raw.github.com/nens/'
               'raster-tools/master/raster_tools/extract.py')
@@ -90,8 +86,8 @@ class Layers(Operation):
         # self.layers = layers
         self.outputs = {self.name: [self.name]}
         self.inputs = {self.name: {'layers': layers, 'time': time}}
-
         self.data_type = {self.name: DTYPES[dtype]}
+        self.dtype = dtype
 
         if fillvalue is None:
             if dtype[0] == 'f':
@@ -100,25 +96,18 @@ class Layers(Operation):
                 no_data_value = int(np.iinfo(dtype).max)
         else:
             no_data_value = np.array(fillvalue, dtype).tolist()
-        self.no_data_value = {
-            self.name: no_data_value,
-        }
+        self.no_data_value = {self.name: no_data_value}
 
     def calculate(self, datasets):
-        # create
-        no_data_value = self.no_data_value[self.name]
-        data_type = self.data_type[self.name]
-        result = make_dataset(template=datasets[self.name],
-                              data_type=data_type,
-                              no_data_value=no_data_value)
-        # read
-        band = datasets[self.name].GetRasterBand(1)
-        data = band.ReadAsArray().astype('f8')
-        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
-        data[mask] = no_data_value
-        # write
-        result.GetRasterBand(1).WriteArray(data)
-        return {self.name: result}
+        dataset = datasets[self.name]
+        band = dataset.GetRasterBand(1)
+        return {self.name: {
+            'active': band.GetMaskBand().ReadAsArray(),
+            'values': band.ReadAsArray().astype(self.dtype),
+            'no_data_value': self.no_data_value[self.name],
+            'geo_transform': dataset.GetGeoTransform(),
+            'projection': dataset.GetProjection(),
+        }}
 
 
 class ThreeDiBase:
@@ -298,158 +287,159 @@ class ThreeDiBase:
         # short keys
         i = self.I_SOIL
         o = self.O_SOIL
-        # create
-        no_data_value = self.no_data_value[o]
-        soil = make_dataset(template=datasets[i],
-                            data_type=self.data_type[o],
-                            no_data_value=no_data_value)
-        # read
-        band = datasets[i].GetRasterBand(1)
-        data = band.ReadAsArray().astype('f8')
-        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
-        data[mask] = no_data_value
-        # write
-        soil.GetRasterBand(1).WriteArray(data)
-        return soil
+
+        dataset = datasets[i]
+        band = dataset.GetRasterBand(1)
+
+        return {
+            'values': band.ReadAsArray().astype(DTYPE),
+            'active': band.GetMaskBand().ReadAsArray(),
+            'geo_transform': dataset.GetGeoTransform(),
+            'projection': dataset.GetProjection(),
+            'no_data_value': self.no_data_value[o],
+        }
 
     def _calculate_crop(self, datasets):
         # short keys
         i = self.I_LANDUSE
         o = self.O_CROP
-        # create
-        no_data_value = self.no_data_value[o]
-        crop = make_dataset(template=datasets[i],
-                            data_type=self.data_type[o],
-                            no_data_value=no_data_value)
+
         # read and convert
+        no_data_value = self.no_data_value[o]
+        dataset = datasets[i]
+        band = dataset.GetRasterBand(1)
         conversion = np.array([no_data_value if x is None else x
                                for x in self.landuse_tables['crop_type']])
-        band = datasets[i].GetRasterBand(1)
-        data = conversion[band.ReadAsArray()]
-        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
-        data[mask] = no_data_value
-        # write
-        crop.GetRasterBand(1).WriteArray(data)
-        return crop
+
+        return {
+            'values': conversion[band.ReadAsArray()].astype(DTYPE),
+            'active': band.GetMaskBand().ReadAsArray(),
+            'geo_transform': dataset.GetGeoTransform(),
+            'projection': dataset.GetProjection(),
+            'no_data_value': no_data_value,
+        }
 
     def _calculate_friction(self, datasets):
         # short keys
         i = self.I_LANDUSE
         o = self.O_FRICTION
-        # create
-        no_data_value = self.no_data_value[o]
-        friction = make_dataset(template=datasets[i],
-                                data_type=self.data_type[o],
-                                no_data_value=no_data_value)
+
         # read and convert
+        no_data_value = self.no_data_value[o]
+        dataset = datasets[i]
         conversion = np.array([no_data_value if x is None else x
                                for x in self.landuse_tables['friction']])
-        band = datasets[i].GetRasterBand(1)
-        data = conversion[band.ReadAsArray()]
-        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
-        data[mask] = no_data_value
-        # write
-        friction.GetRasterBand(1).WriteArray(data)
-        return friction
+        band = dataset.GetRasterBand(1)
+
+        return {
+            'values': conversion[band.ReadAsArray()].astype(DTYPE),
+            'active': band.GetMaskBand().ReadAsArray(),
+            'geo_transform': dataset.GetGeoTransform(),
+            'projection': dataset.GetProjection(),
+            'no_data_value': no_data_value,
+        }
 
     def _calculate_bathymetry(self, datasets):
         # short keys
         i = self.I_BATHYMETRY
         o = self.O_BATHYMETRY
-        # create
-        no_data_value = self.no_data_value[o]
-        bathymetry = make_dataset(template=datasets[i],
-                                  data_type=self.data_type[o],
-                                  no_data_value=no_data_value)
-        # read
-        band = datasets[i].GetRasterBand(1)
-        data = band.ReadAsArray()
 
-        # mask
-        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
-        data[mask] = no_data_value
+        # read
+        dataset = datasets[i]
+        band = dataset.GetRasterBand(1)
+        values = band.ReadAsArray().astype(DTYPE)
+        active = band.GetMaskBand().ReadAsArray()
 
         # mask nan (for example when floor is nan)
-        mask = np.isnan(data)
-        data[mask] = no_data_value
+        active[np.isnan(values)] = False
 
-        # write
-        bathymetry.GetRasterBand(1).WriteArray(data)
-        return bathymetry
+        return {
+            'values': values,
+            'active': active,
+            'geo_transform': dataset.GetGeoTransform(),
+            'projection': dataset.GetProjection(),
+            'no_data_value': self.no_data_value[o],
+        }
 
     def _calculate_infiltration(self, datasets):
         # short keys
         s = self.I_SOIL
         c = self.I_LANDUSE
         o = self.O_INFILTRATION
-        # create
-        no_data_value = self.no_data_value[o]
-        infiltration = make_dataset(template=datasets[s],
-                                    data_type=self.data_type[o],
-                                    no_data_value=no_data_value)
+
         # read and convert soil
+        no_data_value = self.no_data_value[o]
         s_conv = np.array([no_data_value if x is None else x
                            for x in self.soil_tables['max_infil']])
-        s_band = datasets[s].GetRasterBand(1)
+        s_dataset = datasets[s]
+        s_band = s_dataset.GetRasterBand(1)
         s_data = s_conv[s_band.ReadAsArray()]
-        s_mask = ~s_band.GetMaskBand().ReadAsArray().astype('b1')
+        s_mask = ~s_band.GetMaskBand().ReadAsArray(),
         s_data[s_mask] = no_data_value
+
         # read and convert landuse
-        l_conv = np.array([no_data_value if x is None else x
+        c_conv = np.array([no_data_value if x is None else x
                            for x in self.landuse_tables['permeability']])
-        l_band = datasets[c].GetRasterBand(1)
-        l_data = l_conv[l_band.ReadAsArray()]
-        l_mask = ~l_band.GetMaskBand().ReadAsArray().astype('b1')
-        l_data[l_mask] = no_data_value
+        c_dataset = datasets[c]
+        c_band = c_dataset.GetRasterBand(1)
+        c_data = c_conv[c_band.ReadAsArray()]
+        c_mask = ~c_band.GetMaskBand().ReadAsArray(),
+        c_data[c_mask] = no_data_value
+
         # calculate
-        data = np.where(
-            np.logical_and(l_data != no_data_value, s_data != no_data_value),
-            l_data * s_data,
+        values = np.where(
+            np.logical_and(c_data != no_data_value, s_data != no_data_value),
+            c_data * s_data,
             no_data_value,
-        )
-        # write
-        infiltration.GetRasterBand(1).WriteArray(data)
-        return infiltration
+        ).astype(DTYPE)
+
+        return {
+            'values': values,
+            'active': np.where(values == no_data_value, 0, 255).astype('u1'),
+            'geo_transform': s_dataset.GetGeoTransform(),
+            'projection': s_dataset.GetProjection(),
+            'no_data_value': no_data_value,
+        }
 
     def _calculate_interception(self, datasets):
         # short keys
         i = self.I_LANDUSE
         o = self.O_INTERCEPTION
-        # create
-        no_data_value = self.no_data_value[o]
-        interception = make_dataset(template=datasets[i],
-                                    data_type=self.data_type[o],
-                                    no_data_value=no_data_value)
+
         # read and convert
+        no_data_value = self.no_data_value[o]
         conversion = np.array([no_data_value if x is None else x
                                for x in self.landuse_tables['interception']])
-        band = datasets[i].GetRasterBand(1)
-        data = conversion[band.ReadAsArray()]
-        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
-        data[mask] = no_data_value
-        # write
-        interception.GetRasterBand(1).WriteArray(data)
-        return interception
+        dataset = datasets[i]
+        band = dataset.GetRasterBand(1)
+
+        return {
+            'values': conversion[band.ReadAsArray()].astype(DTYPE),
+            'active': band.GetMaskBand().ReadAsArray(),
+            'geo_transform': dataset.GetGeoTransform(),
+            'projection': dataset.GetProjection(),
+            'no_data_value': no_data_value,
+        }
 
     def _calculate_hydr_cond(self, datasets):
         # short keys
         i = self.I_SOIL
         o = self.O_HYDRAULIC_CONDUCTIVITY
-        # create
-        no_data_value = self.no_data_value[o]
-        permeability = make_dataset(template=datasets[i],
-                                    data_type=self.data_type[o],
-                                    no_data_value=no_data_value)
+
         # read and convert
+        no_data_value = self.no_data_value[o]
         conversion = np.array([no_data_value if x is None else x
                                for x in self.soil_tables['intr_perm']])
-        band = datasets[i].GetRasterBand(1)
-        data = conversion[band.ReadAsArray()]
-        mask = ~band.GetMaskBand().ReadAsArray().astype('b1')
-        data[mask] = no_data_value
-        # write
-        permeability.GetRasterBand(1).WriteArray(data)
-        return permeability
+        dataset = datasets[i]
+        band = dataset.GetRasterBand(1)
+
+        return {
+            'values': conversion[band.ReadAsArray()].astype(DTYPE),
+            'active': band.GetMaskBand().ReadAsArray(),
+            'geo_transform': dataset.GetGeoTransform(),
+            'projection': dataset.GetProjection(),
+            'no_data_value': no_data_value,
+        }
 
     def calculate(self, datasets):
         """ Return dictionary of output datasets. """
@@ -530,9 +520,10 @@ class Preparation:
     """
     Preparation.
     """
-    def __init__(self, path, layer, feature, **kwargs):
+    def __init__(self, path, layer, feature, fields_as_meta, **kwargs):
         """ Prepare a lot. """
         attribute = kwargs.pop('attribute')
+
         self.server = kwargs.pop('server')
         self.operation = operations[kwargs.pop('operation')](**kwargs)
 
@@ -544,6 +535,8 @@ class Preparation:
         self.paths = self._make_paths(path, layer, feature, attribute)
         self.rpath = self.paths.pop('rpath')
         self.geometry = self._prepare_geometry(feature)
+
+        self.meta = feature.items() if fields_as_meta else None
         self.datasets = self._get_or_create_datasets()
 
         # Get resume value
@@ -614,9 +607,12 @@ class Preparation:
         )
 
         # meta
-        meta = {n.upper(): self.operation.inputs[n]['layers']
-                for n in self.operation.outputs[name]}
-        dataset.SetMetadata(meta)
+        if self.meta:
+            meta = self.meta
+        else:
+            meta = {n.upper(): self.operation.inputs[n]['layers']
+                    for n in self.operation.outputs[name]}
+        dataset.SetMetadata({k: str(v) for k, v in meta.items()})
         return dataset
 
     def _get_or_create_datasets(self):
@@ -842,57 +838,60 @@ class Block:
         self.rpath = rpath
         self.source = source
         self.datasets = datasets
+        self.geometry = geometry
         self.operation = operation
-        self.geometry = self._create_geometry(tile=tile, geometry=geometry)
         self.chunks = self.source.get_chunks(self)
         self.inputs = {}
-
-    def _create_geometry(self, tile, geometry):
-        """
-        Return ogr geometry that is the part of this block that's masked.
-        """
-        sr = geometry.GetSpatialReference()
-        polygon = ogr.CreateGeometryFromWkt(tile.polygon, sr)
-        difference = polygon.Difference(geometry)
-        difference.AssignSpatialReference(sr)
-        return difference
-
-    def _mask(self, dataset):
-        """ Mask dataset where outside geometry. """
-        wkt = dataset.GetProjection()
-        no_data_value = dataset.GetRasterBand(1).GetNoDataValue()
-        datasource = DRIVER_OGR_MEMORY.CreateDataSource('')
-        sr = osr.SpatialReference(wkt)
-        layer = datasource.CreateLayer('blocks', sr)
-        layer_defn = layer.GetLayerDefn()
-        feature = ogr.Feature(layer_defn)
-        feature.SetGeometry(self.geometry)
-        layer.CreateFeature(feature)
-        gdal.RasterizeLayer(dataset, [1], layer, burn_values=[no_data_value])
-
-    def _write(self, source, target):
-        """ Write dataset into block. """
-        p1, q1 = self.tile.origin
-        target.WriteRaster(
-            p1, q1, self.tile.width, self.tile.height,
-            source.ReadRaster(0, 0, source.RasterXSize, source.RasterYSize),
-        )
 
     def __iter__(self):
         """ Yield chunks. """
         for chunk in self.chunks.values():
             yield chunk
 
-    def save(self):
+    def save(self, fill_zeros):
         """
         Cut out and save block.
+
+        param fill_zeros: Put zeros for no data within geometry.
         """
         outputs = self.operation.calculate(self.inputs)
         for name in outputs:
-            self._mask(outputs[name])
-            self._write(source=outputs[name],
-                        target=self.datasets[name])
 
+            # assign to names
+            output = outputs[name]
+            array = output['values'][np.newaxis]
+            active = output['active'][np.newaxis]
+            projection = output['projection']
+            no_data_value = output['no_data_value']
+            geo_transform = output['geo_transform']
+
+            # determine inside pixels
+            inside = np.zeros_like(active)
+            kwargs = {
+                'projection': projection,
+                'geo_transform': geo_transform,
+            }
+            with datasources.Layer(self.geometry) as layer:
+                with datasets.Dataset(inside, **kwargs) as dataset:
+                    gdal.RasterizeLayer(dataset, [1], layer, burn_values=[255])
+
+            if fill_zeros:
+                # set inactive pixels to zero, but outside pixels to no data
+                array[np.logical_not(active)] = 0
+                array[np.logical_not(inside)] = no_data_value
+            else:
+                # mask outside or inactive
+                array[~np.logical_and(active, inside)] = no_data_value
+
+            # write to target dataset
+            tile = self.tile
+            kwargs.update(no_data_value=no_data_value)
+            with datasets.Dataset(array, **kwargs) as dataset:
+                data = dataset.ReadRaster(0, 0, tile.width, tile.height)
+                args = tile.origin + (tile.width, tile.height, data)
+                self.datasets[name].WriteRaster(*args)
+
+        # uppdate resume file
         with open(self.rpath, 'w') as resume_file:
             resume_file.write(str(self.tile.serial + 1))
 
@@ -935,7 +934,7 @@ def filler(queue, batch):
     queue.put(None)
 
 
-def extract(preparation):
+def extract_model(preparation, fill_zeros):
     """
     Extract for a single feature.
     """
@@ -962,7 +961,7 @@ def extract(preparation):
 
         # save complete blocks
         if len(chunk.block.chunks) == len(chunk.block.inputs):
-            chunk.block.save()
+            chunk.block.save(fill_zeros)
             gdal.TermProgress_nocb((chunk.block.tile.serial + 1) / total)
 
     thread1.join()
@@ -987,7 +986,7 @@ def check_version():
         exit()
 
 
-def command(shape_path, target_dir, **kwargs):
+def extract_all(shape_path, target_dir, blue_map, **kwargs):
     """
     Prepare and extract for each feature.
     """
@@ -1003,10 +1002,11 @@ def command(shape_path, target_dir, **kwargs):
             try:
                 preparation = Preparation(layer=layer,
                                           feature=feature,
+                                          fields_as_meta=blue_map,
                                           path=target_dir, **kwargs)
             except CompleteError:
                 continue
-            extract(preparation)
+            extract_model(preparation, fill_zeros=blue_map)
 
 
 def get_parser():
@@ -1063,13 +1063,17 @@ def get_parser():
                         help=('Fillvalue for layers operation. '
                               'If not given, the maximum possible '
                               'number of the output dtype will be used.'))
+    parser.add_argument('-b', '--blue-map', action='store_true', help=(
+        'Enable Blue Map mode. Output metadata is set from the source model '
+        'attributes and no data values within the model are set to 0.'
+    ))
     return parser
 
 
 def main():
-    """ Call command with args from parser. """
+    """ Call extract_all with args from parser. """
     operations.update({cls.name: cls for cls in Operation.__subclasses__()})
-    return command(**vars(get_parser().parse_args()))
+    return extract_all(**vars(get_parser().parse_args()))
 
 
 if __name__ == '__main__':
