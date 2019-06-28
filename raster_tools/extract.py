@@ -383,7 +383,7 @@ class ThreeDiBase:
         c_dataset = datasets[c]
         c_band = c_dataset.GetRasterBand(1)
         c_data = c_conv[c_band.ReadAsArray()]
-        c_mask = ~c_band.GetMaskBand().ReadAsArray(),
+        c_mask = ~c_band.GetMaskBand().ReadAsArray()
         c_data[c_mask] = no_data_value
 
         # calculate
