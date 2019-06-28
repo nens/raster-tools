@@ -374,7 +374,7 @@ class ThreeDiBase:
         s_dataset = datasets[s]
         s_band = s_dataset.GetRasterBand(1)
         s_data = s_conv[s_band.ReadAsArray()]
-        s_mask = ~s_band.GetMaskBand().ReadAsArray(),
+        s_mask = ~s_band.GetMaskBand().ReadAsArray()
         s_data[s_mask] = no_data_value
 
         # read and convert landuse
