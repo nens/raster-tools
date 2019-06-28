@@ -785,13 +785,20 @@ class Chunk():
         self.key = '{}_{}'.format(name, block.tile.serial)
         self.name = name
         self.block = block
+        self.loaded = False
 
     def load(self):
         """ Load url into gdal dataset. """
+        # open the url
+        try:
+            url_file = urlopen(self.url)
+        except Exception as error:
+            print(error)
+            return
+
         # retrieve file into gdal vsimem system
         vsi_path = '/vsimem/{}'.format(self.key)
         vsi_file = gdal.VSIFOpenL(vsi_path, 'w')
-        url_file = urlopen(self.url)
         size = int(url_file.info().get('content-length'))
         gdal.VSIFWriteL(url_file.read(), size, 1, vsi_file)
         gdal.VSIFCloseL(vsi_file)
@@ -801,6 +808,9 @@ class Chunk():
         self.block.inputs[self.name] = DRIVER_GDAL_MEM.CreateCopy('', dataset)
         dataset = None
         gdal.Unlink(vsi_path)
+
+        # mark loaded
+        self.loaded = True
 
 
 class Target:
@@ -955,9 +965,14 @@ def extract_model(preparation, fill_zeros):
         # fetch loaded chunks
         try:
             chunk, thread2 = queue.get()
-            thread2.join()  # this makes sure the chunk is laoded
+            thread2.join()  # this makes sure the load method finished
         except TypeError:
             break
+
+        # check if loading was a success
+        if not chunk.loaded:
+            print('Oops, a chunk failed to fetch. Resuming is worth a try!')
+            return
 
         # save complete blocks
         if len(chunk.block.chunks) == len(chunk.block.inputs):
