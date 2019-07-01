@@ -3,7 +3,7 @@
 """
 Rextract, the king of extractors.
 
-Extract parts of lizard (staging!) rasters using geometries from a shapefile.
+Extract parts of lizard rasters using geometries from a shapefile.
 
 Please note that any information about the spatial reference system in the
 shapefile is ignored.
