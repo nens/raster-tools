@@ -74,11 +74,11 @@ setup(name='raster-tools',
               # 'shadow             = raster_tools.shadow:main',
               # 'merge              = raster_tools.merge:main',
               # rasterization
-              # 'bag2tif            = raster_tools.bag2tif:main',
+              'bag2tif            = raster_tools.bag2tif:main',
               # 'rasterize2         = raster_tools.rasterize2:main',
               # modeling and extraction
               # 'line-up            = raster_tools.line_up:main',
-              # 'vselect            = raster_tools.vselect:main',
+              'vselect            = raster_tools.vselect:main',
               # ==============================================================
               # Scripts to be ported to python3
               # --------------------------------------------------------------

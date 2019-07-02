@@ -1,13 +1,9 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 """
-This module provides a routine to create a memory datasource
+This module provides a routine to convert a spatial region in a database table
+to an in-memory datasource.
 """
-
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
 
 from osgeo import ogr
 from osgeo import osr
@@ -20,7 +16,7 @@ ogr.UseExceptions()
 osr.UseExceptions()
 
 
-class PostgisSource(object):
+class PostgisSource:
 
     OGR_TYPES = {
         # boolean

@@ -13,12 +13,8 @@ And the querying shapefile must have an SRID defined, too:
     gdalsrsinfo epsg:28992 -o wkt > myshape.prj
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
+import getpass
 import os
 
 from osgeo import gdal
@@ -40,7 +36,7 @@ COMPATIBLE = {1: (1, 4),
 gdal.PushErrorHandler('CPLQuietErrorHandler')
 
 
-class Selector(object):
+class Selector:
     def __init__(self, target_path, table, attribute, clip, **kwargs):
         self.postgis_source = postgis.PostgisSource(**kwargs)
         self.target_path = target_path
@@ -92,7 +88,7 @@ class Selector(object):
         DRIVER_OGR_SHAPE.CopyDataSource(data_source, path)
 
 
-def command(source_path, **kwargs):
+def vselect(source_path, **kwargs):
     """ Rasterize some postgis tables. """
     selector = Selector(**kwargs)
 
@@ -122,11 +118,12 @@ def get_parser():
     parser.add_argument('-c', '--clip', action='store_true',
                         help='clip geometries that extend outside selection')
     parser.add_argument('-u', '--user'),
-    parser.add_argument('-p', '--password'),
     parser.add_argument('-s', '--host', default='localhost')
     return parser
 
 
 def main():
-    """ Call command with args from parser. """
-    return command(**vars(get_parser().parse_args()))
+    """ Call vselect with args from parser. """
+    kwargs = vars(get_parser().parse_args())
+    kwargs['password'] = getpass.getpass()
+    vselect(**kwargs)
