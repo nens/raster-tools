@@ -17,7 +17,6 @@ from http.client import responses
 import argparse
 import contextlib
 import getpass
-import os
 import pathlib
 import requests
 import tempfile
@@ -302,13 +301,9 @@ class Chunk(object):
     @contextlib.contextmanager
     def as_dataset(self):
         """ Temporily serve data as geotiff file in virtual memory. """
-        _, p = tempfile.mkstemp(dir='/dev/shm')
-        try:
-            with open(p, 'wb') as f:
-                f.write(self.response.content)
-            yield gdal.Open(p)
-        finally:
-            os.remove(p)
+        with tempfile.NamedTemporaryFile(dir='/dev/shm', buffering=0) as f:
+            f.write(self.response.content)
+            yield gdal.Open(f.name)
 
 
 def filler(queue, chunks, **kwargs):
