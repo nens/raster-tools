@@ -78,7 +78,7 @@ setup(name='raster-tools',
               # 'rasterize2         = raster_tools.rasterize2:main',
               # modeling and extraction
               # 'line-up            = raster_tools.line_up:main',
-              'vselect            = raster_tools.vselect:main',
+              # 'vselect            = raster_tools.vselect:main',
               # ==============================================================
               # Scripts to be ported to python3
               # --------------------------------------------------------------

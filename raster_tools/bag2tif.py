@@ -10,8 +10,10 @@ from __future__ import unicode_literals
 from __future__ import absolute_import
 from __future__ import division
 
+from os.path import dirname, exists, isdir, join
+
 import argparse
-# import getpass
+import getpass
 import os
 
 from raster_tools import gdal
@@ -41,8 +43,8 @@ class Rasterizer:
         self.table = table
 
         # raster
-        if os.path.isdir(raster_path):
-            raster_datasets = [gdal.Open(os.path.join(raster_path, path))
+        if isdir(raster_path):
+            raster_datasets = [gdal.Open(join(raster_path, path))
                                for path in sorted(os.listdir(raster_path))]
         else:
             raster_datasets = [gdal.Open(raster_path)]
@@ -68,7 +70,7 @@ class Rasterizer:
 
     def path(self, feature):
         leaf = feature['name']
-        return os.path.join(self.output_path, leaf[0:3], leaf + '.tif')
+        return join(self.output_path, leaf[0:3], leaf + '.tif')
 
     def target(self, feature):
         """ Return empty gdal dataset. """
@@ -94,10 +96,13 @@ class Rasterizer:
         layer.CreateFeature(feature)
         return data_source
 
-    def determine_floor_level(self, feature, target):
+    def determine_floor_level(self, feature):
         """
-        :param feature: vector feature
-        :param target: raster file to write to
+        Return boolean if a floor level was computed and assigned.
+
+        Add assign a computed floor level to the supplied feature.
+
+        :param feature: feature with floor column.
         """
         # determine geometry and 1m buffer
         geometry = feature.geometry()
@@ -136,45 +141,44 @@ class Rasterizer:
     def rasterize_region(self, index_feature):
         # prepare or abort
         path = self.path(index_feature)
-        if os.path.exists(path):
+        if exists(path):
             return
 
         # target array
         target = self.target(index_feature)
 
         # fetch geometries from postgis
-        layer = self.postgis_source.get_data_source(
-            table=self.table, geometry=index_feature.geometry(),
-        )[0]
+        data_source = self.postgis_source.get_data_source(
+            table=self.table,
+            geometry=index_feature.geometry(),
+        )
+        layer = data_source[0]
 
         # add a column for the floor level
         field_defn = ogr.FieldDefn(FLOOR_ATTRIBUTE, ogr.OFTReal)
         layer.CreateField(field_defn)
+        any_computed = False
 
-        # analyze
-        computed = False
+        # compute floor levels
         feature_count = layer.GetFeatureCount()
         for i in range(feature_count):
             bag_feature = layer[i]
-            computed = self.rasterize_building(
-                feature=bag_feature,
-            )
-        if not computed:
+            if self.determine_floor_level(feature=bag_feature):
+                layer.SetFeature(bag_feature)
+                any_computed = True
+
+        # do not write an empty geotiff
+        if not any_computed:
             return
 
         # rasterize
-        options = 'attribute=%s' % FLOOR_ATTRIBUTE
+        options = ['attribute=%s' % FLOOR_ATTRIBUTE]
         gdal.RasterizeLayer(target, [1], layer, options=options)
 
         # save
-        try:
-            os.makedirs(os.path.dirname(path))
-        except OSError:
-            pass
-
-        DRIVER_GDAL_GTIFF.CreateCopy(path,
-                                     target,
-                                     options=['compress=deflate'])
+        options = ['compress=deflate']
+        os.makedirs(dirname(path), exist_ok=True)
+        DRIVER_GDAL_GTIFF.CreateCopy(path, target, options=options)
 
 
 def bag2tif(index_path, part, **kwargs):
