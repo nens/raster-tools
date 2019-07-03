@@ -45,19 +45,22 @@ setup(name='raster-tools',
               # ==============================================================
               # Scripts already ported to python3
               # --------------------------------------------------------------
-              # modification
-              'fillnodata         = raster_tools.fill.fill:main',
-              'rebase             = raster_tools.rebase:main',
+              # ahn3
+              'ahn3-download      = raster_tools.ahn3.download:main',
               # modeling and extraction
               'extract            = raster_tools.extract:main',
               'rextract           = raster_tools.rextract:main',
+              # 'vselect            = raster_tools.vselect:main',
+              # modification
+              'fillnodata         = raster_tools.fill.fill:main',
+              'rebase             = raster_tools.rebase:main',
               # organization
               'retile             = raster_tools.retile:main',
+              # rasterization
+              'bag2tif            = raster_tools.bag2tif:main',
               # ==============================================================
               # Scripts being ported to python3
               # --------------------------------------------------------------
-              # ahn3
-              'ahn3-download      = raster_tools.ahn3.download:main',
               # analysis
               # 'zonal              = raster_tools.zonal:main',
               # 'rgb-zonal          = raster_tools.rgb_zonal:main',
@@ -69,16 +72,14 @@ setup(name='raster-tools',
               # 'flow-acc           = raster_tools.flow.flow_acc:main',
               # 'flow-vec           = raster_tools.flow.flow_vec:main',
               # 'flow-rst           = raster_tools.flow.flow_rst:main',
+              # modeling and extraction
+              # 'line-up            = raster_tools.line_up:main',
               # modification
               # 'hillshade          = raster_tools.hillshade:main',
               # 'shadow             = raster_tools.shadow:main',
               # 'merge              = raster_tools.merge:main',
               # rasterization
-              'bag2tif            = raster_tools.bag2tif:main',
               # 'rasterize2         = raster_tools.rasterize2:main',
-              # modeling and extraction
-              # 'line-up            = raster_tools.line_up:main',
-              # 'vselect            = raster_tools.vselect:main',
               # ==============================================================
               # Scripts to be ported to python3
               # --------------------------------------------------------------
