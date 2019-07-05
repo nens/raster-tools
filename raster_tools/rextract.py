@@ -98,8 +98,8 @@ class Index:
 
         # create an array in which each cell represents a dataset block
         shape = (
-            (dataset.RasterXSize - 1) // w + 1,
             (dataset.RasterYSize - 1) // h + 1,
+            (dataset.RasterXSize - 1) // w + 1,
         )
         index = np.zeros(shape, dtype='u1')
         kwargs = {
