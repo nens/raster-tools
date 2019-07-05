@@ -106,6 +106,12 @@ class Rasterizer:
         """
         # determine geometry and 1m buffer
         geometry = feature.geometry()
+
+        # skip too large geometries
+        xmin, xmax, ymin, ymax = geometry.GetEnvelope()
+        if max(ymax - ymin, xmax - xmin) > 1000:
+            return False
+
         try:
             buffer_geometry = geometry.Buffer(1).Difference(geometry)
         except RuntimeError:
