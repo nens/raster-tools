@@ -66,7 +66,7 @@ class PostgisSource:
         FROM
             {schema}.{name}
         WHERE
-            {geom} && {request} AND ST_Intersects({geom}, {request})
+            ST_Intersects({geom}, {request})
     """
 
     def __init__(self, *args, **kwargs):
