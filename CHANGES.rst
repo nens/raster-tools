@@ -15,6 +15,8 @@ Changelog of raster-tools
 
 - Modify extract for a specific task.
 
+- Update bag2tif.
+
 
 0.3 (2018-06-07)
 ----------------

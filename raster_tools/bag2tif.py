@@ -18,7 +18,6 @@ import os
 
 from raster_tools import gdal
 from raster_tools import ogr
-from raster_tools import osr
 
 import numpy as np
 
@@ -64,15 +63,11 @@ class Rasterizer:
         self.output_path = output_path
         self.floor = floor
 
-    @property
-    def sr(self):
-        return osr.SpatialReference(self.projection)
-
     def path(self, feature):
         leaf = feature['name']
         return join(self.output_path, leaf[0:3], leaf + '.tif')
 
-    def target(self, feature):
+    def create_target_dataset(self, feature):
         """ Return empty gdal dataset. """
         geometry = feature.geometry()
         envelope = geometry.GetEnvelope()
@@ -85,16 +80,6 @@ class Rasterizer:
         band.SetNoDataValue(self.no_data_value)
         band.Fill(self.no_data_value)
         return dataset
-
-    def get_ogr_data_source(self, geometry):
-        """ Return geometry wrapped as ogr data source. """
-        data_source = DRIVER_OGR_MEM.CreateDataSource('')
-        layer = data_source.CreateLayer('', self.sr)
-        layer_defn = layer.GetLayerDefn()
-        feature = ogr.Feature(layer_defn)
-        feature.SetGeometry(geometry)
-        layer.CreateFeature(feature)
-        return data_source
 
     def determine_floor_level(self, feature):
         """
@@ -110,19 +95,19 @@ class Rasterizer:
         # skip too large geometries
         xmin, xmax, ymin, ymax = geometry.GetEnvelope()
         if max(ymax - ymin, xmax - xmin) > 1000:
-            return False
+            return
 
         try:
             buffer_geometry = geometry.Buffer(1).Difference(geometry)
         except RuntimeError:
             # garbage geometry
-            return False
+            return
 
         # read raster data for the extent of the buffer geometry
         geo_transform = self.geo_transform.shifted(buffer_geometry)
         data = self.raster_group.read(buffer_geometry)
         if (data == self.no_data_value).all():
-            return False
+            return
         data.shape = (1,) + data.shape
 
         # rasterize the buffer geometry into a raster mask
@@ -138,11 +123,10 @@ class Rasterizer:
             floor = np.percentile(data[mask.nonzero()], 75)
             if self.floor:
                 floor += self.floor
-            feature[FLOOR_ATTRIBUTE] = floor
-            return True
+            return floor
         except IndexError:
             # no data points at all
-            return False
+            return
 
     def rasterize_region(self, index_feature):
         # prepare or abort
@@ -151,26 +135,35 @@ class Rasterizer:
             return
 
         # target array
-        target = self.target(index_feature)
+        target_dataset = self.create_target_dataset(index_feature)
 
         # fetch geometries from postgis
         data_source = self.postgis_source.get_data_source(
             table=self.table,
             geometry=index_feature.geometry(),
         )
-        layer = data_source[0]
+        source_layer = data_source[0]
+
+        # create a second layer for the succesfully determined geometries
+        sr = source_layer.GetSpatialRef()
+        target_layer = data_source.CreateLayer('target', srs=sr)
 
         # add a column for the floor level
         field_defn = ogr.FieldDefn(FLOOR_ATTRIBUTE, ogr.OFTReal)
-        layer.CreateField(field_defn)
-        any_computed = False
+        target_layer.CreateField(field_defn)
+        target_layer_defn = target_layer.GetLayerDefn()
 
         # compute floor levels
-        feature_count = layer.GetFeatureCount()
+        any_computed = False
+        feature_count = source_layer.GetFeatureCount()
         for i in range(feature_count):
-            bag_feature = layer[i]
-            if self.determine_floor_level(feature=bag_feature):
-                layer.SetFeature(bag_feature)
+            bag_feature = source_layer[i]
+            floor_level = self.determine_floor_level(feature=bag_feature)
+            if floor_level is not None:
+                target_feature = ogr.Feature(target_layer_defn)
+                target_feature.SetGeometry(bag_feature.geometry())
+                target_feature[FLOOR_ATTRIBUTE] = floor_level
+                target_layer.CreateFeature(target_feature)
                 any_computed = True
 
         # do not write an empty geotiff
@@ -179,12 +172,12 @@ class Rasterizer:
 
         # rasterize
         options = ['attribute=%s' % FLOOR_ATTRIBUTE]
-        gdal.RasterizeLayer(target, [1], layer, options=options)
+        gdal.RasterizeLayer(target_dataset, [1], target_layer, options=options)
 
         # save
         options = ['compress=deflate']
         os.makedirs(dirname(path), exist_ok=True)
-        DRIVER_GDAL_GTIFF.CreateCopy(path, target, options=options)
+        DRIVER_GDAL_GTIFF.CreateCopy(path, target_dataset, options=options)
 
 
 def bag2tif(index_path, part, **kwargs):
