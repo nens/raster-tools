@@ -3,6 +3,12 @@
 """
 Extract a laz file for a specific polygon from an indexed pointcloud
 collection.
+
+Uses external LASTools las2las and las2exe:
+
+- download https://rapidlasso.com/lastools/
+- unzip, and in the LAStools directory, run 'make'
+- make sure the LAStools/bin is on the path, or symlink to /usr/local/bin
 """
 
 import argparse
