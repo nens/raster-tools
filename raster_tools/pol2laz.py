@@ -19,6 +19,7 @@ import subprocess
 import numpy as np
 
 from raster_tools import datasets
+from raster_tools import datasources
 from raster_tools import gdal
 from raster_tools import ogr
 from raster_tools import osr
@@ -100,7 +101,7 @@ def pol2laz(index_path, point_path, source_path, target_path, attribute):
     except OSError:
         pass
 
-    for feature in layer:
+    for feature in datasources.iter_layer(layer):
         # name
         try:
             name = feature[attribute]

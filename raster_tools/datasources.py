@@ -29,14 +29,13 @@ class PartialDataSource(object):  # pragma: no cover
 
     def __len__(self):
         return self.layer.GetFeatureCount()
-    
+
     def query(self, geometry):
         """ Return generator of features with geometry as spatial filter. """
         self.layer.SetSpatialFilter(geometry)
         for fid in range(len(self)):
             yield self.layer[fid]
         self.layer.SetSpatialFilter(None)
-
 
     def select(self, text):
         """ Return generator of features for text, e.g. '2/5' """
@@ -114,3 +113,9 @@ class Layer(object):
 
     def __exit__(self, exc_type, exc_value, traceback):
         pass
+
+
+def iter_layer(layer):
+    """ Pygdal has a bug that doesn't allow iterating layers. """
+    for i in range(layer.GetFeatureCount()):
+        yield layer.GetFeature(i)
