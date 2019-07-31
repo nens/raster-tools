@@ -47,10 +47,12 @@ setup(name='raster-tools',
               # --------------------------------------------------------------
               # ahn3
               'ahn3-download      = raster_tools.ahn3.download:main',
+              # analysis
+              # 'upstream           = raster_tools.upstream:main', # await chk
               # modeling and extraction
               'extract            = raster_tools.extract:main',
               'rextract           = raster_tools.rextract:main',
-              # 'vselect            = raster_tools.vselect:main',
+              # 'vselect            = raster_tools.vselect:main',  # await ack
               # modification
               'fillnodata         = raster_tools.fill.fill:main',
               'rebase             = raster_tools.rebase:main',

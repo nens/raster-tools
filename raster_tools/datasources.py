@@ -29,6 +29,14 @@ class PartialDataSource(object):  # pragma: no cover
 
     def __len__(self):
         return self.layer.GetFeatureCount()
+    
+    def query(self, geometry):
+        """ Return generator of features with geometry as spatial filter. """
+        self.layer.SetSpatialFilter(geometry)
+        for fid in range(len(self)):
+            yield self.layer[fid]
+        self.layer.SetSpatialFilter(None)
+
 
     def select(self, text):
         """ Return generator of features for text, e.g. '2/5' """
@@ -52,7 +60,7 @@ class TargetDataSource(object):  # pragma: no cover
         template_sr = template_layer.GetSpatialRef()
 
         # create or replace shape
-        driver = ogr.GetDriverByName(b'ESRI Shapefile')
+        driver = ogr.GetDriverByName('ESRI Shapefile')
         self.dataset = driver.CreateDataSource(str(path))
         layer_name = os.path.basename(path)
         self.layer = self.dataset.CreateLayer(layer_name, template_sr)

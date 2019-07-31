@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class Router:
     root = 'https://geodata.nationaalgeoregister.nl/ahn3/extract'
     # root = 'http://localhost:8000'
-    curl = 'curl --fail --output {path} --retry 3 {url}'
+    curl = 'curl --fail --output {path} --retry 3 --max-time 1800 {url}'
 
     names = (
         # ('laz', 'ahn3_laz/C_', '.laz'),
