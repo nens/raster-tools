@@ -82,7 +82,7 @@ class Fetcher(object):
     def fetch(self, geometry):
         """ Fetch points using index and las2txt command. """
         self.layer.SetSpatialFilter(geometry)
-        units = [f['unit'] for f in self.layer]
+        units = [f['unit'] for f in datasources.iter_layer(self.layer)]
         paths = ' '.join([self.path.format(u) for u in units])
         extent = self._extent(geometry)
         command = self.command.format(paths, extent)
