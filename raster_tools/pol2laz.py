@@ -119,8 +119,11 @@ def pol2laz(index_path, point_path, source_path, target_path, attribute):
         laz_path = os.path.join(target_path, name + '.laz')
         template = 'las2las -stdin -itxt -iparse xyz -o {}'
         command = template.format(laz_path)
-        process = subprocess.Popen(shlex.split(command),
-                                   stdin=subprocess.PIPE)
+        process = subprocess.Popen(
+	    shlex.split(command),
+            stdin=subprocess.PIPE,
+            universal_newlines=True,
+        )
         process.communicate(text)
 
 

@@ -117,5 +117,8 @@ class Layer(object):
 
 def iter_layer(layer):
     """ Pygdal has a bug that doesn't allow iterating layers. """
-    for i in range(layer.GetFeatureCount()):
-        yield layer.GetFeature(i)
+    feature = layer.GetNextFeature()
+    while feature is not None:
+        yield feature
+        feature = layer.GetNextFeature()
+    layer.ResetReading()
