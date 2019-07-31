@@ -5,11 +5,6 @@ Extract a laz file for a specific polygon from an indexed pointcloud
 collection.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import os
 import shlex
@@ -23,33 +18,33 @@ from raster_tools import ogr
 from raster_tools import osr
 from raster_tools import vectors
 
-PROJECTION = osr.GetUserInputAsWKT(str('epsg:28992'))
-MEM_DRIVER = ogr.GetDriverByName(str('Memory'))
+PROJECTION = osr.GetUserInputAsWKT('epsg:28992')
+MEM_DRIVER = ogr.GetDriverByName('Memory')
 NO_DATA_VALUE = np.finfo('f4').min.item()
 SR = osr.SpatialReference(PROJECTION)
 
 
 def clip(kwargs, geometry):
-        """ Clip kwargs in place. """
-        # do not touch original kwargs
-        kwargs = kwargs.copy()
-        array = kwargs.pop('array')
-        mask = np.ones_like(array, 'u1')
+    """ Clip kwargs in place. """
+    # do not touch original kwargs
+    kwargs = kwargs.copy()
+    array = kwargs.pop('array')
+    mask = np.ones_like(array, 'u1')
 
-        # create an ogr datasource
-        source = MEM_DRIVER.CreateDataSource('')
-        layer = source.CreateLayer(str(''), SR)
-        defn = layer.GetLayerDefn()
-        feature = ogr.Feature(defn)
-        feature.SetGeometry(geometry)
-        layer.CreateFeature(feature)
+    # create an ogr datasource
+    source = MEM_DRIVER.CreateDataSource('')
+    layer = source.CreateLayer('', SR)
+    defn = layer.GetLayerDefn()
+    feature = ogr.Feature(defn)
+    feature.SetGeometry(geometry)
+    layer.CreateFeature(feature)
 
-        # clip
-        with datasets.Dataset(mask, **kwargs) as dataset:
-            gdal.RasterizeLayer(dataset, [1], layer, burn_values=[0])
+    # clip
+    with datasets.Dataset(mask, **kwargs) as dataset:
+        gdal.RasterizeLayer(dataset, [1], layer, burn_values=[0])
 
-        # alter array with result
-        array[mask.astype('b1')] = NO_DATA_VALUE
+    # alter array with result
+    array[mask.astype('b1')] = NO_DATA_VALUE
 
 
 class Fetcher(object):
@@ -80,7 +75,7 @@ class Fetcher(object):
     def fetch(self, geometry):
         """ Fetch points using index and las2txt command. """
         self.layer.SetSpatialFilter(geometry)
-        units = [f[str('unit')] for f in self.layer]
+        units = [f['unit'] for f in self.layer]
         paths = ' '.join([self.path.format(u) for u in units])
         extent = self._extent(geometry)
         command = self.command.format(paths, extent)
@@ -102,7 +97,7 @@ def pol2laz(index_path, point_path, source_path, target_path, attribute):
     for feature in layer:
         # name
         try:
-            name = feature[str(attribute)]
+            name = feature[attribute]
         except ValueError:
             message = 'No attribute "{}" found in selection datasource.'
             print(message.format(attribute))

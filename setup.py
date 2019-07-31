@@ -58,6 +58,8 @@ setup(name='raster-tools',
               'rebase             = raster_tools.rebase:main',
               # organization
               'retile             = raster_tools.retile:main',
+              # pointclouds
+              'pol2laz            = raster_tools.pol2laz:main',
               # rasterization
               'bag2tif            = raster_tools.bag2tif:main',
               # ==============================================================
@@ -102,7 +104,6 @@ setup(name='raster-tools',
               # 'reindex            = raster_tools.reindex:main',
               # pointclouds
               # 'txt2tif            = raster_tools.txt2tif:main',
-              # 'pol2laz            = raster_tools.pol2laz:main',
               # 'roof               = raster_tools.roof:main',
               # rasterization
               # 'rasterize          = raster_tools.rasterize:main',
