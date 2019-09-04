@@ -17,6 +17,8 @@ Changelog of raster-tools
 
 - Update bag2tif.
 
+- Added rextract script to extract rasters from Lizard.
+
 
 0.3 (2018-06-07)
 ----------------
