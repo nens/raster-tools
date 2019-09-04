@@ -18,9 +18,9 @@ import argparse
 import contextlib
 import getpass
 import pathlib
+import queue as queues
 import requests
 import tempfile
-import queue as queues
 import threading
 
 import numpy as np
