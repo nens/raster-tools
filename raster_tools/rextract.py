@@ -11,6 +11,13 @@ shapefile is ignored.
 If something goes wrong due to a problem on one of the lizard servers, it may
 be possible to resume the process by keeping the output folder intact and
 retrying exactly the same command.
+
+The password file (~/.rextract) should have appropriate permissions (chmod 600)
+and contain one username / password combination per line separated by a colon
+(:), for example:
+
+    bob:litigate daringly animosity available
+    alice:6mVfBFx5YzDacMF52fkS
 """
 from http.client import responses
 
@@ -20,6 +27,7 @@ import getpass
 import pathlib
 import queue as queues
 import requests
+import stat
 import tempfile
 import threading
 
@@ -34,6 +42,10 @@ from raster_tools import datasources
 from raster_tools import utils
 
 MAX_THREADS = 4  # if set to 0 there will be no limit on the amount of threads
+
+# password file
+PWD_PATH = pathlib.Path.home() / '.rextract'
+PWD_MODE = '-rw-------'
 
 # urls and the like
 USER_AGENT = 'Nelen-Schuurmans/Raster-Tools/Rextract'
@@ -388,6 +400,28 @@ class RasterExtraction:
         filler_thread.join()
 
 
+def readpass(username):
+    """
+    Return password or None.
+
+    :param username: Lizard username
+
+    Attempt to read password for username from the password file. Check if the
+    file has appropriate permissions.
+    """
+    if not PWD_PATH.exists():
+        return
+    if stat.filemode(PWD_PATH.stat().st_mode) != PWD_MODE:
+        msg = 'Password file %s exists, but the filemode should be "%s"'
+        print(msg % (PWD_PATH, PWD_MODE))
+        return
+    with PWD_PATH.open() as f:
+        for line in f:
+            key, value = line.strip().split(':', maxsplit=1)
+            if key == username:
+                return value
+
+
 def rextract(shape_path, output_path, username, attribute, srs, **kwargs):
     """
     Prepare and extract for each feature.
@@ -397,8 +431,12 @@ def rextract(shape_path, output_path, username, attribute, srs, **kwargs):
         # no login
         session = requests
     else:
+        # obtain password
+        password = readpass(username)
+        if password is None:
+            password = getpass.getpass('password for %s: ' % username)
+
         # login, might be needed for every thread...
-        password = getpass.getpass('password for %s: ' % username)
         session = requests.Session()
         session.post(
             url=LOGIN_URL % kwargs['subdomain'],
