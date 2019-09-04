@@ -2,7 +2,13 @@ Changelog of raster-tools
 ===================================================
 
 
-0.4 (unreleased)
+0.5 (unreleased)
+----------------
+
+- Nothing changed yet.
+
+
+0.4 (2019-09-04)
 ----------------
 
 - Replaced buildout with pipenv.
@@ -16,6 +22,8 @@ Changelog of raster-tools
 - Modify extract for a specific task.
 
 - Update bag2tif.
+
+- Added rextract script to extract rasters from Lizard.
 
 
 0.3 (2018-06-07)
