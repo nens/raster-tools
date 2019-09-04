@@ -2,7 +2,7 @@ Changelog of raster-tools
 ===================================================
 
 
-0.4 (unreleased)
+0.4 (2019-09-04)
 ----------------
 
 - Replaced buildout with pipenv.
