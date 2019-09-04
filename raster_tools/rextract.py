@@ -412,8 +412,9 @@ def readpass(username):
     if not PWD_PATH.exists():
         return
     if stat.filemode(PWD_PATH.stat().st_mode) != PWD_MODE:
-        msg = 'Password file %s exists, but the filemode should be "%s"'
+        msg = "Password file %s exists, but the filemode should be '%s'."
         print(msg % (PWD_PATH, PWD_MODE))
+        print("Execute 'chmod 600 ~/.rextract' to correct the permissions.")
         return
     with PWD_PATH.open() as f:
         for line in f:
