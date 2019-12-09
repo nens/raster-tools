@@ -150,7 +150,9 @@ class Exchange(object):
     def save(self):
         """ Save. """
         # prepare dirs
-        os.makedirs(dirname(self.target_path), exist_ok=True)
+        subdir = dirname(self.target_path)
+        if subdir:
+            os.makedirs(subdir, exist_ok=True)
 
         # write tiff
         array = self.target[np.newaxis]
