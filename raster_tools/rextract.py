@@ -58,9 +58,6 @@ DTYPES = {'u1': gdal.GDT_Byte,
           'i4': gdal.GDT_Int32,
           'f4': gdal.GDT_Float32}
 
-# polygon template
-POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
-
 # argument defaults
 TIMESTAMP = '1970-01-01T00:00:00Z'
 ATTRIBUTE = 'name'
@@ -132,15 +129,15 @@ class Index:
         y2 = min(H, (y + 1) * h)
         return x1, y1, x2, y2
 
-    def _get_geom(self, indices):
-        """ Return WKT Polygon for a rectangle. """
+    def _get_bbox(self, indices):
+        """ Return bbox tuple for a rectangle. """
         u1, v1, u2, v2 = indices
         p, a, b, q, c, d = self.geo_transform
         x1 = p + a * u1 + b * v1
         y1 = q + c * u1 + d * v1
         x2 = p + a * u2 + b * v2
         y2 = q + c * u2 + d * v2
-        return POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
+        return x1, y1, x2, y2
 
     def __len__(self):
         return len(self.indices[0])
@@ -154,9 +151,9 @@ class Index:
         for serial in range(start, len(self) + 1):
             x1, y1, x2, y2 = indices = self._get_indices(serial - 1)
             width, height, origin = x2 - x1, y2 - y1, (x1, y1)
-            geom = self._get_geom(indices)
+            bbox = self._get_bbox(indices)
             yield Chunk(
-                geom=geom,
+                bbox=bbox,
                 width=width,
                 height=height,
                 origin=origin,
@@ -269,9 +266,9 @@ class Target:
 
 
 class Chunk(object):
-    def __init__(self, geom, width, height, origin, serial):
+    def __init__(self, bbox, width, height, origin, serial):
         # for request
-        self.geom = geom
+        self.bbox = bbox
         self.width = width
         self.height = height
 
@@ -289,7 +286,7 @@ class Chunk(object):
             'params': {
                 'srs': srs,
                 'time': time,
-                'geom': self.geom,
+                'bbox': self.bbox,
                 'width': self.width,
                 'height': self.height,
                 'format': 'geotiff',
