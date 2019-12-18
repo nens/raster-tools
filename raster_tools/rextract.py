@@ -134,9 +134,9 @@ class Index:
         u1, v1, u2, v2 = indices
         p, a, b, q, c, d = self.geo_transform
         x1 = p + a * u1 + b * v1
-        y1 = q + c * u1 + d * v1
+        y2 = q + c * u1 + d * v1
         x2 = p + a * u2 + b * v2
-        y2 = q + c * u2 + d * v2
+        y1 = q + c * u2 + d * v2
         return '%s,%s,%s,%s' % (x1, y1, x2, y2)
 
     def __len__(self):
