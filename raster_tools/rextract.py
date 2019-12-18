@@ -284,9 +284,9 @@ class Chunk(object):
             'url': API_URL % subdomain + uuid + '/data/',
             'headers': {'User-Agent': USER_AGENT},
             'params': {
-                'srs': srs,
                 'time': time,
                 'bbox': self.bbox,
+                'projection': srs,
                 'width': self.width,
                 'height': self.height,
                 'format': 'geotiff',
