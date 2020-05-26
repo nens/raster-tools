@@ -12,11 +12,14 @@ If something goes wrong due to a problem on one of the lizard servers, it may
 be possible to resume the process by keeping the output folder intact and
 retrying exactly the same command.
 """
+
 from http.client import responses
+from time import sleep
 
 import argparse
 import contextlib
 import getpass
+import http
 import pathlib
 import requests
 import tempfile
@@ -65,6 +68,12 @@ SRS = 'EPSG:28992'
 CELLSIZE = 0.5
 DTYPE = 'f4'
 SUBDOMAIN = 'demo'
+
+# sleep and retry
+STATUS_RETRY_SECONDS = {
+    http.HTTPStatus.SERVICE_UNAVAILABLE: 10,
+    http.HTTPStatus.GATEWAY_TIMEOUT: 0,
+}
 
 
 class Indicator:
@@ -367,11 +376,11 @@ class RasterExtraction:
                 self.indicator.set(completed)
                 break
 
-            # if the chunk failed due to a gateway timeout, try once again here
-            # in the main thread, blocking everything else
-            for i in range(1):
-                if chunk.response.status_code == 504:
-                    chunk.fetch(**fetch_kwargs)
+            # if the chunk failed, try again here
+            seconds = STATUS_RETRY_SECONDS.get(chunk.response.status_code)
+            if seconds is not None:
+                sleep(seconds)
+                chunk.fetch(**fetch_kwargs)
 
             # abort on errors
             if chunk.response.status_code != 200:
