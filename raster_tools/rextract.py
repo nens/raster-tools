@@ -342,14 +342,17 @@ class RasterExtraction:
 
         # run a thread that starts putting chunks with threads in a queue
         queue = queues.Queue(maxsize=MAX_THREADS - 1)
-        filler_kwargs = {
-            'chunks': self.target.get_chunks(start=completed + 1),
+        fetch_kwargs = {
             'subdomain': subdomain,
             'session': session,
-            'queue': queue,
             'uuid': uuid,
             'time': time,
             'srs': srs,
+        }
+        filler_kwargs = {
+            'chunks': self.target.get_chunks(start=completed + 1),
+            'queue': queue,
+            **fetch_kwargs,
         }
         filler_thread = threading.Thread(target=filler, kwargs=filler_kwargs)
         filler_thread.daemon = True
@@ -363,6 +366,12 @@ class RasterExtraction:
             except TypeError:
                 self.indicator.set(completed)
                 break
+
+            # if the chunk failed due to a gateway timeout, try once again here
+            # in the main thread, blocking everything else
+            for i in range(1):
+                if chunk.response.status_code == 504:
+                    chunk.fetch(**fetch_kwargs)
 
             # abort on errors
             if chunk.response.status_code != 200:
