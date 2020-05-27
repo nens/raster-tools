@@ -24,8 +24,5 @@ jobs:
       - name: Install python packages
         run: docker-compose run --rm lib pipenv install --deploy --dev
 
-      - name: Check package versions
-        run: docker-compose run --rm lib pipenv check
-
       - name: Test
         run: docker-compose run --rm lib pipenv run nosetests
