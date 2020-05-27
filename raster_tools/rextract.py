@@ -538,12 +538,19 @@ def get_parser():
 def main():
     """ Call command with args from parser. """
     # create a lockfile
-    lockpath = "/tmp/rextract.pid"
-    try:
-        fd = os.open(lockpath, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except OSError:
-        print("Someone is already running rextract.")
-        print("Running 'ps aux | grep rextract' might tell you who it is.")
+    lockpaths = (
+        "/tmp/rextract1.pid",
+        "/tmp/rextract2.pid",
+    )
+    for lockpath in lockpaths:
+        try:
+            fd = os.open(lockpath, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except OSError:
+            continue
+        break
+    else:
+        print("Too many running instances of rextract.")
+        print("Run 'ps aux | grep rextract' to find out.")
         return
 
     # write pid to lockfile
