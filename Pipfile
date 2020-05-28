@@ -16,4 +16,4 @@ threedigrid = {extras = ["geo", "results"]}
 "e1839a8" = {editable = true, path = "."}
 
 [requires]
-python_version = "3.5"
+python_version = "3"
