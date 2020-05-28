@@ -2,7 +2,7 @@ Changelog of raster-tools
 ===================================================
 
 
-0.5 (unreleased)
+0.5 (2020-05-28)
 ----------------
 
 - Replaced geom by bbox in rextract requests.
