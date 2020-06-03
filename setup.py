@@ -53,6 +53,7 @@ setup(name='raster-tools',
               'extract            = raster_tools.extract:main',
               'rextract           = raster_tools.rextract:main',
               'vselect            = raster_tools.vselect:main',
+              'line-up            = raster_tools.line_up:main',
               # modification
               'fillnodata         = raster_tools.fill.fill:main',
               'rebase             = raster_tools.rebase:main',
@@ -76,8 +77,6 @@ setup(name='raster-tools',
               # 'flow-acc           = raster_tools.flow.flow_acc:main',
               # 'flow-vec           = raster_tools.flow.flow_vec:main',
               # 'flow-rst           = raster_tools.flow.flow_rst:main',
-              # modeling and extraction
-              # 'line-up            = raster_tools.line_up:main',
               # modification
               # 'hillshade          = raster_tools.hillshade:main',
               # 'shadow             = raster_tools.shadow:main',
