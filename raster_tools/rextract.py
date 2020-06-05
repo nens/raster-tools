@@ -20,6 +20,7 @@ import argparse
 import contextlib
 import getpass
 import http
+import os
 import pathlib
 import requests
 import tempfile
@@ -536,4 +537,27 @@ def get_parser():
 
 def main():
     """ Call command with args from parser. """
-    rextract(**vars(get_parser().parse_args()))
+    # create a lockfile
+    lockpaths = (
+        "/tmp/rextract1.pid",
+        "/tmp/rextract2.pid",
+    )
+    for lockpath in lockpaths:
+        try:
+            fd = os.open(lockpath, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except OSError:
+            continue
+        break
+    else:
+        print("Too many running instances of rextract.")
+        print("Run 'ps aux | grep rextract' to find out.")
+        return
+
+    # write pid to lockfile
+    with os.fdopen(fd, 'w') as lockfile:
+        lockfile.write(str(os.getpid()) + '\n')
+
+    try:
+        rextract(**vars(get_parser().parse_args()))
+    finally:
+        os.remove(lockpath)
