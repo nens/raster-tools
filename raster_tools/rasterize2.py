@@ -155,7 +155,7 @@ class Raster(object):
 class Rasterizer(object):
     TEMPLATE = re.sub(' +', ' ', """
         SELECT
-            ST_AsBinary(ST_Force2D(geometry)), value
+            ST_AsBinary(ST_Force2D(ST_CurveToLine(geometry))), value
         FROM
             ({query}) as query
         WHERE
