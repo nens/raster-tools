@@ -29,6 +29,7 @@ import getpass
 import logging
 import os
 import re
+import string
 
 import psycopg2
 import numpy as np
@@ -164,10 +165,35 @@ class Rasterizer(object):
 
     def __init__(self, connection, queryfilepath):
         self.connection = connection
+        self.queries = []
+        required = {'from', 'geometry', 'select', 'value'}
+        trans = string.maketrans("(),", "   ")
+        incomplete = []
         with open(queryfilepath) as queryfile:
-            self.queries = [query.strip()
-                            for query in queryfile.readlines()
-                            if not query.strip().startswith('--')]
+            lines = queryfile.readlines()
+        for line in lines:
+            # skip sql style commented lines
+            if line.strip().startswith('--'):
+                continue
+            # skip empty lines
+            if not line.strip():
+                continue
+            # skip but remember incomplete queries
+            if not set(line.translate(trans).lower().split()) >= required:
+                incomplete.append(line)
+                continue
+            # warn if function calls seem present
+            if "(" in line or ")" in line:
+                print(
+                    "Some queries seem to contain function calls, "
+                    "possibly preventing the use of spatial indexes."
+                )
+            self.queries.append(line)
+        if incomplete:
+            print("The following queries are incomplete:")
+            for line in incomplete:
+                print(line.strip())
+            exit()
 
     def rasterize(self, tile):
         logger.info(80 * '-')
