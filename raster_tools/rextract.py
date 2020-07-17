@@ -19,11 +19,15 @@ and contain one username / password combination per line separated by a colon
     bob:litigate daringly animosity available
     alice:6mVfBFx5YzDacMF52fkS
 """
+
 from http.client import responses
+from time import sleep
 
 import argparse
 import contextlib
 import getpass
+import http
+import os
 import pathlib
 import queue as queues
 import requests
@@ -70,9 +74,6 @@ DTYPES = {'u1': gdal.GDT_Byte,
           'i4': gdal.GDT_Int32,
           'f4': gdal.GDT_Float32}
 
-# polygon template
-POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
-
 # argument defaults
 TIMESTAMP = '1970-01-01T00:00:00Z'
 ATTRIBUTE = 'name'
@@ -80,6 +81,12 @@ SRS = 'EPSG:28992'
 CELLSIZE = 0.5
 DTYPE = 'f4'
 SUBDOMAIN = 'demo'
+
+# sleep and retry
+STATUS_RETRY_SECONDS = {
+    http.HTTPStatus.SERVICE_UNAVAILABLE: 10,
+    http.HTTPStatus.GATEWAY_TIMEOUT: 0,
+}
 
 
 class Indicator:
@@ -144,15 +151,15 @@ class Index:
         y2 = min(H, (y + 1) * h)
         return x1, y1, x2, y2
 
-    def _get_geom(self, indices):
-        """ Return WKT Polygon for a rectangle. """
+    def _get_bbox(self, indices):
+        """ Return bbox tuple for a rectangle. """
         u1, v1, u2, v2 = indices
         p, a, b, q, c, d = self.geo_transform
         x1 = p + a * u1 + b * v1
-        y1 = q + c * u1 + d * v1
+        y2 = q + c * u1 + d * v1
         x2 = p + a * u2 + b * v2
-        y2 = q + c * u2 + d * v2
-        return POLYGON.format(x1=x1, y1=y1, x2=x2, y2=y2)
+        y1 = q + c * u2 + d * v2
+        return '%s,%s,%s,%s' % (x1, y1, x2, y2)
 
     def __len__(self):
         return len(self.indices[0])
@@ -166,9 +173,9 @@ class Index:
         for serial in range(start, len(self) + 1):
             x1, y1, x2, y2 = indices = self._get_indices(serial - 1)
             width, height, origin = x2 - x1, y2 - y1, (x1, y1)
-            geom = self._get_geom(indices)
+            bbox = self._get_bbox(indices)
             yield Chunk(
-                geom=geom,
+                bbox=bbox,
                 width=width,
                 height=height,
                 origin=origin,
@@ -281,9 +288,9 @@ class Target:
 
 
 class Chunk(object):
-    def __init__(self, geom, width, height, origin, serial):
+    def __init__(self, bbox, width, height, origin, serial):
         # for request
-        self.geom = geom
+        self.bbox = bbox
         self.width = width
         self.height = height
 
@@ -299,9 +306,9 @@ class Chunk(object):
             'url': API_URL % subdomain + uuid + '/data/',
             'headers': {'User-Agent': USER_AGENT},
             'params': {
-                'srs': srs,
                 'time': time,
-                'geom': self.geom,
+                'bbox': self.bbox,
+                'projection': srs,
                 'width': self.width,
                 'height': self.height,
                 'format': 'geotiff',
@@ -357,14 +364,17 @@ class RasterExtraction:
 
         # run a thread that starts putting chunks with threads in a queue
         queue = queues.Queue(maxsize=MAX_THREADS - 1)
-        filler_kwargs = {
-            'chunks': self.target.get_chunks(start=completed + 1),
+        fetch_kwargs = {
             'subdomain': subdomain,
             'session': session,
-            'queue': queue,
             'uuid': uuid,
             'time': time,
             'srs': srs,
+        }
+        filler_kwargs = {
+            'chunks': self.target.get_chunks(start=completed + 1),
+            'queue': queue,
+            **fetch_kwargs,
         }
         filler_thread = threading.Thread(target=filler, kwargs=filler_kwargs)
         filler_thread.daemon = True
@@ -378,6 +388,12 @@ class RasterExtraction:
             except TypeError:
                 self.indicator.set(completed)
                 break
+
+            # if the chunk failed, try again here
+            seconds = STATUS_RETRY_SECONDS.get(chunk.response.status_code)
+            if seconds is not None:
+                sleep(seconds)
+                chunk.fetch(**fetch_kwargs)
 
             # abort on errors
             if chunk.response.status_code != 200:
@@ -560,4 +576,27 @@ def get_parser():
 
 def main():
     """ Call command with args from parser. """
-    rextract(**vars(get_parser().parse_args()))
+    # create a lockfile
+    lockpaths = (
+        "/tmp/rextract1.pid",
+        "/tmp/rextract2.pid",
+    )
+    for lockpath in lockpaths:
+        try:
+            fd = os.open(lockpath, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except OSError:
+            continue
+        break
+    else:
+        print("Too many running instances of rextract.")
+        print("Run 'ps aux | grep rextract' to find out.")
+        return
+
+    # write pid to lockfile
+    with os.fdopen(fd, 'w') as lockfile:
+        lockfile.write(str(os.getpid()) + '\n')
+
+    try:
+        rextract(**vars(get_parser().parse_args()))
+    finally:
+        os.remove(lockpath)

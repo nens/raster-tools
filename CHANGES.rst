@@ -2,10 +2,16 @@ Changelog of raster-tools
 ===================================================
 
 
-0.5 (unreleased)
+0.6 (unreleased)
 ----------------
 
 - Added support for a password file to rextract.
+
+
+0.5 (2020-05-28)
+----------------
+
+- Replaced geom by bbox in rextract requests.
 
 
 0.4 (2019-09-04)

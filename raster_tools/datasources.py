@@ -1,11 +1,6 @@
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import os
 
 from osgeo import gdal
@@ -60,7 +55,7 @@ class TargetDataSource(object):  # pragma: no cover
 
         # create or replace shape
         driver = ogr.GetDriverByName('ESRI Shapefile')
-        self.dataset = driver.CreateDataSource(str(path))
+        self.dataset = driver.CreateDataSource(path)
         layer_name = os.path.basename(path)
         self.layer = self.dataset.CreateLayer(layer_name, template_sr)
 
