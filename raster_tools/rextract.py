@@ -576,25 +576,40 @@ def get_parser():
 
 def main():
     """ Call command with args from parser. """
-    # create a lockfile
     lockpaths = (
         "/tmp/rextract1.pid",
         "/tmp/rextract2.pid",
     )
     for lockpath in lockpaths:
+        # check for (obsolete) lockfile
         try:
-            fd = os.open(lockpath, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except OSError:
+            with open(lockpath) as f:
+                pid = int(f.read())
+        except FileNotFoundError:
+            pass
+        except ValueError:
+            os.remove(lockpath)
+        else:
+            # https://stackoverflow.com/questions/568271
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                os.remove(lockpath)
+            else:
+                # process is alive, on to the next lockpath
+                continue
+        # make a new lockfile, safely
+        try:
+            with open(lockpath, "x") as f:
+                f.write(str(os.getpid()) + '\n')
+        except FileExistsError:
+            # try another
             continue
         break
     else:
         print("Too many running instances of rextract.")
         print("Run 'ps aux | grep rextract' to find out.")
         return
-
-    # write pid to lockfile
-    with os.fdopen(fd, 'w') as lockfile:
-        lockfile.write(str(os.getpid()) + '\n')
 
     try:
         rextract(**vars(get_parser().parse_args()))
