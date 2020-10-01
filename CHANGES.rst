@@ -15,6 +15,8 @@ Changelog of raster-tools
 
 - Line-up: Take into account the 'no data' value when averaging results.
 
+- Log use of scripts to be ported to py3.
+
 
 0.3 (2018-06-07)
 ----------------
