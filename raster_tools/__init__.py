@@ -7,8 +7,8 @@ from __future__ import absolute_import
 from __future__ import division
 
 from datetime import datetime as Datetime
-from os import environ
-from os.path import basename
+from os import chmod, environ
+from os.path import basename, exists
 from sys import argv
 
 from osgeo import gdal
@@ -25,5 +25,13 @@ script = basename(argv[0])
 time = Datetime.now().strftime("%Y:%m:%d %H:%M:%S")
 logpath = "/var/tmp/raster-tools-py2.log"
 record = ",".join([time, user, script])
+
+# create and set permissions if needed
+if not exists(logpath):
+    with open(logpath, "w") as f:
+        pass
+    chmod(logpath, 0o666)
+
+# append the record
 with open(logpath, "a") as f:
     f.write(record + "\n")
