@@ -37,12 +37,12 @@ class Retiler(object):
 
         self.target_path = target_path
 
-    def retile(self, feature):
+    def retile(self, feature, decimals):
         """ Retile to feature. """
         # target path
         name = feature[str('name')]
         path = os.path.join(self.target_path,
-                            name[:3],
+                            name.lstrip('i')[0:3],
                             '{}.tif'.format(name))
         if os.path.exists(path):
             return
@@ -54,8 +54,15 @@ class Retiler(object):
             values = self.group.read(geometry)
         except TypeError:
             return
-        if (values == self.no_data_value).all():
+
+        # skip empty
+        active = (values != self.no_data_value)
+        if not active.any():
             return
+
+        # round
+        if decimals is not None:
+            values[active] = values[active].round(decimals=decimals)
 
         # create directory
         try:
@@ -73,7 +80,7 @@ class Retiler(object):
             driver.CreateCopy(path, dataset, options=options)
 
 
-def retile(index_path, source_path, target_path, part):
+def retile(index_path, source_path, target_path, part, decimals):
     """ Convert all features. """
     index = datasources.PartialDataSource(index_path)
     if part is not None:
@@ -82,7 +89,7 @@ def retile(index_path, source_path, target_path, part):
     retiler = Retiler(source_path=source_path, target_path=target_path)
 
     for feature in index:
-        retiler.retile(feature)
+        retiler.retile(feature=feature, decimals=decimals)
 
 
 def get_parser():
@@ -102,6 +109,12 @@ def get_parser():
         'target_path',
         metavar='TARGET',
         help='target directory',
+    )
+    parser.add_argument(
+        '-r', '--round',
+        type=int,
+        dest='decimals',
+        help='Amount of decimals for rounding. Default: no rounding.',
     )
     parser.add_argument(
         '-p', '--part',
