@@ -43,26 +43,26 @@ SR = osr.SpatialReference(PROJECTION)
 
 
 def clip(kwargs, geometry):
-        """ Clip kwargs in place. """
-        # do not touch original kwargs
-        kwargs = kwargs.copy()
-        array = kwargs.pop('array')
-        mask = np.ones_like(array, 'u1')
+    """ Clip kwargs in place. """
+    # do not touch original kwargs
+    kwargs = kwargs.copy()
+    array = kwargs.pop('array')
+    mask = np.ones_like(array, 'u1')
 
-        # create an ogr datasource
-        source = MEM_DRIVER.CreateDataSource('')
-        layer = source.CreateLayer(str(''), SR)
-        defn = layer.GetLayerDefn()
-        feature = ogr.Feature(defn)
-        feature.SetGeometry(geometry)
-        layer.CreateFeature(feature)
+    # create an ogr datasource
+    source = MEM_DRIVER.CreateDataSource('')
+    layer = source.CreateLayer(str(''), SR)
+    defn = layer.GetLayerDefn()
+    feature = ogr.Feature(defn)
+    feature.SetGeometry(geometry)
+    layer.CreateFeature(feature)
 
-        # clip
-        with datasets.Dataset(mask, **kwargs) as dataset:
-            gdal.RasterizeLayer(dataset, [1], layer, burn_values=[0])
+    # clip
+    with datasets.Dataset(mask, **kwargs) as dataset:
+        gdal.RasterizeLayer(dataset, [1], layer, burn_values=[0])
 
-        # alter array with result
-        array[mask.astype('b1')] = NO_DATA_VALUE
+    # alter array with result
+    array[mask.astype('b1')] = NO_DATA_VALUE
 
 
 def rasterize(geometry, points):
@@ -184,7 +184,7 @@ def roof(index_path, point_path, source_path, target_path):
 
     for char, feature in zip(string.ascii_letters, layer):
         # if char not in 'mn':
-            # continue
+        #     continue
         geometry = feature.geometry()
         points = fetcher.fetch(geometry)
 

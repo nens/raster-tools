@@ -23,8 +23,8 @@ from raster_tools import gdal
 GTIF = gdal.GetDriverByName(str('gtiff'))
 
 COURSES = np.array([(64, 128, 1),
-                    (32,   0, 2),
-                    (16,   8, 4)], 'u1')
+                    (32, 0, 2),
+                    (16, 8, 4)], 'u1')
 
 INDICES = COURSES.nonzero()
 NUMBERS = COURSES[INDICES][np.newaxis, ...]

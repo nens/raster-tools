@@ -105,7 +105,9 @@ def filter_max_gradient(lines, nodes, threshold, timestamp=None):
     )]
     # compute length by transforming to RD. valid only in The Netherlands
     coords = lines.reproject_to(28992).line_coords
-    length = np.sqrt((coords[2] - coords[0]) ** 2 + (coords[3] - coords[1]) ** 2)
+    length = np.sqrt(
+        (coords[2] - coords[0]) ** 2 + (coords[3] - coords[1]) ** 2
+    )
     mask = length == 0
     length[mask] = 1
     grad = (s1_last - s1_first) / length
@@ -197,7 +199,8 @@ def classify_nodes(node_id_2d, groups, lines1d2d_active, lines1d2d_valid):
             if not group_is2d[0]:
                 continue
         else:
-            # check, it should be 2D as we included only 2D2D lines in the grouping
+            # check, it should be 2D as we included only 2D2D lines in the
+            # grouping
             if not group_is2d.all():
                 raise RuntimeError("1D nodes should not occur")
         # if this group has a valid 1D line, categorize as overlast
@@ -274,7 +277,6 @@ def run_single(path, min_flow_area, max_gradient):
     gr = GridH5ResultAdmin(os.path.join(path, GRIDADMIN_NAME),
                            os.path.join(path, RESULTS_NAME))
 
-
     lines2d2d_valid, lines1d2d_active, lines1d2d_valid = filter_lines(
         gr,
         min_flow_area=min_flow_area,
@@ -338,16 +340,16 @@ def command(path_piek, path_blok, path_out,
     # logical operations to generate "case_final"
     cell_data['case_final'] = np.full(cell_data['id'].size, '', dtype='S10')
     cell_data['case_final'][
-        (cell_data['case_blok'] == 'plas') |
-        (cell_data['case_piek'] == 'plas')
+        (cell_data['case_blok'] == 'plas')
+        | (cell_data['case_piek'] == 'plas')
     ] = 'plas'
     cell_data['case_final'][
-        (cell_data['case_blok'] == 'overlast') |
-        (cell_data['case_piek'] == 'overlast')
+        (cell_data['case_blok'] == 'overlast')
+        | (cell_data['case_piek'] == 'overlast')
     ] = 'overlast'
     cell_data['case_final'][
-        (cell_data['case_blok'] == 'modelfout') &
-        (cell_data['case_piek'] == 'modelfout')
+        (cell_data['case_blok'] == 'modelfout')
+        & (cell_data['case_piek'] == 'modelfout')
     ] = 'modelfout'
 
     logger.info("Writing shapefile at {}...".format(path_out))
@@ -371,15 +373,21 @@ def get_parser():
     )
     parser.add_argument(
         'path_piek',
-        help='Path to 3Di results that contain the "piek" simulation. The '
-             'files {} and {} have to be present in this directory.'.format(
-            RESULTS_NAME, GRIDADMIN_NAME),
+        help=(
+            'Path to 3Di results that contain the "piek" simulation. The '
+            'files {} and {} have to be present in this directory.'.format(
+                RESULTS_NAME, GRIDADMIN_NAME,
+            )
+        )
     )
     parser.add_argument(
         'path_blok',
-        help='Path to 3Di results that contain the "blok" simulation. The '
-             'files {} and {} have to be present in this directory.'.format(
-            RESULTS_NAME, GRIDADMIN_NAME),
+        help=(
+            'Path to 3Di results that contain the "blok" simulation. The '
+            'files {} and {} have to be present in this directory.'.format(
+                RESULTS_NAME, GRIDADMIN_NAME
+            )
+        )
     )
     parser.add_argument(
         'path_out',

@@ -52,7 +52,7 @@ def make_index(index_path, filter_path):
     else:
         checker = Checker(filter_path)
 
-    yrange = xrange(-56, 60)
+    yrange = range(-56, 60)
     total = len(yrange)
     ogr.TermProgress_nocb(0)
     for count, y in enumerate(yrange, 1):
@@ -100,6 +100,6 @@ def main():
     try:
         make_index(**kwargs)
         return 0
-    except:
+    except Exception:
         logger.exception('An exception has occurred.')
         return 1

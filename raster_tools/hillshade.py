@@ -46,9 +46,9 @@ def zevenbergen_thorne(array, resolution, altitude=45, azimuth=315):
     xx_plus_yy = x * x + y * y
     aspect = np.arctan2(y, x)
 
-    cang = (math.sin(alt) -
-            math.cos(alt) * zsf * np.sqrt(xx_plus_yy) *
-            np.sin(aspect - az)) / np.sqrt(1 + square_zsf * xx_plus_yy)
+    cang = (math.sin(alt)
+            - math.cos(alt) * zsf * np.sqrt(xx_plus_yy)
+            * np.sin(aspect - az)) / np.sqrt(1 + square_zsf * xx_plus_yy)
 
     return np.where(cang <= 0, 1, 1 + 254 * cang).astype('u1')
 
@@ -88,9 +88,9 @@ def other(array, resolution, altitude=45, azimuth=315):
     xx_plus_yy = x * x + y * y
     aspect = np.arctan2(y, x)
 
-    cang = (math.sin(alt) -
-            math.cos(alt) * zsf * np.sqrt(xx_plus_yy) *
-            np.sin(aspect - az)) / np.sqrt(1 + square_zsf * xx_plus_yy)
+    cang = (math.sin(alt)
+            - math.cos(alt) * zsf * np.sqrt(xx_plus_yy)
+            * np.sin(aspect - az)) / np.sqrt(1 + square_zsf * xx_plus_yy)
 
     return np.where(cang <= 0, 1, 1 + 254 * cang).astype('u1')
 
@@ -190,6 +190,6 @@ def main():
     try:
         hillshade(**kwargs)
         return 0
-    except:
+    except Exception:
         logger.exception('An exception has occurred.')
         return 1

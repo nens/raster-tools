@@ -8,7 +8,7 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
 
-from osgeo import gdal, ogr, gdal_array
+from osgeo import gdal, ogr
 
 import argparse
 import logging
@@ -155,7 +155,9 @@ def make_result(filepath_in, filepath_out):
     if os.path.isfile(filepath_out):
         os.remove(filepath_out)
     shp_out = shp_driver.CreateDataSource(filepath_out)
-    layer_out = shp_out.CreateLayer(layer_in.GetName(), layer_in.GetSpatialRef(), ogr.wkbPolygon)
+    layer_out = shp_out.CreateLayer(
+        layer_in.GetName(), layer_in.GetSpatialRef(), ogr.wkbPolygon,
+    )
     layer_definition = layer_in.GetLayerDefn()
     for i in range(layer_definition.GetFieldCount()):
         layer_out.CreateField(layer_definition.GetFieldDefn(i))
@@ -351,16 +353,16 @@ def get_parser():
         default='rasters/maxdepth_',
         dest='maxdepth_prefix',
         help=('Prefix of 6 maxdepth tiffiles (in meters). '
-              'The filenames ' + ', '.join(MAXDEPTH_TIFF_NAMES) +
-              ' will be prefixed by this. Default: "rasters/maxdepth_".'),
+              'The filenames ' + ', '.join(MAXDEPTH_TIFF_NAMES)
+              + ' will be prefixed by this. Default: "rasters/maxdepth_".'),
     )
     parser.add_argument(
         '-d', '--damage_prefix',
         default='rasters/damage_',
         dest='damage_prefix',
         help=('Prefix of  6 damage tiffiles (in euros). '
-              'The filenames ' + ', '.join(DAMAGE_TIFF_NAMES) +
-              ' will be prefixed by this. Default: "rasters/damage_".'),
+              'The filenames ' + ', '.join(DAMAGE_TIFF_NAMES)
+              + ' will be prefixed by this. Default: "rasters/damage_".'),
     )
     parser.add_argument(
         '-m', '--mask',

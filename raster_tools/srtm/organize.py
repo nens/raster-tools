@@ -67,7 +67,7 @@ def main():
     try:
         organize(**kwargs)
         return 0
-    except:
+    except Exception:
         logger.exception('An exception has occurred.')
         return 1
 

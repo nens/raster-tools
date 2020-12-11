@@ -40,11 +40,11 @@ class Meta(object):
         self.no_data_value = numpy_type(no_data_value)
 
     def __eq__(self, other):
-        return (self.width == other.width and
-                self.height == other.height and
-                self.data_type == other.data_type and
-                self.projection == other.projection and
-                self.geo_transform == other.geo_transform)
+        return (self.width == other.width
+                and self.height == other.height
+                and self.data_type == other.data_type
+                and self.projection == other.projection
+                and self.geo_transform == other.geo_transform)
 
 
 class Group(object):

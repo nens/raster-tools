@@ -990,9 +990,9 @@ def check_version():
     lines = url_file.read().decode('utf-8').split('\n')
     url_file.close()
 
-    for l in lines:
-        if l.startswith('VERSION ='):
-            remote_version = int(l.split('=')[-1].strip())
+    for line in lines:
+        if line.startswith('VERSION ='):
+            remote_version = int(line.split('=')[-1].strip())
             break
     if remote_version > VERSION:
         print('This script is outdated. Get the latest at:\n{}'.format(

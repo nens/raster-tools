@@ -24,8 +24,8 @@ from raster_tools import osr
 
 SHAPE = ogr.GetDriverByName(str('esri shapefile'))
 COURSES = np.array([(64, 128, 1),
-                    (32,   0, 2),
-                    (16,   8, 4)], 'u1')
+                    (32, 0, 2),
+                    (16, 8, 4)], 'u1')
 
 INDICES = COURSES.nonzero()
 NUMBERS = COURSES[INDICES][np.newaxis, ...]
@@ -109,13 +109,13 @@ def vectorize(direction, accumulation):
         for x in starts:
             if x in sinks:
                 continue
-            l = [x]
+            line = [x]
             while True:
                 x = flow[x]
-                l.append(x)
+                line.append(x)
                 if x in stops:
                     break
-            a = np.array(l)
+            a = np.array(line)
             yield lower, (a // width - 0.5, a % width - 0.5)  # pixel center
 
 

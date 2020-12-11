@@ -54,9 +54,9 @@ def reindex(source_path, target_path, size):
         for n, x in enumerate(xcorners):
             x1, y1, x2, y2 = x, y - size, x + size, y
             feature = ogr.Feature(target_layer_defn)
-            xname = (chars[n // (26 * 26)] +
-                     chars[(n // 26) % 26] +
-                     chars[n % 26] + '{:04.0f}'.format(n))
+            xname = (chars[n // (26 * 26)]
+                     + chars[(n // 26) % 26]
+                     + chars[n % 26] + '{:04.0f}'.format(n))
             feature[str('name')] = xname
             ring = ogr.Geometry(ogr.wkbLinearRing)
             ring.AddPoint_2D(x1, y1)

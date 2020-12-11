@@ -4,12 +4,6 @@
 Subtract all polygons in SHAPE2 from all polygons in SHAPE1, and
 place them in a new shape TARGET.
 """
-
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import logging
 import os
@@ -44,8 +38,7 @@ def command(shape1_path, shape2_path, target_path):
     for i in range(target_layer_defn.GetFieldCount()):
         target_field_defn = target_layer_defn.GetFieldDefn(i)
         target_layer.CreateField(target_field_defn)
-    
-    
+
     # main loop
     for feature1 in layer1:
         # print(feature1.items())
@@ -64,7 +57,7 @@ def command(shape1_path, shape2_path, target_path):
         feature1.SetGeometry(geometry1)
         target_layer.CreateFeature(feature1)
         ogr.TermProgress_nocb(1)
-    
+
     return 0
 
 
@@ -90,7 +83,7 @@ def main():
 
     try:
         return command(**kwargs)
-    except:
+    except Exception:
         logger.exception('An exception has occurred.')
 
 

@@ -137,7 +137,7 @@ def command(index_path, source_path, target_dir, attribute):
                     source_path, source_layer_name + '.qix',
                 )
             if os.path.exists(source_layer_index_path):
-                    continue
+                continue
             print('Creating spatial index on {}.'.format(source_layer_name))
             source_data_source.ExecuteSQL(
                 str('CREATE SPATIAL INDEX ON {}').format(source_layer_name),
@@ -389,10 +389,10 @@ class PGDataSource(object):
 
     def __iter__(self):
         for t in self.tables:
-            l = PGLayer(
+            lr = PGLayer(
                 connection=self.connection,
                 schema=self.schema,
                 table=t,
                 geom_column=self.geom_column
             )
-            yield l
+            yield lr

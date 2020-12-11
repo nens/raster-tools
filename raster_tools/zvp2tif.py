@@ -67,9 +67,11 @@ def rasterize(points):
     # index1 = np.uint32((points[:, 0] - p) / WIDTH)
     # array[0, index0, index1] = points[:, 2]
 
+    def rescale(x):
+        return (x - (xmin, ymin)) / (xmax - xmin, ymax - ymin)
+
     # using interpolation
     cells = np.indices((height, width)).transpose(1, 2, 0).reshape(-1, 2)
-    rescale = lambda x: (x - (xmin, ymin)) / (xmax - xmin, ymax - ymin)
     xi = rescale((p, q) + cells[:, ::-1] * (WIDTH, -HEIGHT))
     pts = rescale(points[:, :2])
     vals = points[:, 2]
@@ -127,7 +129,7 @@ def main():
         return command(**vars(get_parser().parse_args()))
     except SystemExit:
         raise  # argparse does this
-    except:
+    except Exception:
         logger.exception('An exception has occurred.')
 
 

@@ -166,7 +166,7 @@ def command(gardens_path, aerial_image_path,
             feature = ogr.Feature(target_layer.GetLayerDefn())
             feature.SetGeometry(geometry_garden)
             for key, value in attributes_garden.items():
-                        feature[str(key)] = value
+                feature[str(key)] = value
             feature[str('green_perc')] = greengarden_percentage
             feature[str('green_area')] = greengarden_area
             target_layer.CreateFeature(feature)
@@ -175,7 +175,7 @@ def command(gardens_path, aerial_image_path,
             os.remove(tmp_aerial_tif)
 
             # progress bar
-            ogr.TermProgress_nocb((count+1)/total)
+            ogr.TermProgress_nocb((count + 1) / total)
     return 0
 
 
@@ -183,11 +183,13 @@ def determine_green_factor(rgbt, m, min_green, max_green):
 
     fullgarden = rgbt[:, m].astype('f4')
     garden_size = max(fullgarden.shape[1], 1)
-    greenfactor = (np.sum([rgbt[0], rgbt[2]], axis=0) /
-                   (np.sum([rgbt[1], rgbt[1]], axis=0) + 0.0001)).astype('f4')
+    greenfactor = (
+        np.sum([rgbt[0], rgbt[2]], axis=0)
+        / (np.sum([rgbt[1], rgbt[1]], axis=0) + 0.0001)
+    ).astype('f4')
     green_mask = np.array(
-        (greenfactor > (np.zeros(rgbt[0].shape) + min_green)) &
-        (greenfactor < (np.zeros(rgbt[0].shape) + max_green))
+        (greenfactor > (np.zeros(rgbt[0].shape) + min_green))
+        & (greenfactor < (np.zeros(rgbt[0].shape) + max_green))
     )
     greengarden_mask = np.logical_and(green_mask, m).astype('b1')
     greengarden = rgbt[:, greengarden_mask]
@@ -323,16 +325,16 @@ def gdalinfo(aerial_image_path):
     """
     gdalinfolog = subprocess.check_output(['ecw-gdalinfo', aerial_image_path])
     grep_pixelsize_line = re.findall(
-        "Pixel Size = \([0-9+].[0-9]+", gdalinfolog,
+        "Pixel Size = \\([0-9+].[0-9]+", gdalinfolog,
     )[0]
     pixelsize = float(grep_pixelsize_line.split('(')[1])
 
-    grep_upper_left_line = re.findall("Upper Left  \((.*)\)", gdalinfolog)[0]
+    grep_upper_left_line = re.findall("Upper Left  \\((.*)\\)", gdalinfolog)[0]
     envelope_aerial_image = [None] * 4
     (envelope_aerial_image[0],
      envelope_aerial_image[3]) = map(float, grep_upper_left_line.split(','))
 
-    grep_upper_left_line = re.findall("Lower Right \((.*)\)", gdalinfolog)[0]
+    grep_upper_left_line = re.findall("Lower Right \\((.*)\\)", gdalinfolog)[0]
     (envelope_aerial_image[1],
      envelope_aerial_image[2]) = map(float, grep_upper_left_line.split(','))
 
