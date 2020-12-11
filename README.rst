@@ -38,17 +38,13 @@ Then build the docker image, providing your user and group ids for correct file
 permissions::
 
     $ docker-compose build --build-arg uid=`id -u` --build-arg gid=`id -g` lib
+    $ docker-compose up --no-start
+    $ docker-compose start
+    $ docker-compose exec web bash
 
-The entrypoint into the docker is set to `pipenv run`, so that every command is
-executed in the pipenv-managed virtual environment. On the first
-`docker-compose run`, the `.venv` folder will be created automatically inside
-your project directory::
-
-    $ docker-compose run --rm lib bash
-
-Then install the packages (including dev packages) listed in `Pipfile.lock`::
-
-    (docker) $ pipenv sync --dev
+    (docker)$ virtualenv --system-site-packages .venv
+    (docker)$ . .venv/bin/activate
+    (virtualenv)$ pip install -e . --index-url https://packages.lizard.net
 
 Now you are ready to run the raster tools in the container.
 

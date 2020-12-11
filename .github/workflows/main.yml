@@ -11,7 +11,7 @@ on:
 # in parallel
 jobs:
   build:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-16.04
 
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can
@@ -21,8 +21,17 @@ jobs:
       - name: Build docker
         run: docker-compose build --build-arg uid=`id -u` --build-arg gid=`id -g` lib
 
-      - name: Install python packages
-        run: docker-compose run --rm lib pipenv install --deploy --dev
+      - name: Create virtualenv
+        run: docker-compose run --rm lib virtualenv .venv --system-site-packages
 
-      - name: Test
-        run: docker-compose run --rm lib pipenv run nosetests
+      - name: Install requirements
+        run: docker-compose run --rm lib .venv/bin/pip install -r requirements.txt
+
+      - name: Install our package
+        run: docker-compose run --rm lib .venv/bin/pip install -e .[test]
+
+      - name: Run tests
+        run: docker-compose run --rm lib .venv/bin/pytest
+
+      - name: Flake8
+        run: if docker-compose run --rm lib .venv/bin/flake8 > flake8.txt; then echo 'flake8 is a success'; else cat flake8.txt; false; fi

@@ -10,19 +10,14 @@ long_description = '\n\n'.join([
 
 install_requires = [
     'matplotlib',
-    'numpy >= 1.8.2',
-    'pygdal',
-    'psycopg2',
+    'numpy',
+    'psycopg2-binary',
     'requests',
     'scipy',
     'setuptools',
-    'unipath',
     ],
 
-tests_require = [
-    'nose',
-    'coverage',
-    ]
+tests_require = ["flake8", "pytest", "pytest-cov"]
 
 setup(name='raster-tools',
       version=version,
