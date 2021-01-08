@@ -7,11 +7,15 @@ Main operation is to build and save a rudimentary 2D part for a 3Di model.
 Alternatively it is possible to extract from a single layer on the remote
 server.
 """
+from datetime import datetime as Datetime
+from os.path import basename, exists
 
 import argparse
 import collections
 import csv
 import os
+import sys
+import textwrap
 import threading
 
 from urllib.request import urlopen
@@ -1085,8 +1089,37 @@ def get_parser():
     return parser
 
 
+def print_deprection_warning():
+    print('\n'.join(textwrap.wrap(
+        'The raster server will stop on july 1, 2021. Extract will not '
+        'work after that. Use an alternative, like `rextract` or the '
+        'Lizard export functionality. Contact the servicedesk if that '
+        'poses a problem for your use case. '
+    )))
+
+
+def log_user():
+    user = os.environ.get("USER", "anonymous")
+    script = basename(sys.argv[0])
+    time = Datetime.now().strftime("%Y:%m:%d %H:%M:%S")
+    logpath = "/var/tmp/raster-tools-extract.log"
+    record = ",".join([time, user, script])
+
+    # create and set permissions if needed
+    if not exists(logpath):
+        with open(logpath, "w") as f:
+            pass
+        os.chmod(logpath, 0o666)
+
+    # append the record
+    with open(logpath, "a") as f:
+        f.write(record + "\n")
+
+
 def main():
     """ Call extract_all with args from parser. """
+    print_deprection_warning()
+    log_user()
     operations.update({cls.name: cls for cls in Operation.__subclasses__()})
     return extract_all(**vars(get_parser().parse_args()))
 
