@@ -1,4 +1,4 @@
-FROM ubuntu:xenial
+FROM ubuntu:bionic
 
 LABEL maintainer="arjan.verkerk@nelen-schuurmans.nl"
 
@@ -11,9 +11,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # for writing Dockerfiles". https://docs.docker.com/engine/userguide/↵
 # eng-image/dockerfile_best-practices/
 RUN apt-get update && apt-get install -y \
-    curl \
     git \
-    libgdal-dev \
     locales \
     python3-gdal \
     python3-pip \
@@ -22,7 +20,7 @@ RUN apt-get update && apt-get install -y \
 RUN locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8 LANGUAGE=en_US:en LC_ALL=en_US.UTF-8
 
-RUN pip3 install --upgrade pip virtualenv==16.*
+RUN pip3 install --upgrade pip setuptools virtualenv
 
 # Create a nens user and group, with IDs matching those of the developer.
 # The default values can be overridden at build-time via:
@@ -39,3 +37,4 @@ RUN groupadd -g $gid nens && useradd -lm -u $uid -g $gid nens
 VOLUME /code
 WORKDIR /code
 USER nens
+ENV PATH=/code/.venv/bin:$PATH

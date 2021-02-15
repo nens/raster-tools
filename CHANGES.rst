@@ -7,6 +7,8 @@ Changelog of raster-tools
 
 - Added support for a password file to rextract.
 
+- Add ansible deployment scripts.
+
 
 0.5 (2020-05-28)
 ----------------

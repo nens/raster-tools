@@ -1,0 +1,55 @@
+# Goal: do the root-related basic provisioning for a site (now: only the sso
+# server). A user "builder" is set up with ssh keys so that the relevant devs
+# can ssh in as "builder", which will be used by the deploy.yml script.
+---
+- name: provision server to prepare for the actual deployment
+  hosts: task
+  become: yes
+  tasks:
+
+    - name: Add user "builder" and disable its password
+      user: name=builder password='' state=present shell="/bin/bash"
+
+    - name: Update locale.
+      command: update-locale LANGUAGE=en_US:en LC_ALL=en_US.UTF-8
+
+    - name: Add maintainers' ssh keys so they can log in as user builder.
+      authorized_key: user=builder key=https://github.com/{{ item }}.keys
+      with_items:
+         - arjanverkerk
+
+    - name: Check whether .netrc exists
+      stat:
+        path: "/home/builder/.netrc"
+      register: netrc_stat
+
+    - name: Copy .netrc for authentication over HTTPS
+      copy:
+        src: files/nens_netrc
+        dest: "/home/builder/.netrc"
+        owner: "builder"
+        mode: 0600
+      when: netrc_stat.stat.exists == False
+
+    - name: Install a list of apt packages
+      apt:
+        pkg:
+          - git
+          - python3-gdal
+
+    - name: Install and / or upgrade pip, setuptools, virtualenv.
+      become: yes
+      pip:
+        name:
+          - pip
+          - setuptools
+          - virtualenv
+        state: latest
+        executable: pip3
+
+    - name: Create dir inside /srv for the checkout
+      file:
+        path: /srv/raster-tools
+        state: directory
+        mode: 0755
+        owner: builder

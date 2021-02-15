@@ -9,7 +9,6 @@ long_description = '\n\n'.join([
 ])
 
 install_requires = [
-    'matplotlib',
     'numpy',
     'psycopg2-binary',
     'requests',
@@ -59,7 +58,7 @@ setup(
         # rasterization
         'bag2tif            = raster_tools.bag2tif:main',
         # ==============================================================
-        # Scripts being ported to python3
+        # Scripts to be ported to python3
         # --------------------------------------------------------------
         # analysis
         # 'zonal              = raster_tools.zonal:main',
