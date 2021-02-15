@@ -43,6 +43,7 @@ setup(
         'ahn3-download      = raster_tools.ahn3.download:main',
         # analysis
         'upstream           = raster_tools.upstream:main',
+        'zonal              = raster_tools.zonal:main',
         # modeling and extraction
         'extract            = raster_tools.extract:main',
         'rextract           = raster_tools.rextract:main',
@@ -61,7 +62,6 @@ setup(
         # Scripts to be ported to python3
         # --------------------------------------------------------------
         # analysis
-        # 'zonal              = raster_tools.zonal:main',
         # 'rgb-zonal          = raster_tools.rgb_zonal:main',
         # 'green-factor       = raster_tools.green_factor:main',
         # 'difference         = raster_tools.difference:main',

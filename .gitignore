@@ -16,3 +16,9 @@ docker-compose.override.yml
 
 # provision credentials
 ansible/files
+
+# provision credentials
+ansible/files
+
+# var directory
+var
