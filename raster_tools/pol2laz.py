@@ -16,13 +16,13 @@ import os
 import shlex
 import subprocess
 
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 import numpy as np
 
 from raster_tools import datasets
 from raster_tools import datasources
-from raster_tools import gdal
-from raster_tools import ogr
-from raster_tools import osr
 from raster_tools import vectors
 
 PROJECTION = osr.GetUserInputAsWKT('epsg:28992')

@@ -4,19 +4,14 @@ Compute the sum of 12 rasterfiles in polygons given by a shapefile and compute
 the "ruimte-indicator". Optionally, a mask shapefile can be provided.
 """
 
-from __future__ import print_function
-from __future__ import absolute_import
-from __future__ import division
-
-from osgeo import gdal, ogr
-
 import argparse
 import logging
 import os
 import sys
 
-import numpy as np
+from osgeo import gdal, ogr
 from scipy import ndimage
+import numpy as np
 
 from .datasets import Dataset
 

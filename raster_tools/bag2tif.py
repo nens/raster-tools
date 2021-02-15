@@ -5,20 +5,13 @@ Rasterize zonal statstics (currently percentile or median) into a set
 of rasters. The input raster is usually the interpolated dem, to prevent
 enclosed geometries having no value.
 """
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
-from os.path import dirname, exists, isdir, join
 
 import argparse
 import getpass
 import os
 
-from raster_tools import gdal
-from raster_tools import ogr
-
+from osgeo import gdal
+from osgeo import ogr
 import numpy as np
 
 from raster_tools import datasets

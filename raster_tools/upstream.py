@@ -4,17 +4,11 @@ Find lowest upstream points along a line within a polygon using
 combined data from raster stores.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import math
 
 from osgeo import gdal
 from osgeo import ogr
-
 import numpy as np
 
 from raster_tools import datasources

@@ -3,22 +3,17 @@
 Retile some large rasters according to an index.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import os
 
+from osgeo import gdal
 import numpy as np
 
-from raster_tools import gdal
 from raster_tools import datasets
 from raster_tools import datasources
 from raster_tools import groups
 
-driver = gdal.GetDriverByName(str('gtiff'))
+driver = gdal.GetDriverByName('gtiff')
 
 
 class Retiler(object):
@@ -40,7 +35,7 @@ class Retiler(object):
     def retile(self, feature, decimals):
         """ Retile to feature. """
         # target path
-        name = feature[str('name')]
+        name = feature['name']
         path = os.path.join(self.target_path,
                             name.lstrip('i')[0:3],
                             '{}.tif'.format(name))

@@ -5,18 +5,13 @@ Create index TARGET that covers at least the features from SOURCE,
 but with square units of size SIZE.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import os
 import string
 
-from raster_tools import ogr
+from osgeo import ogr
 
-driver = ogr.GetDriverByName(str('esri shapefile'))
+driver = ogr.GetDriverByName('esri shapefile')
 
 
 class Checker(object):
@@ -42,7 +37,7 @@ def reindex(source_path, target_path, size):
     target_data_source = driver.CreateDataSource(target_path)
     target_layer_name = os.path.basename(target_path)
     target_layer = target_data_source.CreateLayer(target_layer_name, sr)
-    target_layer.CreateField(ogr.FieldDefn(str('name'), ogr.OFTString))
+    target_layer.CreateField(ogr.FieldDefn('name', ogr.OFTString))
     target_layer_defn = target_layer.GetLayerDefn()
 
     xcorners = range(int(extent[0]), int(extent[2]), size)
@@ -57,7 +52,7 @@ def reindex(source_path, target_path, size):
             xname = (chars[n // (26 * 26)]
                      + chars[(n // 26) % 26]
                      + chars[n % 26] + '{:04.0f}'.format(n))
-            feature[str('name')] = xname
+            feature['name'] = xname
             ring = ogr.Geometry(ogr.wkbLinearRing)
             ring.AddPoint_2D(x1, y1)
             ring.AddPoint_2D(x2, y1)

@@ -16,11 +16,6 @@ The actual queries supplied to the database can be found in a logfile
 'rasterize.log'.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 from os.path import dirname, exists, join
 
 import argparse
@@ -39,15 +34,15 @@ from osgeo import osr
 
 from raster_tools import datasets
 
-DRIVER_GDAL_GTIFF = gdal.GetDriverByName(str('gtiff'))
-DRIVER_GDAL_MEM = gdal.GetDriverByName(str('mem'))
-DRIVER_OGR_MEMORY = ogr.GetDriverByName(str('Memory'))
+DRIVER_GDAL_GTIFF = gdal.GetDriverByName('gtiff')
+DRIVER_GDAL_MEM = gdal.GetDriverByName('mem')
+DRIVER_OGR_MEMORY = ogr.GetDriverByName('Memory')
 
-PROJECTION = osr.GetUserInputAsWKT(str('EPSG:28992'))
+PROJECTION = osr.GetUserInputAsWKT('EPSG:28992')
 NO_DATA_VALUE = 255
 INITIAL_VALUE = 253
 CELLSIZE = 0.5
-NAME = str('name')
+NAME = 'name'
 
 logging.basicConfig(
     filename='rasterize.log',
@@ -126,14 +121,14 @@ class Raster(object):
 
         # layer definition
         value_name = 'value'
-        layer = data_source.CreateLayer(str(''), spatial_ref)
-        layer.CreateField(ogr.FieldDefn(str(value_name), ogr.OFTInteger))
+        layer = data_source.CreateLayer('', spatial_ref)
+        layer.CreateField(ogr.FieldDefn(value_name, ogr.OFTInteger))
         layer_defn = layer.GetLayerDefn()
 
         # data insertion
         for geometry, value in items:
             feature = ogr.Feature(layer_defn)
-            feature[str(value_name)] = value
+            feature[value_name] = value
             feature.SetGeometry(ogr.CreateGeometryFromWkb(bytes(geometry)))
             layer.CreateFeature(feature)
 

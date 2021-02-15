@@ -1,22 +1,16 @@
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import logging
 
-import numpy as np
-
+from osgeo import gdal
 from osgeo import gdal_array
+from osgeo import ogr
+from osgeo import osr
+import numpy as np
 
 from raster_tools import datasets
 from raster_tools import utils
-from raster_tools import ogr
-from raster_tools import osr
-from raster_tools import gdal
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +115,10 @@ class RGBWrapper(object):
     def get_mask(self, geometry, shape):
 
         # create an ogr datasource
-        driver = ogr.GetDriverByName(str('Memory'))
-        source = driver.CreateDataSource(str(''))
+        driver = ogr.GetDriverByName('Memory')
+        source = driver.CreateDataSource('')
         sr = osr.SpatialReference(self.projection)
-        layer = source.CreateLayer(str(''), sr)
+        layer = source.CreateLayer('', sr)
         defn = layer.GetLayerDefn()
         feature = ogr.Feature(defn)
         feature.SetGeometry(geometry)

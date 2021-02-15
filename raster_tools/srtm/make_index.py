@@ -6,11 +6,6 @@ Currently only implemented for SRTM data. Filter may be an OGR datasource
 that contains land polygons, for example from OSM, to exclude sea
 tiles. """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import logging
 import os

@@ -3,26 +3,21 @@
 Hillshade a la gdaldem.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import logging
 import math
 import os
 import sys
 
+from osgeo import gdal
 import numpy as np
 
 from raster_tools import datasets
 from raster_tools import datasources
-from raster_tools import gdal
 from raster_tools import groups
 
 logger = logging.getLogger(__name__)
-driver = gdal.GetDriverByName(str('gtiff'))
+driver = gdal.GetDriverByName('gtiff')
 
 
 def zevenbergen_thorne(array, resolution, altitude=45, azimuth=315):

@@ -1,17 +1,11 @@
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import logging
 import math
 
+from osgeo import ogr
 import numpy as np
-
-from raster_tools import ogr
 
 logger = logging.getLogger(__name__)
 

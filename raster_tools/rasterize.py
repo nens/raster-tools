@@ -7,27 +7,21 @@ ogr postgis driver, this module features its own datasource for postgis
 connection strings, implemented using psycopg2.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import logging
 import os
 import sys
 
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 import psycopg2
-
-from raster_tools import gdal
-from raster_tools import ogr
-from raster_tools import osr
 
 from raster_tools import datasets
 
-DRIVER_GDAL_GTIFF = gdal.GetDriverByName(str('gtiff'))
-DRIVER_GDAL_MEM = gdal.GetDriverByName(str('mem'))
-DRIVER_OGR_MEMORY = ogr.GetDriverByName(str('Memory'))
+DRIVER_GDAL_GTIFF = gdal.GetDriverByName('gtiff')
+DRIVER_GDAL_MEM = gdal.GetDriverByName('mem')
+DRIVER_OGR_MEMORY = ogr.GetDriverByName('Memory')
 
 NO_DATA_VALUE = {
     'Real': -3.4028234663852886e+38,
@@ -43,7 +37,7 @@ POLYGON = 'POLYGON (({x1} {y1},{x2} {y1},{x2} {y2},{x1} {y2},{x1} {y1}))'
 
 logger = logging.getLogger(__name__)
 
-gdal.PushErrorHandler(str('CPLQuietErrorHandler'))
+gdal.PushErrorHandler('CPLQuietErrorHandler')
 
 
 def get_geotransform(geometry, cellsize=(0.5, -0.5)):
@@ -140,7 +134,7 @@ def command(index_path, source_path, target_dir, attribute):
                 continue
             print('Creating spatial index on {}.'.format(source_layer_name))
             source_data_source.ExecuteSQL(
-                str('CREATE SPATIAL INDEX ON {}').format(source_layer_name),
+                'CREATE SPATIAL INDEX ON {}'.format(source_layer_name)
             )
 
     # rasterize
@@ -150,7 +144,7 @@ def command(index_path, source_path, target_dir, attribute):
     print('Starting rasterize.')
     gdal.TermProgress_nocb(0)
     for count, index_feature in enumerate(index_layer, 1):
-        leaf_number = index_feature[str('BLADNR')]
+        leaf_number = index_feature['BLADNR']
         target_path = os.path.join(
             target_dir, leaf_number[0:3], leaf_number + '.tif',
         )
@@ -164,7 +158,7 @@ def command(index_path, source_path, target_dir, attribute):
         data_type = DATA_TYPE[ogr_type]
         no_data_value = NO_DATA_VALUE[ogr_type]
         dataset = DRIVER_GDAL_MEM.Create('', 2000, 2500, 1, data_type)
-        dataset.SetProjection(osr.GetUserInputAsWKT(str('epsg:28992')))
+        dataset.SetProjection(osr.GetUserInputAsWKT('epsg:28992'))
         dataset.SetGeoTransform(get_geotransform(index_geometry))
         band = dataset.GetRasterBand(1)
         band.SetNoDataValue(no_data_value)
@@ -194,7 +188,7 @@ def command(index_path, source_path, target_dir, attribute):
             burned = True
 
         if burned:
-            leaf_number = index_feature[str('BLADNR')]
+            leaf_number = index_feature['BLADNR']
             array = (dataset.ReadAsArray() == 255).astype('u1')
             if array.any():
                 # save no data tif for inspection
@@ -211,7 +205,7 @@ def command(index_path, source_path, target_dir, attribute):
                     'array': array,
                     'no_data_value': 0,
                     'geo_transform': get_geotransform(index_geometry),
-                    'projection': osr.GetUserInputAsWKT(str('epsg:28992')),
+                    'projection': osr.GetUserInputAsWKT('epsg:28992'),
                 }
                 with datasets.Dataset(**kwargs) as ndv_dataset:
                     options = ['compress=deflate', 'tiled=yes']
@@ -350,14 +344,14 @@ class PGLayer(object):
         cursor.execute(sql)
 
         data_source = DRIVER_OGR_MEMORY.CreateDataSource('')
-        layer = data_source.CreateLayer(str(''), sr)
-        layer.CreateField(ogr.FieldDefn(str(name), ogr.OFTInteger))
+        layer = data_source.CreateLayer('', sr)
+        layer.CreateField(ogr.FieldDefn(name, ogr.OFTInteger))
         layer_defn = layer.GetLayerDefn()
         for wkb, value in cursor:
             feature = ogr.Feature(layer_defn)
-            feature[str(name)] = value
+            feature[name] = value
             try:
-                feature.SetGeometry(ogr.CreateGeometryFromWkb(str(wkb)))
+                feature.SetGeometry(ogr.CreateGeometryFromWkb(wkb))
             except RuntimeError:
                 pass
             layer.CreateFeature(feature)

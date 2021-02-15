@@ -11,8 +11,6 @@ import sys
 
 from osgeo import ogr
 
-ogr.UseExceptions()
-
 logger = logging.getLogger(__name__)
 
 

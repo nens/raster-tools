@@ -28,9 +28,6 @@ fields "case_blok", "case_piek" and "case_final" added.
 NB: Some computation is done in RD, valid only in The Netherlands
 """
 
-from __future__ import division
-from __future__ import unicode_literals
-
 import argparse
 import logging
 import numpy as np

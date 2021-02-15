@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 from osgeo import ogr
-
 import numpy as np
 
 

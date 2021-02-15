@@ -1,15 +1,8 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 from osgeo import gdal
 from osgeo import gdal_array
-
-gdal.UseExceptions()
 
 
 def create(array, geo_transform=None, projection=None, no_data_value=None):

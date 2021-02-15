@@ -4,22 +4,16 @@
 Aggregate recursively by taking the mean of quads.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import os
 
+from osgeo import gdal
 import numpy as np
 
 from raster_tools import datasets
 from raster_tools import datasources
 from raster_tools import groups
 from raster_tools import utils
-
-from raster_tools import gdal
 
 GTIF = gdal.GetDriverByName(str('gtiff'))
 

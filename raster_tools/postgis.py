@@ -6,14 +6,10 @@ to an in-memory datasource.
 """
 
 from osgeo import ogr
-from osgeo import osr
 
 import psycopg2
 
 DRIVER_OGR_MEMORY = ogr.GetDriverByName('Memory')
-
-ogr.UseExceptions()
-osr.UseExceptions()
 
 
 class PostgisSource:
@@ -75,7 +71,7 @@ class PostgisSource:
 
     def _get_srid(self, geometry):
         sr = geometry.GetSpatialReference()
-        key = str('GEOGCS') if sr.IsGeographic() else str('PROJCS')
+        key = 'GEOGCS' if sr.IsGeographic() else 'PROJCS'
         srid = sr.GetAuthorityCode(key)
         if srid is None:
             print('Geometry spatial reference lacks authority code.')
@@ -106,7 +102,7 @@ class PostgisSource:
         )
         cursor.execute(sql)
         column_names, data_types = zip(*cursor.fetchall())
-        columns = str(',').join(column_names)
+        columns = ','.join(column_names)
 
         # request
         template = 'ST_Transform(ST_SetSRID(ST_GeomFromWKB({}), {}), {})'
@@ -151,7 +147,7 @@ class PostgisSource:
         spatial_ref = kwargs['geometry'].GetSpatialReference()
 
         # layer definition
-        layer = data_source.CreateLayer(str(name), spatial_ref)
+        layer = data_source.CreateLayer(name, spatial_ref)
         for n, t in zip(data['column_names'], data['data_types']):
             if n == geom:
                 continue

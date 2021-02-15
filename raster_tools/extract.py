@@ -7,22 +7,20 @@ Main operation is to build and save a rudimentary 2D part for a 3Di model.
 Alternatively it is possible to extract from a single layer on the remote
 server.
 """
+
 from datetime import datetime as Datetime
 from os.path import basename, exists
-
+from urllib.parse import urlencode
+from urllib.parse import urljoin
+from urllib.request import urlopen
 import argparse
 import collections
 import csv
 import os
+import queue as queues
 import sys
 import textwrap
 import threading
-
-from urllib.request import urlopen
-from urllib.parse import urlencode
-from urllib.parse import urljoin
-
-import queue as queues
 
 from osgeo import gdal
 from osgeo import ogr
