@@ -171,7 +171,7 @@ def get_parser():
         nargs='+',
         default=('max', 'mean', 'min', 'stddev'),
         help=('One or more stastics to compute per'
-              ' feature, for example: "value median p90".'),
+              ' feature, for example: "median p90".'),
     )
     parser.add_argument(
         '-p', '--part',

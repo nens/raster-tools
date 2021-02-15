@@ -14,6 +14,7 @@ install_requires = [
     'requests',
     'scipy',
     'setuptools',
+    'threedigrid',
 ],
 
 tests_require = ["flake8", "pytest", "pytest-cov"]
@@ -59,30 +60,27 @@ setup(
         # rasterization
         'bag2tif            = raster_tools.bag2tif:main',
         # ==============================================================
-        # Scripts to be ported to python3
+        # Scripts to be checked in python3
         # --------------------------------------------------------------
         # analysis
-        # 'rgb-zonal          = raster_tools.rgb_zonal:main',
-        # 'green-factor       = raster_tools.green_factor:main',
-        # 'difference         = raster_tools.difference:main',
+        'rgb-zonal          = raster_tools.rgb_zonal:main',
+        'green-factor       = raster_tools.green_factor:main',
+        'difference         = raster_tools.difference:main',
         # flow analysis
-        # 'flow-fil           = raster_tools.flow.flow_fil:main',
-        # 'flow-dir           = raster_tools.flow.flow_dir:main',
-        # 'flow-acc           = raster_tools.flow.flow_acc:main',
-        # 'flow-vec           = raster_tools.flow.flow_vec:main',
-        # 'flow-rst           = raster_tools.flow.flow_rst:main',
+        'flow-fil           = raster_tools.flow.flow_fil:main',
+        'flow-dir           = raster_tools.flow.flow_dir:main',
+        'flow-acc           = raster_tools.flow.flow_acc:main',
+        'flow-vec           = raster_tools.flow.flow_vec:main',
+        'flow-rst           = raster_tools.flow.flow_rst:main',
         # modification
-        # 'hillshade          = raster_tools.hillshade:main',
-        # 'shadow             = raster_tools.shadow:main',
-        # 'merge              = raster_tools.merge:main',
+        'hillshade          = raster_tools.hillshade:main',
+        'shadow             = raster_tools.shadow:main',
+        'merge              = raster_tools.merge:main',
         # rasterization
-        # 'rasterize2         = raster_tools.rasterize2:main',
-        # ==============================================================
-        # Scripts to be ported to python3
-        # --------------------------------------------------------------
+        'rasterize2         = raster_tools.rasterize2:main',
         # ruimtekaart & maskerkaart
-        # 'ruimtekaart        = raster_tools.ruimtekaart:main',
-        # 'maskerkaart        = raster_tools.maskerkaart:main',
+        'ruimtekaart        = raster_tools.ruimtekaart:main',
+        'maskerkaart        = raster_tools.maskerkaart:main',
         # ==============================================================
         # Scripts not (yet) ported to python3
         # --------------------------------------------------------------

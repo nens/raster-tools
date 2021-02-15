@@ -1,11 +1,13 @@
 appdirs==1.4.4
 asn1crypto==0.24.0
+cached-property==1.5.2
 certifi==2020.12.5
 chardet==4.0.0
 cryptography==2.1.4
 distlib==0.3.1
 filelock==3.0.12
 GDAL==2.2.2
+h5py==3.1.0
 idna==2.6
 importlib-metadata==3.4.0
 importlib-resources==5.1.0
@@ -20,6 +22,7 @@ requests==2.25.1
 scipy==1.5.4
 SecretStorage==2.3.1
 six==1.15.0
+threedigrid==1.0.26
 typing-extensions==3.7.4.3
 urllib3==1.26.3
 virtualenv==20.4.2
