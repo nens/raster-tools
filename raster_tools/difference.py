@@ -21,7 +21,7 @@ def command(shape1_path, shape2_path, target_path):
     layer2 = shape2[0]
 
     # delete any existing target
-    driver = ogr.GetDriverByName(b'ESRI Shapefile')
+    driver = ogr.GetDriverByName('ESRI Shapefile')
     try:
         driver.DeleteDataSource(str(target_path))
     except RuntimeError:

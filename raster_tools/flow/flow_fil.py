@@ -8,8 +8,10 @@ TODO
 - fix stepping and offsetting in the complex filling step
 """
 
+import argparse
 import os
 
+from osgeo import gdal
 from scipy import ndimage
 import numpy as np
 
@@ -17,9 +19,7 @@ from raster_tools import datasets
 from raster_tools import datasources
 from raster_tools import groups
 
-from raster_tools import gdal
-
-GTIF = gdal.GetDriverByName(str('gtiff'))
+GTIF = gdal.GetDriverByName('gtiff')
 DTYPE = np.dtype('i8, i8')
 
 COURSES = np.array([(64, 128, 1),
@@ -206,7 +206,7 @@ class PitFiller(object):
 
     def fill(self, feature):
         # target path
-        name = feature[str('name')]
+        name = feature['name']
         path = os.path.join(self.output_path,
                             name[:3],
                             '{}.tif'.format(name))

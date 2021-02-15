@@ -4,8 +4,10 @@
 Calculate unique flow directions for pixels in a digital elevation model.
 """
 
+import argparse
 import os
 
+from osgeo import gdal
 from scipy import ndimage
 import numpy as np
 
@@ -13,9 +15,7 @@ from raster_tools import datasets
 from raster_tools import datasources
 from raster_tools import groups
 
-from raster_tools import gdal
-
-GTIF = gdal.GetDriverByName(str('gtiff'))
+GTIF = gdal.GetDriverByName('gtiff')
 DTYPE = np.dtype('i8, i8')
 
 COURSES = np.array([(64, 128, 1),

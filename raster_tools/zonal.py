@@ -17,9 +17,8 @@ simply "mean".
 import argparse
 import re
 
+from osgeo import gdal
 import numpy as np
-
-from raster_tools import gdal
 
 from raster_tools import groups
 from raster_tools import datasets

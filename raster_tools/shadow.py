@@ -109,7 +109,7 @@ class Shadower(object):
 
     def shadow(self, feature):
         # target path
-        leaf_number = feature[b'BLADNR']
+        leaf_number = feature['BLADNR']
         path = os.path.join(self.output_path,
                             leaf_number[:3],
                             '{}.tif'.format(leaf_number))

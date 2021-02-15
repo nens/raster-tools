@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 WIDTH = 0.25
 HEIGHT = 0.25
 NO_DATA_VALUE = -9999
-DRIVER = gdal.GetDriverByName(b'gtiff')
-PROJECTION = osr.GetUserInputAsWKT(b'epsg:3043')
+DRIVER = gdal.GetDriverByName('gtiff')
+PROJECTION = osr.GetUserInputAsWKT('epsg:3043')
 
 
 def read(archive, name):

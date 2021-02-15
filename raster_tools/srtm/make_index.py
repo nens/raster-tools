@@ -34,12 +34,12 @@ class Checker(object):
 
 
 def make_index(index_path, filter_path):
-    driver = ogr.GetDriverByName(b'esri shapefile')
+    driver = ogr.GetDriverByName('esri shapefile')
     data_source = driver.CreateDataSource(index_path)
     layer_name = os.path.basename(index_path)
-    sr = osr.SpatialReference(osr.GetUserInputAsWKT(b'epsg:4326'))
+    sr = osr.SpatialReference(osr.GetUserInputAsWKT('epsg:4326'))
     layer = data_source.CreateLayer(layer_name, sr)
-    layer.CreateField(ogr.FieldDefn(b'BLADNR', ogr.OFTString))
+    layer.CreateField(ogr.FieldDefn('BLADNR', ogr.OFTString))
     layer_defn = layer.GetLayerDefn()
 
     if filter_path is None:
@@ -56,7 +56,7 @@ def make_index(index_path, filter_path):
             lat = 'S{:02}'.format(-y) if y < 0 else 'N{:02}'.format(y)
             lon = 'W{:03}'.format(-x) if x < 0 else 'E{:03}'.format(x)
             feature = ogr.Feature(layer_defn)
-            feature[b'BLADNR'] = '{}{}'.format(lat, lon)
+            feature['BLADNR'] = '{}{}'.format(lat, lon)
             ring = ogr.Geometry(ogr.wkbLinearRing)
             ring.AddPoint_2D(x1, y1)
             ring.AddPoint_2D(x2, y1)
@@ -73,7 +73,7 @@ def make_index(index_path, filter_path):
             layer.CreateFeature(feature)
         ogr.TermProgress_nocb(count / total)
 
-    data_source.ExecuteSQL(b'CREATE SPATIAL INDEX ON {}'.format(layer_name))
+    data_source.ExecuteSQL('CREATE SPATIAL INDEX ON {}'.format(layer_name))
 
 
 def get_parser():
