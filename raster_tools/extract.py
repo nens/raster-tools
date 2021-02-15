@@ -1101,7 +1101,7 @@ def print_deprection_warning():
 def log_user():
     user = os.environ.get("USER", "anonymous")
     script = basename(sys.argv[0])
-    time = Datetime.now().strftime("%Y:%m:%d %H:%M:%S")
+    time = Datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logpath = "/var/tmp/raster-tools-extract.log"
     record = ",".join([time, user, script])
 

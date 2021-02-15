@@ -65,10 +65,8 @@ Be aware that if you provision a server for the first time, the authentication
 needs to be setup. We may need a credentials file to access private packages on
 packages.lizard.net, to be put in `deploy/files/nens_netrc` file.
 
-
-TODO: Do this with ansible::
-
-    Add the absolute path to ``.venv/bin`` to the PATH in ``/etc/environment``.
+To enable users to use the raster-tools scripts, append the absolute path to
+``.venv/bin`` to the PATH in ``/etc/environment``.
 
 
 Filling nodata in rasters

@@ -21,12 +21,12 @@
       register: venv_stat
 
     - name: Create virtualenv.
-      command: "virtualenv --python=python3 {{ project_path }}/.venv"
+      command: "virtualenv --python=python3 --system-site-packages {{ project_path }}/.venv"
       ignore_errors: no
       when: venv_stat.stat.exists == False
 
     - name: Install python packages.
-      command: "{{ project_path }}/.venv/bin/pip install -i https://packages.lizard.net -r {{ project_path }}/requirements.txt"
+      command: "{{ project_path }}/.venv/bin/pip install -r {{ project_path }}/requirements.txt"
       ignore_errors: no
 
     - name: Install project.
