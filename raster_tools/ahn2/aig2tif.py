@@ -4,6 +4,7 @@
 Convert aig to tif. Sources may come from stdin, too.
 """
 
+import argparse
 import logging
 import multiprocessing
 import os

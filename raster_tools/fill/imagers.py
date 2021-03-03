@@ -4,7 +4,7 @@
 Image utility to plot edges and arrays.
 """
 
-
+from os.path import dirname
 import os
 
 import numpy as np

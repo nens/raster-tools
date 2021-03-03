@@ -4,6 +4,7 @@
 Tool to split and convert downloaded AHN2 zipfiles.
 """
 
+import argparse
 import logging
 import multiprocessing
 import os

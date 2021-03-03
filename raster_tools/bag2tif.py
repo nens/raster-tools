@@ -9,6 +9,7 @@ enclosed geometries having no value.
 import argparse
 import getpass
 import os
+from os.path import dirname, exists, isdir, join
 
 from osgeo import gdal
 from osgeo import ogr
