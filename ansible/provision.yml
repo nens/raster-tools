@@ -35,6 +35,8 @@
       apt:
         pkg:
           - git
+          - postgis       # people use it for raster2pgsql
+          - python-gdal   # things like gdal_calc.py are not yet in python3-gdal
           - python3-gdal
 
     - name: Install and / or upgrade pip, setuptools, virtualenv.
