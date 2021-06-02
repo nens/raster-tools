@@ -5,23 +5,17 @@ raster that are identical to corresponding cells in the base raster. If the
 base raster is missing, rebase just copies the source raster.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import os
-
 from os.path import dirname, exists
 
+from osgeo import gdal
 import numpy as np
 
 from raster_tools import datasets
-from raster_tools import gdal
 
 
-DRIVER_GDAL_GTIFF = gdal.GetDriverByName(str('gtiff'))
+DRIVER_GDAL_GTIFF = gdal.GetDriverByName('gtiff')
 OPTIONS = ['compress=deflate', 'tiled=yes']
 
 
@@ -43,7 +37,7 @@ def rebase(base_path, source_path, target_path):
         pass
 
     # read source dataset
-    source_dataset = gdal.Open(str(source_path))
+    source_dataset = gdal.Open(source_path)
     source_band = source_dataset.GetRasterBand(1)
     source_no_data_value = source_band.GetNoDataValue()
     source_array = source_band.ReadAsArray()
@@ -60,7 +54,7 @@ def rebase(base_path, source_path, target_path):
 
     # rebase
     if exists(base_path):
-        base_dataset = gdal.Open(str(base_path))
+        base_dataset = gdal.Open(base_path)
         base_band = base_dataset.GetRasterBand(1)
         base_no_data_value = base_band.GetNoDataValue()
         base_array = base_band.ReadAsArray()

@@ -4,27 +4,22 @@
 Create tif rasters from xyz files by linear interpolation using griddata.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import math
 import os
 
+from osgeo import gdal
+from osgeo import osr
 import numpy as np
 
 from raster_tools import datasets
-from raster_tools import gdal
-from raster_tools import osr
 
 WIDTH = 0.5
 HEIGHT = 0.5
 NO_DATA_VALUE = np.finfo('f4').min.item()
-DRIVER = gdal.GetDriverByName(str('gtiff'))
+DRIVER = gdal.GetDriverByName('gtiff')
 OPTIONS = ['compress=deflate', 'tiled=yes']
-PROJECTION = osr.GetUserInputAsWKT(str('epsg:28992'))
+PROJECTION = osr.GetUserInputAsWKT('epsg:28992')
 
 
 def rasterize(points):

@@ -5,19 +5,14 @@ Rasterize zonal statstics (currently percentile or median) into a set
 of rasters. The input raster is usually the interpolated dem, to prevent
 enclosed geometries having no value.
 """
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
 
 import argparse
 import getpass
 import os
+from os.path import dirname, exists, isdir, join
 
-from raster_tools import gdal
-from raster_tools import ogr
-from raster_tools import osr
-
+from osgeo import gdal
+from osgeo import ogr
 import numpy as np
 
 from raster_tools import datasets
@@ -25,23 +20,24 @@ from raster_tools import datasources
 from raster_tools import groups
 from raster_tools import postgis
 
-DRIVER_GDAL_GTIFF = gdal.GetDriverByName(str('gtiff'))
-DRIVER_GDAL_MEM = gdal.GetDriverByName(str('mem'))
-DRIVER_OGR_MEM = ogr.GetDriverByName(str('memory'))
+DRIVER_GDAL_GTIFF = gdal.GetDriverByName('gtiff')
+DRIVER_GDAL_MEM = gdal.GetDriverByName('mem')
+DRIVER_OGR_MEM = ogr.GetDriverByName('memory')
 
 NO_DATA_VALUE = -3.4028234663852886e+38
+FLOOR_ATTRIBUTE = 'floor'
 CELLSIZE = 0.5
 
 
-class Rasterizer(object):
+class Rasterizer:
     def __init__(self, table, raster_path, output_path, floor, **kwargs):
         # postgis
         self.postgis_source = postgis.PostgisSource(**kwargs)
         self.table = table
 
         # raster
-        if os.path.isdir(raster_path):
-            raster_datasets = [gdal.Open(os.path.join(raster_path, path))
+        if isdir(raster_path):
+            raster_datasets = [gdal.Open(join(raster_path, path))
                                for path in sorted(os.listdir(raster_path))]
         else:
             raster_datasets = [gdal.Open(raster_path)]
@@ -61,15 +57,11 @@ class Rasterizer(object):
         self.output_path = output_path
         self.floor = floor
 
-    @property
-    def sr(self):
-        return osr.SpatialReference(self.projection)
-
     def path(self, feature):
-        leaf = feature[str('name')]
-        return os.path.join(self.output_path, leaf[0:3], leaf + '.tif')
+        leaf = feature['name']
+        return join(self.output_path, leaf[0:3], leaf + '.tif')
 
-    def target(self, feature):
+    def create_target_dataset(self, feature):
         """ Return empty gdal dataset. """
         geometry = feature.geometry()
         envelope = geometry.GetEnvelope()
@@ -83,88 +75,103 @@ class Rasterizer(object):
         band.Fill(self.no_data_value)
         return dataset
 
-    def get_ogr_data_source(self, geometry):
-        """ Return geometry wrapped as ogr data source. """
-        data_source = DRIVER_OGR_MEM.CreateDataSource('')
-        layer = data_source.CreateLayer(str(''), self.sr)
-        layer_defn = layer.GetLayerDefn()
-        feature = ogr.Feature(layer_defn)
-        feature.SetGeometry(geometry)
-        layer.CreateFeature(feature)
-        return data_source
-
-    def single(self, feature, target):
+    def determine_floor_level(self, feature):
         """
-        :param feature: vector feature
-        :param target: raster file to write to
+        Return boolean if a floor level was computed and assigned.
+
+        Add assign a computed floor level to the supplied feature.
+
+        :param feature: feature with floor column.
         """
         # determine geometry and 1m buffer
         geometry = feature.geometry()
+
+        # skip too large geometries
+        xmin, xmax, ymin, ymax = geometry.GetEnvelope()
+        if max(ymax - ymin, xmax - xmin) > 1000:
+            return
+
         try:
-            geometry_buffer = geometry.Buffer(1).Difference(geometry)
+            buffer_geometry = geometry.Buffer(1).Difference(geometry)
         except RuntimeError:
             # garbage geometry
-            return False
+            return
 
-        # read raster data
-        geo_transform = self.geo_transform.shifted(geometry_buffer)
-        data = self.raster_group.read(geometry_buffer)
+        # read raster data for the extent of the buffer geometry
+        geo_transform = self.geo_transform.shifted(buffer_geometry)
+        data = self.raster_group.read(buffer_geometry)
         if (data == self.no_data_value).all():
-            return False
+            return
         data.shape = (1,) + data.shape
 
-        # create ogr data sources with geometry and buffer
-        data_source = self.get_ogr_data_source(geometry)
-        data_source_buffer = self.get_ogr_data_source(geometry_buffer)
-
-        # determine mask
+        # rasterize the buffer geometry into a raster mask
         mask = np.zeros(data.shape, 'u1')
         dataset_kwargs = {'geo_transform': geo_transform}
         dataset_kwargs.update(self.kwargs)
-        with datasets.Dataset(mask, **dataset_kwargs) as dataset:
-            gdal.RasterizeLayer(dataset,
-                                [1], data_source_buffer[0], burn_values=[1])
+        with datasources.Layer(buffer_geometry) as layer:
+            with datasets.Dataset(mask, **dataset_kwargs) as dataset:
+                gdal.RasterizeLayer(dataset, [1], layer, burn_values=[1])
 
         # rasterize the percentile
         try:
-            burn = np.percentile(data[mask.nonzero()], 75)
+            floor = np.percentile(data[mask.nonzero()], 75)
             if self.floor:
-                burn += self.floor
+                floor += self.floor
+            return floor
         except IndexError:
             # no data points at all
-            return False
-        gdal.RasterizeLayer(target, [1], data_source[0], burn_values=[burn])
-        return True
+            return
 
-    def rasterize(self, index_feature):
+    def rasterize_region(self, index_feature):
         # prepare or abort
         path = self.path(index_feature)
-        if os.path.exists(path):
+        if exists(path):
             return
 
         # target array
-        target = self.target(index_feature)
+        target_dataset = self.create_target_dataset(index_feature)
 
         # fetch geometries from postgis
         data_source = self.postgis_source.get_data_source(
-            table=self.table, geometry=index_feature.geometry(),
+            table=self.table,
+            geometry=index_feature.geometry(),
         )
-        # analyze and rasterize
-        burned = False
-        for bag_feature in data_source[0]:
-            burned = self.single(feature=bag_feature, target=target)
-        if not burned:
+        source_layer = data_source[0]
+
+        # create a second layer for the succesfully determined geometries
+        sr = source_layer.GetSpatialRef()
+        target_layer = data_source.CreateLayer('target', srs=sr)
+
+        # add a column for the floor level
+        field_defn = ogr.FieldDefn(FLOOR_ATTRIBUTE, ogr.OFTReal)
+        target_layer.CreateField(field_defn)
+        target_layer_defn = target_layer.GetLayerDefn()
+
+        # compute floor levels
+        any_computed = False
+        feature_count = source_layer.GetFeatureCount()
+        for i in range(feature_count):
+            bag_feature = source_layer[i]
+            floor_level = self.determine_floor_level(feature=bag_feature)
+            if floor_level is not None:
+                target_feature = ogr.Feature(target_layer_defn)
+                target_feature.SetGeometry(bag_feature.geometry())
+                target_feature[FLOOR_ATTRIBUTE] = floor_level
+                target_layer.CreateFeature(target_feature)
+                any_computed = True
+
+        # do not write an empty geotiff
+        if not any_computed:
             return
 
-        # save
-        try:
-            os.makedirs(os.path.dirname(path))
-        except OSError:
-            pass
+        # rasterize
+        options = ['attribute=%s' % FLOOR_ATTRIBUTE]
+        gdal.RasterizeLayer(target_dataset, [1], target_layer, options=options)
 
-        DRIVER_GDAL_GTIFF.CreateCopy(path,
-                                     target,
-                                     options=['compress=deflate'])
+        # save
+        options = ['compress=deflate']
+        os.makedirs(dirname(path), exist_ok=True)
+        DRIVER_GDAL_GTIFF.CreateCopy(path, target_dataset, options=options)
 
 
 def bag2tif(index_path, part, **kwargs):
@@ -175,8 +182,8 @@ def bag2tif(index_path, part, **kwargs):
     if part is not None:
         index = index.select(part)
 
-    for count, feature in enumerate(index, 1):
-        rasterizer.rasterize(feature)
+    for feature in index:
+        rasterizer.rasterize_region(feature)
 
 
 def get_parser():

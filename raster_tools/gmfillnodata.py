@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import logging
 import os
@@ -13,15 +8,13 @@ import sys
 import tempfile
 
 from osgeo import gdal
-# from osgeo import gdal_array
-
 import numpy as np
 
 from raster_tools import datasets
 from raster_tools import datasources
 from raster_tools import groups
 
-DRIVER = gdal.GetDriverByName(str('gtiff'))
+DRIVER = gdal.GetDriverByName('gtiff')
 OPTIONS = ['compress=deflate', 'tiled=yes']
 
 logger = logging.getLogger(__name__)
@@ -50,7 +43,7 @@ class GdalFiller(object):
         Call gdal interpolation function
         """
         # prepare target path
-        name = feature[str('bladnr')]
+        name = feature['bladnr']
         path = os.path.join(self.output_path,
                             name[:3],
                             '{}.tif'.format(name))

@@ -4,11 +4,6 @@
 Calculate shadows.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import itertools
 import logging
@@ -16,17 +11,17 @@ import math
 import os
 import sys
 
+from osgeo import gdal
 from scipy import ndimage
 import numpy as np
 
-from raster_tools import gdal
 from raster_tools import datasets
 from raster_tools import datasources
 from raster_tools import groups
 
 logger = logging.getLogger(__name__)
 
-driver = gdal.GetDriverByName(str('gtiff'))
+driver = gdal.GetDriverByName('gtiff')
 
 
 class Shadower(object):
@@ -235,7 +230,7 @@ def main():
     try:
         shadow(**kwargs)
         return 0
-    except:
+    except Exception:
         logger.exception('An exception has occurred.')
         return 1
 

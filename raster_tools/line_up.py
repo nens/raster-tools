@@ -12,24 +12,19 @@ original shapefile, one to store the elevation, and another to store an
 arbitrary feature id referring to the source feature in the source shapefile.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import logging
 import math
 import os
 import sys
 
+from osgeo import gdal
+from osgeo import ogr
 from scipy import ndimage
 import numpy as np
 
 from raster_tools import datasources
-from raster_tools import gdal
 from raster_tools import groups
-from raster_tools import ogr
 from raster_tools import utils
 from raster_tools import vectors
 
@@ -38,7 +33,7 @@ logger = logging.getLogger(__name__)
 LAYOUT_POINT = 'point'
 LAYOUT_LINE = 'line'
 
-DRIVER = ogr.GetDriverByName(str('ESRI Shapefile'))
+DRIVER = ogr.GetDriverByName('ESRI Shapefile')
 LINESTRINGS = ogr.wkbLineString, ogr.wkbLineString25D
 MULTILINESTRINGS = ogr.wkbMultiLineString, ogr.wkbMultiLineString25D
 
@@ -343,12 +338,12 @@ class AttributeProcessor(BaseProcessor):
         for source_wkb_line_string in source_wkb_line_strings:
             result = self._calculate(wkb_line_string=source_wkb_line_string)
             for line, value in zip(result['lines'], result['values']):
-                yield vectors.line2geometry(line), str(value)
+                yield vectors.line2geometry(line), value
 
     def _add_fields(self):
         """ Create extra fields. """
-        for name, kind in ((str(self.elevation_attribute), ogr.OFTReal),
-                           (str(self.feature_id_attribute), ogr.OFTInteger)):
+        for name, kind in ((self.elevation_attribute, ogr.OFTReal),
+                           (self.feature_id_attribute, ogr.OFTInteger)):
             definition = ogr.FieldDefn(name, kind)
             self.layer.CreateField(definition)
 
@@ -366,8 +361,8 @@ class AttributeProcessor(BaseProcessor):
                 new_feature[key] = value
 
             # add special attributes
-            new_feature[str(self.elevation_attribute)] = elevation
-            new_feature[str(self.feature_id_attribute)] = feature_id
+            new_feature[self.elevation_attribute] = elevation
+            new_feature[self.feature_id_attribute] = feature_id
 
             # set geometry and add to layer
             new_feature.SetGeometry(geometry)
@@ -401,11 +396,11 @@ def line_up(source_path, raster_path, target_path, **kwargs):
     # target
     if os.path.exists(target_path):
         if kwargs.pop('overwrite'):
-            DRIVER.DeleteDataSource(str(target_path))
+            DRIVER.DeleteDataSource(target_path)
         else:
             logger.info('"%s" already exists. Use --overwrite.', target_path)
             return
-    target = DRIVER.CreateDataSource(str(target_path))
+    target = DRIVER.CreateDataSource(target_path)
 
     # rasters
     if os.path.isdir(raster_path):

@@ -1,26 +1,18 @@
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 """
-This module provides a routine to create a memory datasource
+This module provides a routine to convert a spatial region in a database table
+to an in-memory datasource.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 from osgeo import ogr
-from osgeo import osr
 
 import psycopg2
 
-DRIVER_OGR_MEMORY = ogr.GetDriverByName(b'Memory')
-
-ogr.UseExceptions()
-osr.UseExceptions()
+DRIVER_OGR_MEMORY = ogr.GetDriverByName('Memory')
 
 
-class PostgisSource(object):
+class PostgisSource:
 
     OGR_TYPES = {
         # boolean
@@ -70,7 +62,7 @@ class PostgisSource(object):
         FROM
             {schema}.{name}
         WHERE
-            {geom} && {request} AND ST_Intersects({geom}, {request})
+            ST_Intersects({geom}, {request})
     """
 
     def __init__(self, *args, **kwargs):
@@ -79,7 +71,7 @@ class PostgisSource(object):
 
     def _get_srid(self, geometry):
         sr = geometry.GetSpatialReference()
-        key = str('GEOGCS') if sr.IsGeographic() else str('PROJCS')
+        key = 'GEOGCS' if sr.IsGeographic() else 'PROJCS'
         srid = sr.GetAuthorityCode(key)
         if srid is None:
             print('Geometry spatial reference lacks authority code.')
@@ -110,7 +102,7 @@ class PostgisSource(object):
         )
         cursor.execute(sql)
         column_names, data_types = zip(*cursor.fetchall())
-        columns = str(',').join(column_names)
+        columns = ','.join(column_names)
 
         # request
         template = 'ST_Transform(ST_SetSRID(ST_GeomFromWKB({}), {}), {})'
@@ -155,7 +147,7 @@ class PostgisSource(object):
         spatial_ref = kwargs['geometry'].GetSpatialReference()
 
         # layer definition
-        layer = data_source.CreateLayer(str(name), spatial_ref)
+        layer = data_source.CreateLayer(name, spatial_ref)
         for n, t in zip(data['column_names'], data['data_types']):
             if n == geom:
                 continue

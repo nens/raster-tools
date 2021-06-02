@@ -1,20 +1,15 @@
 # -*- coding: utf-8 -*-
 """ TODO Docstring. """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import os
 
-from raster_tools import gdal
-from raster_tools import ogr
-from raster_tools import osr
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 
-DRIVER_GDAL_GTIFF = gdal.GetDriverByName(b'gtiff')
-DRIVER_GDAL_MEM = gdal.GetDriverByName(b'mem')
+DRIVER_GDAL_GTIFF = gdal.GetDriverByName('gtiff')
+DRIVER_GDAL_MEM = gdal.GetDriverByName('mem')
 
 PROJECTION = osr.GetUserInputAsWKT(str('epsg:28992'))
 NO_DATA_VALUE = 3.4028234663852886e+38

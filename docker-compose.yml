@@ -3,7 +3,6 @@ services:
   lib:
     build: .
     command: tail -F anything
-    entrypoint: "pipenv run"
     environment:
       - DOCKER=True
       - PYTHONUNBUFFERED=1

@@ -1,11 +1,6 @@
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import os
 
 from osgeo import gdal
@@ -30,6 +25,13 @@ class PartialDataSource(object):  # pragma: no cover
     def __len__(self):
         return self.layer.GetFeatureCount()
 
+    def query(self, geometry):
+        """ Return generator of features with geometry as spatial filter. """
+        self.layer.SetSpatialFilter(geometry)
+        for fid in range(len(self)):
+            yield self.layer[fid]
+        self.layer.SetSpatialFilter(None)
+
     def select(self, text):
         """ Return generator of features for text, e.g. '2/5' """
         selected, parts = map(int, text.split('/'))
@@ -52,8 +54,8 @@ class TargetDataSource(object):  # pragma: no cover
         template_sr = template_layer.GetSpatialRef()
 
         # create or replace shape
-        driver = ogr.GetDriverByName(b'ESRI Shapefile')
-        self.dataset = driver.CreateDataSource(str(path))
+        driver = ogr.GetDriverByName('ESRI Shapefile')
+        self.dataset = driver.CreateDataSource(path)
         layer_name = os.path.basename(path)
         self.layer = self.dataset.CreateLayer(layer_name, template_sr)
 
@@ -106,3 +108,12 @@ class Layer(object):
 
     def __exit__(self, exc_type, exc_value, traceback):
         pass
+
+
+def iter_layer(layer):
+    """ Pygdal has a bug that doesn't allow iterating layers. """
+    feature = layer.GetNextFeature()
+    while feature is not None:
+        yield feature
+        feature = layer.GetNextFeature()
+    layer.ResetReading()

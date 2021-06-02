@@ -8,30 +8,24 @@ output: greenfactor for every polygon.
 The script is made by Nelen & Schuurmans - Arnold van 't Veld.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import subprocess
 import os
 import re
 
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 import numpy as np
-
-from raster_tools import gdal
-from raster_tools import ogr
-from raster_tools import osr
 
 from raster_tools import datasets
 from raster_tools import datasources
 
-DRIVER_OGR_MEMORY = ogr.GetDriverByName(str('Memory'))
-DRIVER_GDAL_MEM = gdal.GetDriverByName(str('mem'))
-DRIVER_GDAL_GTIFF = gdal.GetDriverByName(str('gtiff'))
+DRIVER_OGR_MEMORY = ogr.GetDriverByName('Memory')
+DRIVER_GDAL_MEM = gdal.GetDriverByName('mem')
+DRIVER_GDAL_GTIFF = gdal.GetDriverByName('gtiff')
 
-WKT_RD = osr.GetUserInputAsWKT(str('epsg:28992'))
+WKT_RD = osr.GetUserInputAsWKT('epsg:28992')
 PROJ4_RD = osr.SpatialReference(WKT_RD).ExportToProj4().strip()
 
 
@@ -72,27 +66,27 @@ def command(gardens_path, aerial_image_path,
         return 1
 
     # delete any existing target
-    driver = ogr.GetDriverByName(str('ESRI Shapefile'))
+    driver = ogr.GetDriverByName('ESRI Shapefile')
     try:
-        driver.DeleteDataSource(str(target_path))
+        driver.DeleteDataSource(target_path)
     except RuntimeError:
         pass
 
     # prepare target dataset
-    target_shape = driver.CreateDataSource(str(target_path))
+    target_shape = driver.CreateDataSource(target_path)
     target_layer_name = os.path.basename(target_path)
     target_layer = target_shape.CreateLayer(target_layer_name, sr)
-    wkt = osr.GetUserInputAsWKT(str('EPSG:28992'))
+    wkt = osr.GetUserInputAsWKT('EPSG:28992')
     open(target_path.replace('.shp', '.prj'), 'w').write(wkt)
     target_layer_defn = layer_gardens.GetLayerDefn()
     for i in range(target_layer_defn.GetFieldCount()):
         target_field_defn = target_layer_defn.GetFieldDefn(i)
         target_layer.CreateField(target_field_defn)
-    target_field_defn = ogr.FieldDefn(str('green_perc'), ogr.OFTReal)
+    target_field_defn = ogr.FieldDefn('green_perc', ogr.OFTReal)
     target_field_defn.SetWidth(5)
     target_field_defn.SetPrecision(3)
     target_layer.CreateField(target_field_defn)
-    target_field_defn = ogr.FieldDefn(str('green_area'), ogr.OFTReal)
+    target_field_defn = ogr.FieldDefn('green_area', ogr.OFTReal)
     target_field_defn.SetWidth(10)
     target_field_defn.SetPrecision(2)
     target_layer.CreateField(target_field_defn)
@@ -166,16 +160,16 @@ def command(gardens_path, aerial_image_path,
             feature = ogr.Feature(target_layer.GetLayerDefn())
             feature.SetGeometry(geometry_garden)
             for key, value in attributes_garden.items():
-                        feature[str(key)] = value
-            feature[str('green_perc')] = greengarden_percentage
-            feature[str('green_area')] = greengarden_area
+                feature[key] = value
+            feature['green_perc'] = greengarden_percentage
+            feature['green_area'] = greengarden_area
             target_layer.CreateFeature(feature)
 
             # remove raster
             os.remove(tmp_aerial_tif)
 
             # progress bar
-            ogr.TermProgress_nocb((count+1)/total)
+            ogr.TermProgress_nocb((count + 1) / total)
     return 0
 
 
@@ -183,11 +177,13 @@ def determine_green_factor(rgbt, m, min_green, max_green):
 
     fullgarden = rgbt[:, m].astype('f4')
     garden_size = max(fullgarden.shape[1], 1)
-    greenfactor = (np.sum([rgbt[0], rgbt[2]], axis=0) /
-                   (np.sum([rgbt[1], rgbt[1]], axis=0) + 0.0001)).astype('f4')
+    greenfactor = (
+        np.sum([rgbt[0], rgbt[2]], axis=0)
+        / (np.sum([rgbt[1], rgbt[1]], axis=0) + 0.0001)
+    ).astype('f4')
     green_mask = np.array(
-        (greenfactor > (np.zeros(rgbt[0].shape) + min_green)) &
-        (greenfactor < (np.zeros(rgbt[0].shape) + max_green))
+        (greenfactor > (np.zeros(rgbt[0].shape) + min_green))
+        & (greenfactor < (np.zeros(rgbt[0].shape) + max_green))
     )
     greengarden_mask = np.logical_and(green_mask, m).astype('b1')
     greengarden = rgbt[:, greengarden_mask]
@@ -231,7 +227,7 @@ def prepare_aerial_array(tmp_aerial_tif,
     width = raster.RasterXSize
     height = raster.RasterYSize
 
-    rasterdata = {'projection': osr.GetUserInputAsWKT(str(sr)),
+    rasterdata = {'projection': osr.GetUserInputAsWKT(sr),
                   'geo_transform': geotransform,
                   # 'no_data_value': 1,
                   'data_type': dtype,
@@ -281,7 +277,7 @@ def burn_value(dataset, geometry, value):
 
     # put geometry into temporary layer
     datasource = DRIVER_OGR_MEMORY.CreateDataSource('')
-    layer = datasource.CreateLayer(str(''), sr)
+    layer = datasource.CreateLayer('', sr)
     layer_defn = layer.GetLayerDefn()
     feature = ogr.Feature(layer_defn)
     feature.SetGeometry(geometry)
@@ -323,16 +319,16 @@ def gdalinfo(aerial_image_path):
     """
     gdalinfolog = subprocess.check_output(['ecw-gdalinfo', aerial_image_path])
     grep_pixelsize_line = re.findall(
-        "Pixel Size = \([0-9+].[0-9]+", gdalinfolog,
+        "Pixel Size = \\([0-9+].[0-9]+", gdalinfolog,
     )[0]
     pixelsize = float(grep_pixelsize_line.split('(')[1])
 
-    grep_upper_left_line = re.findall("Upper Left  \((.*)\)", gdalinfolog)[0]
+    grep_upper_left_line = re.findall("Upper Left  \\((.*)\\)", gdalinfolog)[0]
     envelope_aerial_image = [None] * 4
     (envelope_aerial_image[0],
      envelope_aerial_image[3]) = map(float, grep_upper_left_line.split(','))
 
-    grep_upper_left_line = re.findall("Lower Right \((.*)\)", gdalinfolog)[0]
+    grep_upper_left_line = re.findall("Lower Right \\((.*)\\)", gdalinfolog)[0]
     (envelope_aerial_image[1],
      envelope_aerial_image[2]) = map(float, grep_upper_left_line.split(','))
 
@@ -341,7 +337,7 @@ def gdalinfo(aerial_image_path):
 
 def get_projection(sr):
     """ Return simple userinput string for spatial reference, if any. """
-    key = str('GEOGCS') if sr.IsGeographic() else str('PROJCS')
+    key = 'GEOGCS' if sr.IsGeographic() else 'PROJCS'
     name, code = sr.GetAuthorityName(key), sr.GetAuthorityCode(key)
     if name is None or code is None:
         return None

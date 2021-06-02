@@ -2,7 +2,21 @@ Changelog of raster-tools
 ===================================================
 
 
-0.4 (unreleased)
+0.6 (unreleased)
+----------------
+
+- Added support for a password file to rextract.
+
+- Add ansible deployment scripts.
+
+
+0.5 (2020-05-28)
+----------------
+
+- Replaced geom by bbox in rextract requests.
+
+
+0.4 (2019-09-04)
 ----------------
 
 - Replaced buildout with pipenv.
@@ -10,6 +24,14 @@ Changelog of raster-tools
 - Added 'ruimtekaart' tools.
 
 - Fixed use of deprecated mismatched boolean index size.
+
+- Port various scripts to python3
+
+- Modify extract for a specific task.
+
+- Update bag2tif.
+
+- Added rextract script to extract rasters from Lizard.
 
 
 0.3 (2018-06-07)

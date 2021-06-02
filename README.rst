@@ -1,23 +1,39 @@
-raster-tools
+raste-tools
 ============
 
 A collection of raster tools.
 
 
-Local setup
------------
+Development installation
+------------------------
 
-The docker-compose file expects the following folders to exist:
+For development, you can use a docker-compose setup::
 
- - ``~/.cache/pip``
- - ``~/.cache/pipenv``
+    $ docker-compose build --build-arg uid=`id -u` --build-arg gid=`id -g` lib
+    $ docker-compose up --no-start
+    $ docker-compose start
+    $ docker-compose exec lib bash
 
-Check if they exist and if you are the owner. If they do not exist, create them
-with ``mkdir``, and if they are not owned by you, use ``sudo chown``.
+Create a virtualenv, install dependencies & package, run tests::
+
+    # note that Dockerfile prepends .venv/bin to $PATH
+    (docker)$ virtualenv --system-site-packages .venv 
+    (docker)$ pip install -r requirements.txt --index-url https://packages.lizard.net
+    (docker)$ pip install -e .[test]
+    (docker)$ pytest
+
+Update packages::
+    
+    (docker)$ rm -rf .venv
+    (docker)$ virtualenv --system-site-packages .venv
+    (docker)$ pip install -e . --index-url https://packages.lizard.net
+    (docker)$ pip freeze | grep -v raster-tools > requirements.txt
+
+Now you are ready to run the raster tools in the container.
 
 
-Local development
------------------
+Mapping an extra local folder
+-----------------------------
 
 First, clone this repo and make some required directories::
 
@@ -34,45 +50,24 @@ Create a docker-compose.override.yaml to map local filesystems:
         volumes:
           - /some/local/path:/some/container/path
 
-Then build the docker image, providing your user and group ids for correct file
-permissions::
-
-    $ docker-compose build --build-arg uid=`id -u` --build-arg gid=`id -g` lib
-
-The entrypoint into the docker is set to `pipenv run`, so that every command is
-executed in the pipenv-managed virtual environment. On the first
-`docker-compose run`, the `.venv` folder will be created automatically inside
-your project directory::
-
-    $ docker-compose run --rm lib bash
-
-Then install the packages (including dev packages) listed in `Pipfile.lock`::
-
-    (docker) $ pipenv sync --dev
-
-Now you are ready to run the raster tools in the container.
-
 
 Task server installation
 ------------------------
 
-1. Install dependencies::
+One time server provisioning::
 
-    $ sudo apt install\
-        python3-dev\
-        python-pip\
-        libgdal-dev\
-        libpq-dev\
+    ansible-playbook -u arjan.verkerk ansible/provision.yml -i ansible/task.yml
 
-2. Upgrade python packages::
+Deploying new versions::
 
-    $ sudo pip install --upgrade pip pipenv setuptools
+    ansible-playbook ansible/deploy.yml -i ansible/task.yml 
 
-3. Clone this repository and step into it.
+Be aware that if you provision a server for the first time, the authentication
+needs to be setup. We may need a credentials file to access private packages on
+packages.lizard.net, to be put in `deploy/files/nens_netrc` file.
 
-3. Run ``PIPENV_VENV_IN_PROJECT=1 pipenv sync --dev``
-
-4. Add the absolute path to ``.venv/bin`` to the PATH in ``/etc/environment``.
+To enable users to use the raster-tools scripts, append the absolute path to
+``.venv/bin`` to the PATH in ``/etc/environment``.
 
 
 Filling nodata in rasters

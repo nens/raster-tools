@@ -4,11 +4,6 @@
 Create tif rasters from ZVP points by linear interpolation using griddata.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import logging
 import math
@@ -28,8 +23,8 @@ logger = logging.getLogger(__name__)
 WIDTH = 0.25
 HEIGHT = 0.25
 NO_DATA_VALUE = -9999
-DRIVER = gdal.GetDriverByName(b'gtiff')
-PROJECTION = osr.GetUserInputAsWKT(b'epsg:3043')
+DRIVER = gdal.GetDriverByName('gtiff')
+PROJECTION = osr.GetUserInputAsWKT('epsg:3043')
 
 
 def read(archive, name):
@@ -67,9 +62,11 @@ def rasterize(points):
     # index1 = np.uint32((points[:, 0] - p) / WIDTH)
     # array[0, index0, index1] = points[:, 2]
 
+    def rescale(x):
+        return (x - (xmin, ymin)) / (xmax - xmin, ymax - ymin)
+
     # using interpolation
     cells = np.indices((height, width)).transpose(1, 2, 0).reshape(-1, 2)
-    rescale = lambda x: (x - (xmin, ymin)) / (xmax - xmin, ymax - ymin)
     xi = rescale((p, q) + cells[:, ::-1] * (WIDTH, -HEIGHT))
     pts = rescale(points[:, :2])
     vals = points[:, 2]
@@ -127,7 +124,7 @@ def main():
         return command(**vars(get_parser().parse_args()))
     except SystemExit:
         raise  # argparse does this
-    except:
+    except Exception:
         logger.exception('An exception has occurred.')
 
 

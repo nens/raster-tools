@@ -1,0 +1,6 @@
+task:
+  hosts:
+    utr-rast-task-01.nens.local:
+  vars:
+    project_name: "raster-tools"
+    project_path: "/srv/{{ project_name }}"

@@ -4,11 +4,6 @@
 Convert aig to tif. Sources may come from stdin, too.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import logging
 import multiprocessing
@@ -20,8 +15,8 @@ from osgeo import osr
 
 from raster_tools import utils
 
-GDAL_GTIFF_DRIVER = gdal.GetDriverByName(b'gtiff')
-GDAL_MEM_DRIVER = gdal.GetDriverByName(b'mem')
+GDAL_GTIFF_DRIVER = gdal.GetDriverByName('gtiff')
+GDAL_MEM_DRIVER = gdal.GetDriverByName('mem')
 
 gdal.UseExceptions()
 logger = logging.getLogger(__name__)
@@ -84,7 +79,7 @@ def convert(source_path, target_dir):
         geo_transforms[os.path.basename(source_path)[1:9]],
     )
     gdal_mem_dataset.SetProjection(
-        osr.GetUserInputAsWKT(b'epsg:28992'),
+        osr.GetUserInputAsWKT('epsg:28992'),
     )
 
     logger.debug('Check size')

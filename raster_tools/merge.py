@@ -7,23 +7,17 @@ built for the flattening of complementary rasterfiles for use with damage
 estimation software.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
+from os.path import dirname, exists
 import argparse
 import os
 
-from os.path import dirname, exists
-
+from osgeo import gdal
 import numpy as np
 
 from raster_tools import datasets
-from raster_tools import gdal
 
 
-DRIVER_GDAL_GTIFF = gdal.GetDriverByName(str('gtiff'))
+DRIVER_GDAL_GTIFF = gdal.GetDriverByName('gtiff')
 OPTIONS = ['compress=deflate', 'tiled=yes']
 
 
@@ -53,7 +47,7 @@ def merge(source_paths, target_path):
                 continue
 
         # read source dataset
-        source_dataset = gdal.Open(str(source_path))
+        source_dataset = gdal.Open(source_path)
         source_band = source_dataset.GetRasterBand(1)
         source_no_data_value = source_band.GetNoDataValue()
         source_array = source_band.ReadAsArray()

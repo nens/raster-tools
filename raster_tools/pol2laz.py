@@ -3,53 +3,55 @@
 """
 Extract a laz file for a specific polygon from an indexed pointcloud
 collection.
-"""
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
+Uses external LASTools las2las and las2exe:
+
+- download https://rapidlasso.com/lastools/
+- unzip, and in the LAStools directory, run 'make'
+- make sure the LAStools/bin is on the path, or symlink to /usr/local/bin
+"""
 
 import argparse
 import os
 import shlex
 import subprocess
 
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 import numpy as np
 
 from raster_tools import datasets
-from raster_tools import gdal
-from raster_tools import ogr
-from raster_tools import osr
+from raster_tools import datasources
 from raster_tools import vectors
 
-PROJECTION = osr.GetUserInputAsWKT(str('epsg:28992'))
-MEM_DRIVER = ogr.GetDriverByName(str('Memory'))
+PROJECTION = osr.GetUserInputAsWKT('epsg:28992')
+MEM_DRIVER = ogr.GetDriverByName('Memory')
 NO_DATA_VALUE = np.finfo('f4').min.item()
 SR = osr.SpatialReference(PROJECTION)
 
 
 def clip(kwargs, geometry):
-        """ Clip kwargs in place. """
-        # do not touch original kwargs
-        kwargs = kwargs.copy()
-        array = kwargs.pop('array')
-        mask = np.ones_like(array, 'u1')
+    """ Clip kwargs in place. """
+    # do not touch original kwargs
+    kwargs = kwargs.copy()
+    array = kwargs.pop('array')
+    mask = np.ones_like(array, 'u1')
 
-        # create an ogr datasource
-        source = MEM_DRIVER.CreateDataSource('')
-        layer = source.CreateLayer(str(''), SR)
-        defn = layer.GetLayerDefn()
-        feature = ogr.Feature(defn)
-        feature.SetGeometry(geometry)
-        layer.CreateFeature(feature)
+    # create an ogr datasource
+    source = MEM_DRIVER.CreateDataSource('')
+    layer = source.CreateLayer('', SR)
+    defn = layer.GetLayerDefn()
+    feature = ogr.Feature(defn)
+    feature.SetGeometry(geometry)
+    layer.CreateFeature(feature)
 
-        # clip
-        with datasets.Dataset(mask, **kwargs) as dataset:
-            gdal.RasterizeLayer(dataset, [1], layer, burn_values=[0])
+    # clip
+    with datasets.Dataset(mask, **kwargs) as dataset:
+        gdal.RasterizeLayer(dataset, [1], layer, burn_values=[0])
 
-        # alter array with result
-        array[mask.astype('b1')] = NO_DATA_VALUE
+    # alter array with result
+    array[mask.astype('b1')] = NO_DATA_VALUE
 
 
 class Fetcher(object):
@@ -80,7 +82,7 @@ class Fetcher(object):
     def fetch(self, geometry):
         """ Fetch points using index and las2txt command. """
         self.layer.SetSpatialFilter(geometry)
-        units = [f[str('unit')] for f in self.layer]
+        units = [f['unit'] for f in datasources.iter_layer(self.layer)]
         paths = ' '.join([self.path.format(u) for u in units])
         extent = self._extent(geometry)
         command = self.command.format(paths, extent)
@@ -99,10 +101,10 @@ def pol2laz(index_path, point_path, source_path, target_path, attribute):
     except OSError:
         pass
 
-    for feature in layer:
+    for feature in datasources.iter_layer(layer):
         # name
         try:
-            name = feature[str(attribute)]
+            name = feature[attribute]
         except ValueError:
             message = 'No attribute "{}" found in selection datasource.'
             print(message.format(attribute))
@@ -117,8 +119,11 @@ def pol2laz(index_path, point_path, source_path, target_path, attribute):
         laz_path = os.path.join(target_path, name + '.laz')
         template = 'las2las -stdin -itxt -iparse xyz -o {}'
         command = template.format(laz_path)
-        process = subprocess.Popen(shlex.split(command),
-                                   stdin=subprocess.PIPE)
+        process = subprocess.Popen(
+            shlex.split(command),
+            stdin=subprocess.PIPE,
+            universal_newlines=True,
+        )
         process.communicate(text)
 
 

@@ -13,3 +13,12 @@ docker-compose.override.yml
 
 # Coverage
 .coverage
+
+# provision credentials
+ansible/files
+
+# provision credentials
+ansible/files
+
+# var directory
+var

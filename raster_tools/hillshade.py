@@ -3,26 +3,21 @@
 Hillshade a la gdaldem.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import logging
 import math
 import os
 import sys
 
+from osgeo import gdal
 import numpy as np
 
 from raster_tools import datasets
 from raster_tools import datasources
-from raster_tools import gdal
 from raster_tools import groups
 
 logger = logging.getLogger(__name__)
-driver = gdal.GetDriverByName(str('gtiff'))
+driver = gdal.GetDriverByName('gtiff')
 
 
 def zevenbergen_thorne(array, resolution, altitude=45, azimuth=315):
@@ -46,9 +41,9 @@ def zevenbergen_thorne(array, resolution, altitude=45, azimuth=315):
     xx_plus_yy = x * x + y * y
     aspect = np.arctan2(y, x)
 
-    cang = (math.sin(alt) -
-            math.cos(alt) * zsf * np.sqrt(xx_plus_yy) *
-            np.sin(aspect - az)) / np.sqrt(1 + square_zsf * xx_plus_yy)
+    cang = (math.sin(alt)
+            - math.cos(alt) * zsf * np.sqrt(xx_plus_yy)
+            * np.sin(aspect - az)) / np.sqrt(1 + square_zsf * xx_plus_yy)
 
     return np.where(cang <= 0, 1, 1 + 254 * cang).astype('u1')
 
@@ -88,9 +83,9 @@ def other(array, resolution, altitude=45, azimuth=315):
     xx_plus_yy = x * x + y * y
     aspect = np.arctan2(y, x)
 
-    cang = (math.sin(alt) -
-            math.cos(alt) * zsf * np.sqrt(xx_plus_yy) *
-            np.sin(aspect - az)) / np.sqrt(1 + square_zsf * xx_plus_yy)
+    cang = (math.sin(alt)
+            - math.cos(alt) * zsf * np.sqrt(xx_plus_yy)
+            * np.sin(aspect - az)) / np.sqrt(1 + square_zsf * xx_plus_yy)
 
     return np.where(cang <= 0, 1, 1 + 254 * cang).astype('u1')
 
@@ -102,7 +97,7 @@ class Calculator(object):
 
     def calculate(self, feature):
         # target path
-        leaf_number = feature[b'BLADNR']
+        leaf_number = feature['BLADNR']
         path = os.path.join(self.output_path,
                             leaf_number[:3],
                             '{}.tif'.format(leaf_number))
@@ -190,6 +185,6 @@ def main():
     try:
         hillshade(**kwargs)
         return 0
-    except:
+    except Exception:
         logger.exception('An exception has occurred.')
         return 1

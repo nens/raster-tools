@@ -13,20 +13,17 @@ And the querying shapefile must have an SRID defined, too:
     gdalsrsinfo epsg:28992 -o wkt > myshape.prj
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
+import getpass
 import os
 
-from raster_tools import gdal
-from raster_tools import ogr
+from osgeo import gdal
+from osgeo import ogr
+
 from raster_tools import postgis
 
-DRIVER_OGR_MEMORY = ogr.GetDriverByName(str('Memory'))
-DRIVER_OGR_SHAPE = ogr.GetDriverByName(str('ESRI Shapefile'))
+DRIVER_OGR_MEMORY = ogr.GetDriverByName('Memory')
+DRIVER_OGR_SHAPE = ogr.GetDriverByName('ESRI Shapefile')
 
 COMPATIBLE = {1: (1, 4),
               2: (2, 5),
@@ -36,10 +33,10 @@ COMPATIBLE = {1: (1, 4),
               6: (3, 6)}
 
 
-gdal.PushErrorHandler(b'CPLQuietErrorHandler')
+gdal.PushErrorHandler('CPLQuietErrorHandler')
 
 
-class Selector(object):
+class Selector:
     def __init__(self, target_path, table, attribute, clip, **kwargs):
         self.postgis_source = postgis.PostgisSource(**kwargs)
         self.target_path = target_path
@@ -49,15 +46,16 @@ class Selector(object):
 
     def _clip(self, data_source, geometry):
         """ Clip DataSource in-place. """
-        l = data_source[0]
-        for f in l:
+        lr = data_source[0]
+        for i in range(lr.GetFeatureCount()):
+            f = lr[i]
             g = f.geometry()
             c = g.Intersection(geometry)
             if c.GetGeometryType() in COMPATIBLE[g.GetGeometryType()]:
                 f.SetGeometryDirectly(c)
-                l.SetFeature(f)
+                lr.SetFeature(f)
             else:
-                l.DeleteFeature(f.GetFID())
+                lr.DeleteFeature(f.GetFID())
 
     def select(self, feature):
         try:
@@ -90,13 +88,14 @@ class Selector(object):
         DRIVER_OGR_SHAPE.CopyDataSource(data_source, path)
 
 
-def command(source_path, **kwargs):
+def vselect(source_path, **kwargs):
     """ Rasterize some postgis tables. """
     selector = Selector(**kwargs)
 
     source_data_source = ogr.Open(source_path)
     source_layer = source_data_source[0]
-    for feature in source_layer:
+    for i in range(source_layer.GetFeatureCount()):
+        feature = source_layer[i]
         selector.select(feature)
 
 
@@ -119,11 +118,12 @@ def get_parser():
     parser.add_argument('-c', '--clip', action='store_true',
                         help='clip geometries that extend outside selection')
     parser.add_argument('-u', '--user'),
-    parser.add_argument('-p', '--password'),
     parser.add_argument('-s', '--host', default='localhost')
     return parser
 
 
 def main():
-    """ Call command with args from parser. """
-    return command(**vars(get_parser().parse_args()))
+    """ Call vselect with args from parser. """
+    kwargs = vars(get_parser().parse_args())
+    kwargs['password'] = getpass.getpass()
+    vselect(**kwargs)

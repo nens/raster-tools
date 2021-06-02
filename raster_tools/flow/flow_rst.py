@@ -5,24 +5,19 @@
 Vectorize flow.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import os
 
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 import numpy as np
 
 from raster_tools import datasets
 from raster_tools import datasources
 
-from raster_tools import gdal
-from raster_tools import ogr
-from raster_tools import osr
 
-GTIF = gdal.GetDriverByName(str('gtiff'))
+GTIF = gdal.GetDriverByName('gtiff')
 OPTIONS = ['compress=deflate', 'tiled=yes']
 
 
@@ -36,7 +31,7 @@ def get_geo_transform(geometry):
 def rasterize(feature, source_dir, target_dir):
     """ Rasterize streamline shape for a single tile into raster. """
     geo_transform = get_geo_transform(feature.geometry())
-    name = feature[str('name')]
+    name = feature['name']
     partial_path = os.path.join(name[:3], name)
 
     # target path
@@ -59,11 +54,11 @@ def rasterize(feature, source_dir, target_dir):
     kwargs = {'no_data_value': 0,
               'geo_transform': geo_transform,
               'array': np.zeros((1, 12500, 10000), 'u1'),
-              'projection': osr.GetUserInputAsWKT(str('epsg:28992'))}
+              'projection': osr.GetUserInputAsWKT('epsg:28992')}
 
     with datasets.Dataset(**kwargs) as dataset:
         for value, attribute in enumerate([2, 3, 4, 4.7], 2):
-            layer.SetAttributeFilter(str('class={}').format(attribute))
+            layer.SetAttributeFilter('class={}'.format(attribute))
             gdal.RasterizeLayer(dataset, [1], layer, burn_values=[value])
 
         GTIF.CreateCopy(target_path, dataset, options=OPTIONS)

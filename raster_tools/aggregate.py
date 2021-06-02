@@ -4,22 +4,16 @@
 Aggregate recursively by taking the mean of quads.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import os
 
+from osgeo import gdal
 import numpy as np
 
 from raster_tools import datasets
 from raster_tools import datasources
 from raster_tools import groups
 from raster_tools import utils
-
-from raster_tools import gdal
 
 GTIF = gdal.GetDriverByName(str('gtiff'))
 
@@ -92,12 +86,12 @@ class Aggregator(object):
         except OSError:
             pass  # no problem
 
-        geometry = index_feature.geometry()
+        geom = index_feature.geometry()
         factor = 2 ** self.iterations
-        geo_transform = self.geo_transform.shifted(geometry).scaled(factor)
+        geo_transform = self.geo_transform.shifted(geom).scaled(factor, factor)
 
         # data
-        values = self.raster_group.read(geometry)
+        values = self.raster_group.read(geom)
         no_data_value = self.no_data_value
 
         # set errors to no data

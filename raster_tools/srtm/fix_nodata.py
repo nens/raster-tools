@@ -4,11 +4,6 @@
 
 Recreates the tifs and leaves old ones as .org files."""
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import logging
 import numpy as np
@@ -80,6 +75,6 @@ def main():
     try:
         fix_nodata(**kwargs)
         return 0
-    except:
+    except Exception:
         logger.exception('An exception has occurred.')
         return 1

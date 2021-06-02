@@ -1,17 +1,11 @@
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import logging
 import math
 
+from osgeo import ogr
 import numpy as np
-
-from raster_tools import ogr
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +13,7 @@ logger = logging.getLogger(__name__)
 def get_inverse(a, b, c, d):
     """ Return inverse for a 2 x 2 matrix with elements (a, b), (c, d). """
     D = 1 / (a * d - b * c)
-    return d * D, -b * D,  -c * D,  a * D
+    return d * D, -b * D, -c * D, a * D
 
 
 def get_geometry(dataset):
@@ -97,14 +91,14 @@ class GeoTransform(tuple):
         values[0], values[3] = self.get_coordinates(index)
         return self.__class__(values)
 
-    def scaled(self, f):
+    def scaled(self, w, h):
         """
         Return shifted geo transform.
 
         :param f: scale the cellsize by this factor
         """
         p, a, b, q, c, d = self
-        return self.__class__([p, a * f, b * f, q, c * f, d * f])
+        return self.__class__([p, a * w, b * h, q, c * w, d * h])
 
     def get_coordinates(self, indices):
         """ Return x, y coordinates.

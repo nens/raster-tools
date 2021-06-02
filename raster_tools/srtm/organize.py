@@ -2,11 +2,6 @@
 # -*- coding: utf-8 -*-
 """ Organize srtm files from stdin. """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import hashlib
 import logging
@@ -67,7 +62,7 @@ def main():
     try:
         organize(**kwargs)
         return 0
-    except:
+    except Exception:
         logger.exception('An exception has occurred.')
         return 1
 

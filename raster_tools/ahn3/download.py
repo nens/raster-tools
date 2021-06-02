@@ -6,11 +6,6 @@ The INDEX argument should be a shapefile containing the names of the
 AHN units (for example 31bz2) in a column named 'name'.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 from os.path import join, exists
 
 import argparse
@@ -25,10 +20,10 @@ from osgeo import ogr
 logger = logging.getLogger(__name__)
 
 
-class Router(object):
+class Router:
     root = 'https://geodata.nationaalgeoregister.nl/ahn3/extract'
     # root = 'http://localhost:8000'
-    curl = 'curl --fail --output {path} --retry 3 {url}'
+    curl = 'curl --fail --output {path} --retry 3 --max-time 1800 {url}'
 
     names = (
         # ('laz', 'ahn3_laz/C_', '.laz'),
@@ -64,7 +59,8 @@ def download(index_path, target_path):
 
     downloaded, processed, notfound, skipped, failed = 0, 0, 0, 0, 0
 
-    for feature in layer:
+    for i in range(len(layer)):
+        feature = layer[i]
         for path, curl in router.get_directions(feature):
             if exists(path):
                 skipped += 1

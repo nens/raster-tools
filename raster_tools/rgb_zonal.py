@@ -7,20 +7,15 @@ of aerial imagery datasets. Examples of usage:
     $ rgb-zonal image.tif borders.shp output.shp 'np.median(g)'
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import logging
 import sys
 
-from raster_tools import datasources
-from raster_tools import gdal
-from raster_tools import groups
-
+from osgeo import gdal
 import numpy as np
+
+from raster_tools import datasources
+from raster_tools import groups
 
 
 logger = logging.getLogger(__name__)

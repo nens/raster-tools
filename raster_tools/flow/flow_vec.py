@@ -5,27 +5,22 @@
 Vectorize flow.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 import argparse
 import os
 
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 import numpy as np
 
 from raster_tools import groups
 from raster_tools import datasources
 
-from raster_tools import gdal
-from raster_tools import ogr
-from raster_tools import osr
 
-SHAPE = ogr.GetDriverByName(str('esri shapefile'))
+SHAPE = ogr.GetDriverByName('esri shapefile')
 COURSES = np.array([(64, 128, 1),
-                    (32,   0, 2),
-                    (16,   8, 4)], 'u1')
+                    (32, 0, 2),
+                    (16, 8, 4)], 'u1')
 
 INDICES = COURSES.nonzero()
 NUMBERS = COURSES[INDICES][np.newaxis, ...]
@@ -109,13 +104,13 @@ def vectorize(direction, accumulation):
         for x in starts:
             if x in sinks:
                 continue
-            l = [x]
+            line = [x]
             while True:
                 x = flow[x]
-                l.append(x)
+                line.append(x)
                 if x in stops:
                     break
-            a = np.array(l)
+            a = np.array(line)
             yield lower, (a // width - 0.5, a % width - 0.5)  # pixel center
 
 
@@ -132,7 +127,7 @@ class Vectorizer(object):
 
     def vectorize(self, index_feature):
         # target path
-        name = index_feature[str('name')]
+        name = index_feature['name']
         path = os.path.join(self.target_path, name[:3], '{}'.format(name))
         if os.path.exists(path):
             return
@@ -156,17 +151,17 @@ class Vectorizer(object):
         accumulation = self.accumulation_group.read(indices)
 
         # processing
-        data_source = SHAPE.CreateDataSource(str(path))
+        data_source = SHAPE.CreateDataSource(path)
         layer_sr = osr.SpatialReference(self.projection)
-        layer_name = str(os.path.basename(path))
+        layer_name = os.path.basename(path)
         layer = data_source.CreateLayer(layer_name, layer_sr)
-        layer.CreateField(ogr.FieldDefn(str('class'), ogr.OFTReal))
+        layer.CreateField(ogr.FieldDefn('class', ogr.OFTReal))
         layer_defn = layer.GetLayerDefn()
         generator = vectorize(direction=direction, accumulation=accumulation)
         for klass, indices in generator:
             feature = ogr.Feature(layer_defn)
             points = geo_transform.get_coordinates(indices)
-            feature[str('class')] = klass
+            feature['class'] = klass
             geometry = ogr.Geometry(ogr.wkbLineString)
             for p in zip(*points):
                 geometry.AddPoint_2D(*p)
