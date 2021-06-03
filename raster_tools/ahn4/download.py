@@ -42,9 +42,9 @@ class Router:
 
     def get_directions(self, feature):
         for kind, sub, pre, ext in self.names:
-            name = pre + feature[str('name')] + ext
-            path = join(self.path, kind, name)
-            url = join(self.root, sub, name.upper())
+            name = (pre + feature[str('name')]).upper() + ext
+            path = join(self.path, kind, name.lower())
+            url = join(self.root, sub, name)
             curl = self.curl.format(url=url, path=path)
             yield path, curl
 
