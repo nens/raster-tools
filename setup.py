@@ -40,6 +40,8 @@ setup(
         # ==============================================================
         # Scripts already ported to python3
         # --------------------------------------------------------------
+        # ahn4
+        'ahn4-download      = raster_tools.ahn4.download:main',
         # ahn3
         'ahn3-download      = raster_tools.ahn3.download:main',
         # analysis
