@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Download ahn3 units, using curl.
+Download ahn4 units, using curl.
 
 The INDEX argument should be a shapefile containing the names of the
 AHN units (for example 31bz2) in a column named 'name'.
@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 
 class Router:
-    root = 'https://geodata.nationaalgeoregister.nl/ahn3/extract'
     root = 'https://ns_hwh.fundaments.nl/hwh-ahn/ahn4'
     curl = 'curl --fail --output {path} --retry 3 --max-time 1800 {url}'
 
