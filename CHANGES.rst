@@ -9,6 +9,8 @@ Changelog of raster-tools
 
 - Add ansible deployment scripts.
 
+- Add roundd script to round raster to decimals.
+
 
 0.5 (2020-05-28)
 ----------------

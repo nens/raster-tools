@@ -55,6 +55,7 @@ setup(
         # modification
         'fillnodata         = raster_tools.fill.fill:main',
         'rebase             = raster_tools.rebase:main',
+        'roundd             = raster_tools.roundd:main',
         # organization
         'retile             = raster_tools.retile:main',
         # pointclouds
