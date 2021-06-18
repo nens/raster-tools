@@ -42,8 +42,8 @@ class Exchange(object):
 
     def round(self, decimals):
         """ Round target. """
-        active = self.target != self.no_data_value
-        self.target[active] = self.target[active].round(decimals)
+        active = self.source != self.no_data_value
+        self.target[active] = self.source[active].round(decimals)
 
     def save(self):
         """ Save. """
