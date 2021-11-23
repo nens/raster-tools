@@ -56,7 +56,7 @@ Task server installation
 
 One time server provisioning::
 
-    ansible-playbook -u arjan.verkerk ansible/provision.yml -i ansible/task.yml
+    ansible-playbook ansible/provision.yml -i ansible/task.yml
 
 Deploying new versions::
 
