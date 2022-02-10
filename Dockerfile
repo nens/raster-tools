@@ -35,7 +35,7 @@ RUN apt update \
 RUN locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8 LANGUAGE=en_US:en LC_ALL=en_US.UTF-8
 
-RUN pip3 install --upgrade setuptools && pip3 install pip==10.0.1 pipenv==2018.5.18
+RUN pip3 install --force-reinstall --no-cache-dir setuptools==57.5.0 && pip3 install pip==10.0.1 pipenv==2018.5.18
 
 VOLUME /code
 WORKDIR /code
