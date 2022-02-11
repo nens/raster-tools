@@ -11,7 +11,8 @@ ipython = "*"
 nose = "*"
 
 [packages]
-pygdal = "==3.0.4.*"
+#pygdal = "==3.0.4.*"
+pygdal
 threedigrid = {extras = ["geo", "results"]}
 "e1839a8" = {editable = true, path = "."}
 setuptools = "==57.5.0"
