@@ -95,3 +95,15 @@ Run the following scripts for streamline calculation::
     flow-acc  # accumulation
     flow-vec  # make shapefiles
     flow-rst  # make rasters from shapefiles
+
+
+Multiprocessing
+---------------
+
+A number of scripts have a `--part` option to run the script on a subset of the
+source features, e.g. --part=2/3 to run on the second part of three parts. To
+use xargs to run some script for example on 4 processes, use:
+
+```
+xargs -a <(echo -e '1/4\n2/4\n3/4\n4/4') -L 1 -P 4 your_script --your_args --part
+```
