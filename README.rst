@@ -96,6 +96,16 @@ Run the following scripts for streamline calculation::
     flow-vec  # make shapefiles
     flow-rst  # make rasters from shapefiles
 
+Streamlines have been rasterized in the past to be able to visulize them with
+good performance on any zoomlevel. A number of tricks has been employed to make
+them look like a vector dataset:
+
+- Rasterize at sufficiently high resolution so that supersampling is never
+  needed
+- (Pre)aggregate using a `maximum` algorithm for lower resolutions
+- Use binary dilation after serving image tiles on one or more higher classes
+  to create a 'wider stroke' effect
+
 
 Multiprocessing
 ---------------
