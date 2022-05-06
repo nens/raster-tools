@@ -96,9 +96,9 @@ Run the following scripts for streamline calculation::
     flow-vec  # make shapefiles
     flow-rst  # make rasters from shapefiles
 
-Streamlines have been rasterized in the past to be able to visulize them with
-good performance on any zoomlevel. A number of tricks has been employed to make
-them look like a vector dataset:
+Streamlines have been rasterized in the past to be able to visualize them with
+good performance on any zoomlevel. A number of tricks can be to make them look
+like a vector dataset:
 
 - Rasterize at sufficiently high resolution so that supersampling is never
   needed
