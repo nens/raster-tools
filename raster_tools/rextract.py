@@ -593,7 +593,7 @@ def main():
             # https://stackoverflow.com/questions/568271
             try:
                 os.kill(pid, 0)
-            except OSError:
+            except ProcessLookupError:
                 os.remove(lockpath)
             else:
                 # process is alive, on to the next lockpath
