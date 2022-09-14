@@ -605,6 +605,8 @@ def main():
         except FileExistsError:
             # try another
             continue
+        # allow the world to remove an obsolete lockfile
+        os.chmod(lockpath, 0o666)
         break
     else:
         print("Too many running instances of rextract.")
