@@ -595,8 +595,11 @@ def main():
                 os.kill(pid, 0)
             except ProcessLookupError:
                 os.remove(lockpath)
+            except PermissionError:
+                # someone elses process is alive, on to the next lockpath
+                continue
             else:
-                # process is alive, on to the next lockpath
+                # our process is alive, on to the next lockpath
                 continue
         # make a new lockfile, safely
         lockpath.parent.mkdir(exist_ok=True)
