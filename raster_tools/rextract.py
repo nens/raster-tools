@@ -577,8 +577,8 @@ def get_parser():
 def main():
     """ Call command with args from parser. """
     lockpaths = (
-        "/tmp/rextract1.pid",
-        "/tmp/rextract2.pid",
+        pathlib.Path("/tmp/rextract/1.pid"),
+        pathlib.Path("/tmp/rextract/2.pid"),
     )
     for lockpath in lockpaths:
         # check for (obsolete) lockfile
@@ -599,8 +599,10 @@ def main():
                 # process is alive, on to the next lockpath
                 continue
         # make a new lockfile, safely
+        lockpath.parent.mkdir(exist_ok=True)
+        lockpath.parent.chmod('0o777')
         try:
-            with open(lockpath, "x") as f:
+            with lockpath.open(mode="x") as f:
                 f.write(str(os.getpid()) + '\n')
         except FileExistsError:
             # try another
