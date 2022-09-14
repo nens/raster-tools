@@ -600,7 +600,7 @@ def main():
                 continue
         # make a new lockfile, safely
         lockpath.parent.mkdir(exist_ok=True)
-        lockpath.parent.chmod('0o777')
+        lockpath.parent.chmod(0o777)
         try:
             with lockpath.open(mode="x") as f:
                 f.write(str(os.getpid()) + '\n')
@@ -608,7 +608,7 @@ def main():
             # try another
             continue
         # allow the world to remove an obsolete lockfile
-        os.chmod(lockpath, 0o666)
+        lockpath.chmod(0o666)
         break
     else:
         print("Too many running instances of rextract.")
