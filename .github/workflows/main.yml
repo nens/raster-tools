@@ -1,11 +1,11 @@
 name: CI
 
 # Run on pull requests. And on master itself.
-on:
-  push:
-    branches:
-      - master
-  pull_request:
+#on:
+  #push:
+    #branches:
+      #- master
+  #pull_request:
 
 # A workflow run is made up of one or more jobs that can run sequentially or
 # in parallel
