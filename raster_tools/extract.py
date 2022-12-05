@@ -1107,7 +1107,10 @@ def log_user():
     if not exists(logpath):
         with open(logpath, "w") as f:
             pass
-        os.chmod(logpath, 0o666)
+        try:
+            os.chmod(logpath, 0o666)
+        except Exception:
+            pass
 
     # append the record
     with open(logpath, "a") as f:
