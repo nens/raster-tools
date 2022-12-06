@@ -603,7 +603,10 @@ def main():
                 continue
         # make a new lockfile, safely
         lockpath.parent.mkdir(exist_ok=True)
-        lockpath.parent.chmod(0o777)
+        try:
+            lockpath.parent.chmod(0o777)
+        except Exception:
+            pass
         try:
             with lockpath.open(mode="x") as f:
                 f.write(str(os.getpid()) + '\n')
