@@ -1,83 +1,58 @@
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 # -*- coding: utf-8 -*-
 """
-Round raster to set decimals.
+Round values, change "no data" value, or both.
 """
 
-from os.path import dirname, exists
+from os.path import exists
 import argparse
-import os
-from osgeo import gdal
+from osgeo.gdal import GetDriverByName, Open
 import numpy as np
 from raster_tools import datasets
 
-# output driver and optinos
-DRIVER = gdal.GetDriverByName('gtiff')
+DRIVER = GetDriverByName('gtiff')
 OPTIONS = ['compress=deflate', 'tiled=yes']
 
-progress = True
 
-
-class Exchange(object):
-    def __init__(self, source_path, target_path):
-        """
-        Read source, create target array.
-        """
-        dataset = gdal.Open(source_path)
-        band = dataset.GetRasterBand(1)
-
-        self.source = band.ReadAsArray()
-        self.no_data_value = band.GetNoDataValue()
-
-        self.shape = self.source.shape
-
-        self.kwargs = {
-            'no_data_value': self.no_data_value,
-            'projection': dataset.GetProjection(),
-            'geo_transform': dataset.GetGeoTransform(),
-        }
-
-        self.target_path = target_path
-        self.target = np.full_like(self.source, self.no_data_value)
-
-    def round(self, decimals):
-        """ Round target. """
-        active = self.source != self.no_data_value
-        self.target[active] = self.source[active].round(decimals)
-
-    def save(self):
-        """ Save. """
-        # prepare dirs
-        subdir = dirname(self.target_path)
-        if subdir:
-            os.makedirs(subdir, exist_ok=True)
-
-        # write tiff
-        array = self.target[np.newaxis]
-        with datasets.Dataset(array, **self.kwargs) as dataset:
-            DRIVER.CreateCopy(self.target_path, dataset, options=OPTIONS)
-
-
-def roundd(source_path, target_path, decimals):
-    """ Round decimals. """
+def roundd(source_path, target_path, decimals=None, no_data_value=None):
     # skip existing
     if exists(target_path):
-        print('{} skipped.'.format(target_path))
+        print(f'{target_path} skipped.')
         return
 
     # skip when missing sources
     if not exists(source_path):
-        print('Raster source "{}" not found.'.format(source_path))
+        print(f'{target_path} not found.')
         return
 
-    # read
-    exchange = Exchange(source_path, target_path)
+    dataset = Open(source_path)
+    band = dataset.GetRasterBand(1)
 
-    if decimals:
-        exchange.round(decimals)
+    values = band.ReadAsArray()
+    active = values != band.GetNoDataValue()
 
-    # save
-    exchange.save()
+    kwargs = {
+        'projection': dataset.GetProjection(),
+        'geo_transform': dataset.GetGeoTransform(),
+    }
+
+    # round
+    if decimals is not None:
+        values[active] = values[active].round(decimals)
+
+    # change "no data" value
+    if no_data_value is not None:
+        values[~active] = no_data_value
+    else:
+        no_data_value = band.GetNoDatavalue()
+
+    kwargs["no_data_value"] = no_data_value
+
+    # write tiff
+    array = values[np.newaxis]
+    with datasets.Dataset(array, **kwargs) as dataset:
+        DRIVER.CreateCopy(target_path, dataset, options=OPTIONS)
+    print(f'{target_path} written.')
 
 
 def get_parser():
@@ -100,6 +75,12 @@ def get_parser():
         type=int,
         dest='decimals',
         help='Round the result to this number of decimals.',
+    )
+    parser.add_argument(
+        '-n', '--no-data-value',
+        type=float,
+        dest='no_data_value',
+        help='Use this as new No Data Value.',
     )
 
     return parser
