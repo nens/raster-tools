@@ -44,7 +44,7 @@ def roundd(source_path, target_path, decimals=None, no_data_value=None):
     if no_data_value is not None:
         values[~active] = no_data_value
     else:
-        no_data_value = band.GetNoDatavalue()
+        no_data_value = band.GetNoDataValue()
 
     kwargs["no_data_value"] = no_data_value
 
