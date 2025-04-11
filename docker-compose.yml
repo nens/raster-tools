@@ -5,9 +5,7 @@ services:
     environment:
       - DOCKER=True
       - PYTHONUNBUFFERED=1
-      - PIPENV_VENV_IN_PROJECT=1
       - SHELL=/bin/bash
     volumes:
-      - ./:/code
-      - ~/.cache/pip:/home/nens/.cache/pip  # shared pip cache
-      - ~/.cache/pipenv:/home/nens/.cache/pipenv  # shared pipenv cache
+      - ./:/code/
+      - /mnt/:/mnt/

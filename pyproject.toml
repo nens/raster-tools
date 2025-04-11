@@ -1,0 +1,114 @@
+#[build-system]
+#requires = ["setuptools", "setuptools-scm"]
+#build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["raster_tools"]
+
+[project]
+name = "raster-tools"
+version = "0.6.dev0"
+dependencies = [
+  "numpy<2",
+  "psycopg2-binary",
+  "requests",
+  "scipy",
+]
+requires-python = ">=3.6"
+authors = [
+  {name = "Arjan Verkerk", email = "arjan.verkerk@nelen-schuurmans.com"},
+]
+maintainers = [
+  {name = "Arjan Verkerk", email = "arjan.verkerk@nelen-schuurmans.com"},
+]
+description = "Tools for processing of elevation and landuse raster data"
+readme = "README.rst"
+license = "GPL-3.0-or-later"
+license-files = ["LICEN[CS]E.*"]
+keywords = ["raster", "tools"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+Repository = "https://github.com/nens/raster-tools.git"
+"Bug Tracker" = "https://github.com/nens/raster-tools/issues"
+Changelog = "https://github.com/nens/raster-tools//blob/master/CHANGELOG.rst"
+
+[project.scripts]
+spam-cli = "spam:main_cli"
+# ==============================================================
+# Scripts already ported to python3
+# --------------------------------------------------------------
+# ahn4
+ahn4-download      = "raster_tools.ahn4.download:main"
+# ahn3
+ahn3-download      = "raster_tools.ahn3.download:main"
+# analysis
+upstream           = "raster_tools.upstream:main"
+zonal              = "raster_tools.zonal:main"
+# modeling and extraction
+extract            = "raster_tools.extract:main"
+rextract           = "raster_tools.rextract:main"
+vselect            = "raster_tools.vselect:main"
+line-up            = "raster_tools.line_up:main"
+# modification
+fillnodata         = "raster_tools.fill.fill:main"
+rebase             = "raster_tools.rebase:main"
+roundd             = "raster_tools.roundd:main"
+# organization
+retile             = "raster_tools.retile:main"
+# pointclouds
+pol2laz            = "raster_tools.pol2laz:main"
+# rasterization
+bag2tif            = "raster_tools.bag2tif:main"
+# ==============================================================
+# Scripts to be checked in python3
+# --------------------------------------------------------------
+# analysis
+rgb-zonal          = "raster_tools.rgb_zonal:main"
+green-factor       = "raster_tools.green_factor:main"
+difference         = "raster_tools.difference:main"
+# flow analysis
+flow-fil           = "raster_tools.flow.flow_fil:main"
+flow-dir           = "raster_tools.flow.flow_dir:main"
+flow-acc           = "raster_tools.flow.flow_acc:main"
+flow-vec           = "raster_tools.flow.flow_vec:main"
+flow-rst           = "raster_tools.flow.flow_rst:main"
+# modification
+hillshade          = "raster_tools.hillshade:main"
+shadow             = "raster_tools.shadow:main"
+merge              = "raster_tools.merge:main"
+# rasterization
+rasterize2         = "raster_tools.rasterize2:main"
+# ruimtekaart & maskerkaart
+ruimtekaart        = "raster_tools.ruimtekaart:main"
+maskerkaart        = "raster_tools.maskerkaart:main"
+# ==============================================================
+# Scripts not (yet) ported to python3
+# --------------------------------------------------------------
+# ahn2
+ahn2-aig2tif       = "raster_tools.ahn2.aig2tif:main"
+ahn2-zip2tif       = "raster_tools.ahn2.zip2tif:main"
+ahn2-constant      = "raster_tools.ahn2.constant:main"
+# modification
+gmfillnodata       = "raster_tools.gmfillnodata:main"
+aggregate          = "raster_tools.aggregate:main"
+# organization
+reindex            = "raster_tools.reindex:main"
+# pointclouds
+txt2tif            = "raster_tools.txt2tif:main"
+roof               = "raster_tools.roof:main"
+# rasterization
+rasterize          = "raster_tools.rasterize:main"
+# srtm
+srtm-make-index    = "raster_tools.srtm.make_index:main"
+srtm-fix-nodata    = "raster_tools.srtm.fix_nodata:main"
+srtm-organize      = "raster_tools.srtm.organize:main"
+
+[tool.zest-releaser]
+release = "no"
+
+[tool.flake8]
+ignore = ["E203", "W503"]
