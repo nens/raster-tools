@@ -12,8 +12,6 @@ For development, you can use a docker-compose setup::
     $ docker compose build --build-arg uid=`id -u` --build-arg gid=`id -g`
     $ docker compose up --no-start
     $ docker compose start
-    $ docker compose exec lib pipx ensurepath
-    $ docker compose exec lib pipx install --system-site-packages --editable .
     $ docker compose exec lib bash
 
 

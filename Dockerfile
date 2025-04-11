@@ -20,3 +20,7 @@ ENV LANG=en_US.UTF-8 LANGUAGE=en_US:en LC_ALL=en_US.UTF-8
 VOLUME /code
 WORKDIR /code
 USER nens
+
+COPY --chown=nens . .
+RUN echo "export PATH=$PATH:~/.local/bin" >> ~/.bashrc
+RUN pipx install --system-site-packages --editable .

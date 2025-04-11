@@ -3,9 +3,7 @@ services:
     build: .
     command: tail -F anything
     environment:
-      - DOCKER=True
       - PYTHONUNBUFFERED=1
       - SHELL=/bin/bash
     volumes:
-      - ./:/code/
       - /mnt/:/mnt/
