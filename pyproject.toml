@@ -107,8 +107,8 @@ srtm-make-index    = "raster_tools.srtm.make_index:main"
 srtm-fix-nodata    = "raster_tools.srtm.fix_nodata:main"
 srtm-organize      = "raster_tools.srtm.organize:main"
 
-[tool.zest-releaser]
-release = "no"
+[tool.zest.releaser]
+release = false
 
 [tool.flake8]
 ignore = ["E203", "W503"]
