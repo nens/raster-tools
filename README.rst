@@ -9,7 +9,7 @@ Docker installation
 
 For development, you can use a docker-compose setup::
 
-    $ docker compose build
+    $ docker compose build --build-arg uid=`id -u` --build-arg gid=`id -g`
     $ docker compose up --no-start
     $ docker compose start
     $ docker compose exec lib pipx ensurepath
