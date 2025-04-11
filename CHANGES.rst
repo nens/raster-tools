@@ -11,6 +11,8 @@ Changelog of raster-tools
 
 - Add roundd script to round raster to decimals.
 
+- Make roundd script also convert no data value.
+
 
 0.5 (2020-05-28)
 ----------------
