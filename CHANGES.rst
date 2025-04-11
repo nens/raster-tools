@@ -2,7 +2,7 @@ Changelog of raster-tools
 ===================================================
 
 
-0.6 (unreleased)
+0.6 (2025-04-11)
 ----------------
 
 - Added support for a password file to rextract.
