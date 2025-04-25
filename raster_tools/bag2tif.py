@@ -113,14 +113,14 @@ class Rasterizer:
                 gdal.RasterizeLayer(dataset, [1], layer, burn_values=[1])
 
         # rasterize the percentile
-        try:
-            floor = np.percentile(data[mask.nonzero()], 75)
-            if self.floor:
-                floor += self.floor
-            return floor
-        except IndexError:
+        mask = np.logical_and(mask, data != self.no_data_value)
+        if not mask.any():
             # no data points at all
             return
+        floor = np.percentile(data[mask], 75)
+        if self.floor:
+            floor += self.floor
+        return floor
 
     def rasterize_region(self, index_feature):
         # prepare or abort

@@ -7,3 +7,4 @@ services:
       - SHELL=/bin/bash
     volumes:
       - /mnt/:/mnt/
+      - .:.
