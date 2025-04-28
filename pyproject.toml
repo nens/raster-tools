@@ -59,6 +59,7 @@ rebase             = "raster_tools.rebase:main"
 roundd             = "raster_tools.roundd:main"
 # organization
 retile             = "raster_tools.retile:main"
+upload             = "raster_tools.upload:main"
 # pointclouds
 pol2laz            = "raster_tools.pol2laz:main"
 # rasterization
