@@ -58,7 +58,7 @@ def upload(uuid, path, name):
         for i in range(minutes):
             for i in range(6):
                 sleep(10)
-            print(".", file=stderr, end="", flush=True)
+                print(".", file=stderr, end="", flush=True)
         print(file=stderr)
 
     # upload
