@@ -16,6 +16,10 @@ ARG uid=1000
 ARG gid=1000
 RUN groupadd -g $gid nens && useradd -lm -u $uid -g $gid nens
 
+# so that users can use run the commands directly
+RUN ln -s /home/nens/.local/bin/bag2tif /usr/local/bin/
+RUN ln -s /home/nens/.local/bin/roundd /usr/local/bin/
+
 VOLUME /code
 WORKDIR /code
 USER nens
