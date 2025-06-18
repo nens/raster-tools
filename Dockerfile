@@ -2,6 +2,7 @@ FROM ubuntu:noble
 LABEL maintainer="arjan.verkerk@nelen-schuurmans.nl"
 
 RUN apt update
+RUN apt install --yes curl
 RUN apt install --yes pipx
 RUN apt install --yes unzip
 RUN apt install --yes locales
@@ -27,3 +28,4 @@ USER nens
 COPY --chown=nens . .
 RUN echo "export PATH=$PATH:~/.local/bin" >> ~/.bashrc
 RUN pipx install --system-site-packages --editable .
+

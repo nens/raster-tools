@@ -1,111 +1,76 @@
 # -*- coding: utf-8 -*-
 """
-Download ahn4 units, using curl.
-
-The INDEX argument should be a shapefile containing the names of the
-AHN units (for example 31bz2) in a column named 'name'.
+Download ahn4 units, using curl and the json file from the online viewer.
 """
+from argparse import ArgumentParser
+from json import load
+from pathlib import Path
+from shlex import split
+from subprocess import call
 
-from os.path import join, exists
-
-import argparse
-import logging
-import os
-import shlex
-import subprocess
-import sys
-
-from osgeo import ogr
-
-logger = logging.getLogger(__name__)
+KEY = {
+    "dsm": "AHN5 DSM ½m",
+    "dtm": "AHN5 maaiveldmodel (DTM) ½m",
+}
 
 
-class Router:
-    root = 'https://ns_hwh.fundaments.nl/hwh-ahn/ahn4'
-    curl = 'curl --fail --output {path} --retry 3 --max-time 1800 {url}'
-
-    names = (
-        ('dsm', '03a_DSM_0.5m', 'r_', '.zip'),
-        ('dtm', '02a_DTM_0.5m', 'm_', '.zip'),
+def get_urls(json_path, dsm_or_dtm):
+    data = load(json_path.open())
+    key = KEY[dsm_or_dtm]
+    urls = (
+        feature["properties"][key]
+        for feature in data["result"]["features"]
     )
-
-    def __init__(self, path):
-        self.path = path
-
-        # create dirs
-        for name in next(iter(zip(*self.names))):
-            try:
-                os.makedirs(join(path, name))
-            except OSError:
-                pass
-
-    def get_directions(self, feature):
-        for kind, sub, pre, ext in self.names:
-            name = (pre + feature[str('name')]).upper() + ext
-            path = join(self.path, kind, name.lower())
-            url = join(self.root, sub, name)
-            curl = self.curl.format(url=url, path=path)
-            yield path, curl
+    for url in urls:
+        if url == "None":
+            continue
+        yield url
 
 
-def download(index_path, target_path):
-    router = Router(path=target_path)
-
-    data_source = ogr.Open(index_path)
-    layer = data_source[0]
-    total = 2 * layer.GetFeatureCount()
-
-    downloaded, processed, notfound, skipped, failed = 0, 0, 0, 0, 0
-
-    for i in range(len(layer)):
-        feature = layer[i]
-        for path, curl in router.get_directions(feature):
-            if exists(path):
-                skipped += 1
+def download(json_path, target_dir, dsm_or_dtm):
+    target_dir.mkdir(exist_ok=True)
+    urls = list(get_urls(json_path=json_path, dsm_or_dtm=dsm_or_dtm))
+    total = len(urls)
+    processed, downloaded, notfound, skipped, failed = 0, 0, 0, 0, 0
+    for url in urls:
+        name = url.rsplit("/", 1)[1].lower()
+        path = target_dir / name
+        curl = f"curl --fail --output {path} --retry 3 --max-time 1800 {url}"
+        if path.exists():
+            skipped += 1
+        else:
+            print(curl)
+            status = call(split(curl))
+            if status == 22:
+                notfound += 1
+            elif status:
+                failed += 1
+                if path.exists():
+                    path.unlink()
             else:
-                logger.info(curl)
-                status = subprocess.call(shlex.split(curl))
-                if status == 22:
-                    notfound += 1
-                elif status:
-                    failed += 1
-                    if exists(path):
-                        os.remove(path)
-                else:
-                    downloaded += 1
-            processed += 1
+                downloaded += 1
+        processed += 1
 
-            # output
-            template = ('{progress:.1%}: {processed} processed, '
-                        '{downloaded} downloaded, {skipped} skipped, '
-                        '{notfound} notfound, {failed} failed.')
+        # console logging
+        template = ("{progress:.1%}: {processed} processed, "
+                    "{downloaded} downloaded, {skipped} skipped, "
+                    "{notfound} notfound, {failed} failed.")
 
-            logger.info(template.format(
-                progress=processed / total,
-                processed=processed,
-                downloaded=downloaded,
-                skipped=skipped,
-                notfound=notfound,
-                failed=failed,
-            ))
-
-
-def get_parser():
-    """ Return argument parser. """
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('index_path', metavar='INDEX')
-    parser.add_argument('target_path', metavar='TARGET')
-    return parser
+        print(template.format(
+            progress=processed / total,
+            processed=processed,
+            downloaded=downloaded,
+            skipped=skipped,
+            notfound=notfound,
+            failed=failed,
+        ))
+        break
 
 
 def main():
-    """ Call download with args from parser. """
-    kwargs = vars(get_parser().parse_args())
-
-    # logging
-    stream = sys.stderr
-    level = logging.INFO
-    logging.basicConfig(stream=stream, level=level, format='%(message)s')
-
-    # run or fail
+    parser = ArgumentParser(description=__doc__)
+    parser.add_argument("dsm_or_dtm", choices=["dsm", "dtm"])
+    parser.add_argument("json_path", metavar="INFOJSON", type=Path)
+    parser.add_argument("target_dir", metavar="TARGET", type=Path)
+    kwargs = vars(parser.parse_args())
     download(**kwargs)

@@ -1,4 +1,4 @@
-raste-tools
+raster-tools
 ============
 
 A collection of raster tools.

@@ -41,9 +41,9 @@ spam-cli = "spam:main_cli"
 # ==============================================================
 # Scripts already ported to python3
 # --------------------------------------------------------------
-# ahn4
+# ahn
+ahn5-download      = "raster_tools.ahn5.download:main"
 ahn4-download      = "raster_tools.ahn4.download:main"
-# ahn3
 ahn3-download      = "raster_tools.ahn3.download:main"
 # analysis
 upstream           = "raster_tools.upstream:main"
