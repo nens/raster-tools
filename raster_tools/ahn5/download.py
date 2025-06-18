@@ -35,7 +35,10 @@ def download(json_path, target_dir, dsm_or_dtm):
     for url in urls:
         name = url.rsplit("/", 1)[1].lower()
         path = target_dir / name
-        curl = f"curl --location --fail --output {path} --retry 3 --max-time 1800 {url}"
+        curl = (
+            "curl --location --fail --retry 3 --max-time 1800 --output "
+            f"{path} {url}"
+        )
         if path.exists():
             skipped += 1
         else:
@@ -64,7 +67,6 @@ def download(json_path, target_dir, dsm_or_dtm):
             notfound=notfound,
             failed=failed,
         ))
-        break
 
 
 def main():
