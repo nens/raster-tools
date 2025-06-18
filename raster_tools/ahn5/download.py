@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Download ahn4 units, using curl and the json file from the online viewer.
+Download ahn5 files, using curl and the json file from the online viewer.
 """
 from argparse import ArgumentParser
 from json import load
@@ -35,7 +35,7 @@ def download(json_path, target_dir, dsm_or_dtm):
     for url in urls:
         name = url.rsplit("/", 1)[1].lower()
         path = target_dir / name
-        curl = f"curl --fail --output {path} --retry 3 --max-time 1800 {url}"
+        curl = f"curl --location --fail --output {path} --retry 3 --max-time 1800 {url}"
         if path.exists():
             skipped += 1
         else:
