@@ -70,6 +70,7 @@ def upload(uuid, path, name):
         files={"file": path.open("rb")},
     )
     print("done.", file=stderr)
+    print(f"{path} uploaded.")
     post_result = post_response.json()
 
     # poll task status
