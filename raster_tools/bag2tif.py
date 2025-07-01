@@ -4,6 +4,11 @@
 Rasterize zonal statstics (currently percentile or median) into a set
 of rasters. The input raster is usually the interpolated dem, to prevent
 enclosed geometries having no value.
+
+the RASTER argument can be a raster or a directory of rasters, but the rasters in the
+directory are expected to have the same extent and cellsize (for example a dtm and the
+complementary fil raster that matches the voids in the dtm). The alignment can be
+achieved using the -te argument of the gdalbuildvrt command.
 """
 
 import argparse
