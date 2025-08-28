@@ -9,6 +9,7 @@ packages = ["raster_tools"]
 name = "raster-tools"
 version = "0.7.dev0"
 dependencies = [
+  "gdal>=3.8",
   "numpy<2",
   "psycopg2-binary",
   "requests",
