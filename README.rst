@@ -63,3 +63,10 @@ source features, e.g. --part=2/3 to run on the second part of three parts. To
 use xargs to run some script for example on 4 processes, use::
 
     xargs -a <(echo -e '1/4\n2/4\n3/4\n4/4') -L 1 -P 4 your_script --your_args --part
+
+
+con-task-02.nens
+----------------
+
+For the advisors, raster-tools is installed on the con-task-02.nens via the ansible
+script at https://github.com/nens/con-servers/blob/main/ansible/con-task-02.yml
