@@ -472,8 +472,7 @@ def rextract(shape_path, output_path, username, attribute, srs, **kwargs):
         layer_name = layer.GetName()
         layer_path = output_path / layer_name
         layer_path.mkdir(exist_ok=True)
-        for feature_no in range(layer.GetFeatureCount()):
-            feature = layer[feature_no]
+        for feature in layer:
             geometry = feature.geometry()
             geometry.AssignSpatialReference(sr)  # ignore original srs
             try:
