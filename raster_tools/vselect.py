@@ -60,7 +60,7 @@ class Selector:
     def select(self, feature):
         try:
             name = str(feature[str(self.attribute)])
-        except ValueError:
+        except KeyError:
             message = 'No attribute "{}" found in selection datasource.'
             print(message.format(self.attribute))
             exit()

@@ -477,7 +477,7 @@ def rextract(shape_path, output_path, username, attribute, srs, **kwargs):
             geometry.AssignSpatialReference(sr)  # ignore original srs
             try:
                 feature_name = feature[attribute]
-            except ValueError:
+            except KeyError:
                 msg = 'Attribute "%s" not found in layer "%s"'
                 print(msg % (attribute, layer_name))
                 exit()
