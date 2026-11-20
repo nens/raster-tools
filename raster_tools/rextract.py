@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 # (c) Nelen & Schuurmans, see LICENSE.rst.
 """
@@ -299,6 +300,7 @@ class Chunk(object):
         self.serial = serial
 
         # the geotiff data
+        self.url = None
         self.response = None
 
     def fetch(self, session, subdomain, uuid, time, srs):
@@ -315,6 +317,7 @@ class Chunk(object):
             }
         }
 
+        self.url = request['url']
         self.response = session.get(**request)
 
     @contextlib.contextmanager
@@ -396,16 +399,21 @@ class RasterExtraction:
                 chunk.fetch(**fetch_kwargs)
 
             # abort on errors
-            if chunk.response.status_code != 200:
+            if chunk.response is None or chunk.response.status_code != 200:
                 # remember last completed chunk
                 self.indicator.set(completed)
 
-                # abort
+                # print url
                 print('\nFailed to fetch a chunk! The url used was:')
-                print(chunk.response.url)
-                msg = 'The server responded with status code %s (%s).'
-                status_code = chunk.response.status_code
-                print(msg % (status_code, responses[status_code]))
+                print(chunk.url)
+
+                # print status_code
+                if chunk.reponse is not None:
+                    msg = 'The server responded with status code %s (%s).'
+                    status_code = chunk.response.status_code
+                    print(msg % (status_code, responses[status_code]))
+
+                # abort
                 exit()
 
             # save the chunk to the target
