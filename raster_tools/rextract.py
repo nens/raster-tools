@@ -204,7 +204,7 @@ class Target:
 
         # dataset
         if path.exists():
-            print('Appending to %s... ' % path, end='')
+            print('Appending to %s... ' % path)
             self.dataset = gdal.Open(str(path), gdal.GA_Update)
         else:
             print('Creating %s' % path)
