@@ -22,12 +22,10 @@ and contain one username / password combination per line separated by a colon
 """
 
 from http.client import responses
-from time import sleep
 
 import argparse
 import contextlib
 import getpass
-import http
 import os
 import pathlib
 import queue as queues
@@ -82,12 +80,6 @@ SRS = 'EPSG:28992'
 CELLSIZE = 0.5
 DTYPE = 'f4'
 SUBDOMAIN = 'demo'
-
-# sleep and retry
-STATUS_RETRY_SECONDS = {
-    http.HTTPStatus.SERVICE_UNAVAILABLE: 10,
-    http.HTTPStatus.GATEWAY_TIMEOUT: 0,
-}
 
 
 class Indicator:
@@ -391,12 +383,6 @@ class RasterExtraction:
             except TypeError:
                 self.indicator.set(completed)
                 break
-
-            # if the chunk failed, try again here
-            seconds = STATUS_RETRY_SECONDS.get(chunk.response.status_code)
-            if seconds is not None:
-                sleep(seconds)
-                chunk.fetch(**fetch_kwargs)
 
             # abort on errors
             if chunk.response is None or chunk.response.status_code != 200:
